@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
@@ -23,6 +23,38 @@ const SettingsPage      = lazy(() => import('@/pages/admin/SettingsPage').then(m
 const PortalOrdersPage        = lazy(() => import('@/pages/portal/PortalOrdersPage').then(m => ({ default: m.PortalOrdersPage })));
 const PortalCertificatesPage  = lazy(() => import('@/pages/portal/PortalCertificatesPage').then(m => ({ default: m.PortalCertificatesPage })));
 const PortalNotificationsPage = lazy(() => import('@/pages/portal/PortalNotificationsPage').then(m => ({ default: m.PortalNotificationsPage })));
+
+// ── Idle-time prefetch: loads all page chunks in background ───
+// This eliminates the spinner delay when switching between pages.
+const prefetchAllPages = () => {
+  const chunks = [
+    () => import('@/pages/admin/OrdersPage'),
+    () => import('@/pages/admin/PaymentsPage'),
+    () => import('@/pages/admin/AnimalsPage'),
+    () => import('@/pages/admin/SuppliersPage'),
+    () => import('@/pages/admin/DeliveriesPage'),
+    () => import('@/pages/admin/CertificatesPage'),
+    () => import('@/pages/admin/ParticipantsPage'),
+    () => import('@/pages/admin/ProgrammesPage'),
+    () => import('@/pages/admin/ExceptionsPage'),
+    () => import('@/pages/admin/AuditLogPage'),
+    () => import('@/pages/admin/SettingsPage'),
+    () => import('@/pages/portal/PortalOrdersPage'),
+    () => import('@/pages/portal/PortalCertificatesPage'),
+    () => import('@/pages/portal/PortalNotificationsPage'),
+  ];
+
+  if ('requestIdleCallback' in window) {
+    chunks.forEach((load, i) => {
+      (window as Window & typeof globalThis & { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback(() => { load().catch(() => {}); }, { timeout: 3000 + i * 500 });
+    });
+  } else {
+    // Safari fallback
+    chunks.forEach((load, i) => {
+      setTimeout(() => { load().catch(() => {}); }, 1500 + i * 300);
+    });
+  }
+};
 
 // ── Branded Loading Screen ─────────────────────────────────────
 function AuthLoader({ message = 'Loading…' }: { message?: string }) {
@@ -140,6 +172,9 @@ function PageLoader() {
 
 // ── App ───────────────────────────────────────────────────────
 export default function App() {
+  // Prefetch all page chunks during idle time so nav feels instant
+  useEffect(() => { prefetchAllPages(); }, []);
+
   return (
     <ToastProvider>
       <Suspense fallback={<PageLoader />}>

@@ -1538,13 +1538,30 @@ h1, h2, h3, h4, h5, h6 {
     grid-template-columns: 1fr !important;
   }
 
-  /* Filter bar stacks vertically */
+  /* Filter bar stacks vertically on mobile */
   .filter-bar {
     flex-direction: column;
     align-items: stretch;
   }
   .search-bar {
     max-width: none;
+  }
+  /* Filter pill strip: single scrollable row, no wrapping */
+  .filter-bar > div:last-child {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 0.4rem !important;
+    padding-bottom: 4px; /* room for scrollbar */
+    scrollbar-width: none; /* Firefox */
+  }
+  .filter-bar > div:last-child::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+  .filter-bar > div:last-child .btn {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
   }
 
   /* Page headers — stack title and actions */
@@ -1592,15 +1609,17 @@ h1, h2, h3, h4, h5, h6 {
     grid-template-columns: repeat(2, 1fr) !important;
   }
 
-  .filter-bar > div {
-    flex-wrap: wrap;
-    width: 100%;
+  .filter-bar > div:last-child {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none;
+    padding-bottom: 4px;
   }
-
-  .filter-bar .btn {
-    flex: 1;
-    min-width: 0;
-    justify-content: center;
+  .filter-bar > div:last-child::-webkit-scrollbar { display: none; }
+  .filter-bar > div:last-child .btn {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
   }
 
   /* Auth page on tiny screens */
