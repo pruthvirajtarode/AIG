@@ -564,7 +564,7 @@ h1, h2, h3, h4, h5, h6 {
 /* ── Sidebar ───────────────────────────────────────────────── */
 .sidebar {
   width: var(--sidebar-width);
-  min-height: 100vh;
+  height: 100vh;              /* Fixed height — key fix for scrolling */
   background: #060a07;
   border-right: 1px solid rgba(212,168,50,0.08);
   display: flex;
@@ -574,6 +574,7 @@ h1, h2, h3, h4, h5, h6 {
   top: 0;
   z-index: 40;
   transition: width var(--transition-base);
+  overflow: hidden;           /* Clip content; nav scrolls internally */
 }
 
 .sidebar.collapsed {
@@ -636,7 +637,24 @@ h1, h2, h3, h4, h5, h6 {
 .sidebar-nav {
   flex: 1;
   padding: 0.75rem 0;
-  overflow-y: auto;
+  overflow-y: auto;           /* Scroll when nav items overflow */
+  overflow-x: hidden;
+  /* Custom slim scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(212,168,50,0.2) transparent;
+}
+.sidebar-nav::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(212,168,50,0.2);
+  border-radius: 4px;
+}
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(212,168,50,0.35);
 }
 
 .nav-section-label {
