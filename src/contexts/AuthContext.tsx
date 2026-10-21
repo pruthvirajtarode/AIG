@@ -94,8 +94,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchProfile]);
 
   const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: error.message };
+    // Immediately set user + mark loading so RequireStaff shows a spinner
+    // instead of redirecting to /portal before onAuthStateChange loads the profile
+    if (data.user) {
+      setUser(data.user);
+      setSession(data.session);
+      setIsLoading(true);
+    }
     return { error: null };
   };
 
