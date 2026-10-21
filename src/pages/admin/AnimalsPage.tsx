@@ -174,9 +174,10 @@ function InspectionModal({ animal, onClose, onUpdate }: {
           <button className="btn btn-primary" onClick={() => {
             const newStatus: AnimalStatus = result === 'pass' ? 'inspection_passed' : 'rejected';
             onUpdate(animal.id, newStatus);
-            toast(result === 'pass' ? 'success' : 'error',
-              `Inspection ${result === 'pass' ? 'passed' : 'failed'}!`,
-              `${animal.animal_ref} marked as ${newStatus.replace(/_/g, ' ')}`
+            toast(
+              result === 'pass' ? 'success' : 'warning',
+              result === 'pass' ? 'Inspection Passed ✓' : 'Inspection Not Passed',
+              `${animal.animal_ref} — ${animal.breed} marked as ${newStatus.replace(/_/g, ' ')}`
             );
             onClose();
           }}>
