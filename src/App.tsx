@@ -3,7 +3,6 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { LoginPage } from '@/pages/auth/LoginPage';
 
 // ── Admin Pages (lazy loaded) ─────────────────────────────────
@@ -21,25 +20,80 @@ const AuditLogPage      = lazy(() => import('@/pages/admin/AuditLogPage').then(m
 const SettingsPage      = lazy(() => import('@/pages/admin/SettingsPage').then(m => ({ default: m.SettingsPage })));
 
 // ── Participant Portal Pages (lazy loaded) ────────────────────
-const PortalOrdersPage       = lazy(() => import('@/pages/portal/PortalOrdersPage').then(m => ({ default: m.PortalOrdersPage })));
-const PortalCertificatesPage = lazy(() => import('@/pages/portal/PortalCertificatesPage').then(m => ({ default: m.PortalCertificatesPage })));
+const PortalOrdersPage        = lazy(() => import('@/pages/portal/PortalOrdersPage').then(m => ({ default: m.PortalOrdersPage })));
+const PortalCertificatesPage  = lazy(() => import('@/pages/portal/PortalCertificatesPage').then(m => ({ default: m.PortalCertificatesPage })));
 const PortalNotificationsPage = lazy(() => import('@/pages/portal/PortalNotificationsPage').then(m => ({ default: m.PortalNotificationsPage })));
 
-// ── Guards ────────────────────────────────────────────────────
+// ── Branded Loading Screen ─────────────────────────────────────
+function AuthLoader({ message = 'Loading…' }: { message?: string }) {
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'linear-gradient(160deg, #060a07 0%, #0d1a0f 50%, #050807 100%)',
+      gap: '1.5rem',
+    }}>
+      {/* Logo */}
+      <div style={{
+        width: 80, height: 80,
+        borderRadius: 18,
+        overflow: 'hidden',
+        border: '1px solid rgba(212,168,50,0.25)',
+        boxShadow: '0 0 40px rgba(212,168,50,0.15)',
+        flexShrink: 0,
+      }}>
+        <img
+          src="/logo.jpg"
+          alt="Al Ihsan Group"
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+      </div>
+
+      {/* Brand name */}
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+          fontSize: '1.25rem',
+          fontWeight: 700,
+          color: '#d4a832',
+          letterSpacing: '0.01em',
+          marginBottom: '0.25rem',
+        }}>
+          Al Ihsan Group
+        </div>
+        <div style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.4)' }}>
+          Qurban Management System
+        </div>
+      </div>
+
+      {/* Spinner */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{
+          width: 36, height: 36,
+          border: '3px solid rgba(212,168,50,0.15)',
+          borderTop: '3px solid #d4a832',
+          borderRadius: '50%',
+          animation: 'spin 0.9s linear infinite',
+        }} />
+        <div style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.35)' }}>{message}</div>
+      </div>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
+    </div>
+  );
+}
+
+// ── Route Guards ──────────────────────────────────────────────
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
 
-  if (isLoading) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <LoadingSpinner size="lg" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
+  if (isLoading) return <AuthLoader message="Checking session…" />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   return <>{children}</>;
 }
@@ -47,18 +101,13 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 function RequireStaff({ children }: { children: React.ReactNode }) {
   const { isStaff, isLoading, isAuthenticated, profileFetchAttempted } = useAuth();
 
-  const spinner = (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d1117' }}>
-      <LoadingSpinner size="lg" />
-    </div>
-  );
+  // Still initialising
+  if (isLoading) return <AuthLoader message="Verifying access…" />;
 
-  // Still loading auth state
-  if (isLoading) return spinner;
+  // Authenticated but profile not yet fetched
+  if (isAuthenticated && !profileFetchAttempted) return <AuthLoader message="Loading profile…" />;
 
-  // Authenticated but profile fetch not yet attempted — keep waiting
-  if (isAuthenticated && !profileFetchAttempted) return spinner;
-
+  // Not a staff member — send to portal
   if (!isStaff()) return <Navigate to="/portal" replace />;
 
   return <>{children}</>;
@@ -67,21 +116,29 @@ function RequireStaff({ children }: { children: React.ReactNode }) {
 function RequireParticipant({ children }: { children: React.ReactNode }) {
   const { isParticipant, isStaff, isLoading } = useAuth();
 
-  if (isLoading) return null;
+  if (isLoading) return <AuthLoader message="Loading…" />;
   if (!isParticipant() && !isStaff()) return <Navigate to="/admin" replace />;
 
   return <>{children}</>;
 }
 
-// ── Loading Fallback ──────────────────────────────────────────
+// ── Page-level Lazy Load Fallback ─────────────────────────────
 function PageLoader() {
   return (
     <div className="page-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-      <LoadingSpinner size="lg" />
+      <div style={{
+        width: 32, height: 32,
+        border: '3px solid rgba(212,168,50,0.15)',
+        borderTop: '3px solid #d4a832',
+        borderRadius: '50%',
+        animation: 'spin 0.9s linear infinite',
+      }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
 
+// ── App ───────────────────────────────────────────────────────
 export default function App() {
   return (
     <ToastProvider>
@@ -120,7 +177,9 @@ export default function App() {
             path="/portal"
             element={
               <RequireAuth>
-                <AppLayout />
+                <RequireParticipant>
+                  <AppLayout />
+                </RequireParticipant>
               </RequireAuth>
             }
           >
