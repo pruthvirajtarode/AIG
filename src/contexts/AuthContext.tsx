@@ -33,15 +33,8 @@ interface SignUpParams {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// ── Hard timeout: never wait more than 4 s for any auth operation ──
+// ── Auth timeout constant ─────────────────────────────────────
 const AUTH_TIMEOUT_MS = 4000;
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
-  return Promise.race([
-    promise,
-    new Promise<null>(resolve => setTimeout(() => resolve(null), ms)),
-  ]);
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -70,28 +63,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // Set up an abort timer — after AUTH_TIMEOUT_MS, just stop waiting
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; }, AUTH_TIMEOUT_MS);
+
     try {
-      // Try RPC first with a hard timeout
-      const rpcResult = await withTimeout(supabase.rpc('get_my_profile'), AUTH_TIMEOUT_MS);
-      if (rpcResult && !rpcResult.error && rpcResult.data) {
-        setProfile(rpcResult.data as Profile);
+      // Try RPC first (SECURITY DEFINER function bypasses RLS)
+      type RpcResult = { data: Profile | null; error: { message: string } | null };
+      const rpcResp = await supabase.rpc('get_my_profile') as unknown as RpcResult;
+      if (!timedOut && !rpcResp.error && rpcResp.data) {
+        setProfile(rpcResp.data);
         setProfileFetchAttempted(true);
+        clearTimeout(timer);
         return;
       }
 
-      // Fallback: direct table query with timeout
-      const rowResult = await withTimeout(
-        supabase.from('profiles').select('*').eq('id', userId).single(),
-        AUTH_TIMEOUT_MS
-      );
-      if (rowResult && !rowResult.error && rowResult.data) {
-        setProfile(rowResult.data as Profile);
-      } else {
+      if (timedOut) {
+        console.warn('Profile RPC timed out');
+        return;
+      }
+
+      // Fallback: direct table query
+      type RowResult = { data: Profile | null; error: { message: string } | null };
+      const rowResp = await supabase.from('profiles').select('*').eq('id', userId).single() as unknown as RowResult;
+      if (!timedOut && !rowResp.error && rowResp.data) {
+        setProfile(rowResp.data);
+      } else if (!timedOut) {
         console.warn('Profile fetch failed — running without profile data');
       }
     } catch (e) {
       console.warn('Profile fetch exception:', e);
     } finally {
+      clearTimeout(timer);
       setProfileFetchAttempted(true);
     }
   }, []);
@@ -153,9 +156,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
     try {
-      const result = await withTimeout(
+      const race = <T,>(p: Promise<T>, ms: number): Promise<T | null> =>
+        Promise.race<T | null>([p, new Promise<null>(res => setTimeout(() => res(null), ms))]);
+
+      const result = await race(
         supabase.auth.signInWithPassword({ email, password }),
-        10000 // 10s for sign-in (user is actively waiting)
+        10000
       );
       if (!result) return { error: 'Login timed out — please check your connection and try again.' };
       const { data, error } = result;
@@ -173,7 +179,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = async (params: SignUpParams): Promise<{ error: string | null }> => {
     const { email, password, firstName, lastName, phone, tenantId } = params;
     try {
-      const result = await withTimeout(
+      const race = <T,>(p: Promise<T>, ms: number): Promise<T | null> =>
+        Promise.race<T | null>([p, new Promise<null>(res => setTimeout(() => res(null), ms))]);
+
+      const result = await race(
         supabase.auth.signUp({
           email,
           password,
