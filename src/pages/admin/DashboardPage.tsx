@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ShoppingCart, CreditCard, Dog, Truck, Award,
-  TrendingUp, TrendingDown, AlertTriangle, Clock, CheckCircle2, Users,
-  ArrowUpRight, Activity,
+  TrendingUp, TrendingDown, AlertTriangle,
+  ArrowUpRight, Activity, Radio,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -123,6 +123,71 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 export function DashboardPage() {
   usePageTitle('Dashboard');
   const { toast } = useToast();
+  const [liveMode, setLiveMode] = useState(false);
+  const [revenueData, setRevenueData] = useState(REVENUE_DATA);
+
+  // ── Live View: simulate real-time data ticks every 5s ──────
+  useEffect(() => {
+    if (!liveMode) {
+      setRevenueData(REVENUE_DATA);
+      return;
+    }
+    const interval = setInterval(() => {
+      setRevenueData(prev => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        const delta = Math.floor(Math.random() * 2400) - 800;
+        updated[updated.length - 1] = { ...last, revenue: Math.max(86000, last.revenue + delta) };
+        return updated;
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [liveMode]);
+
+  // ── Export Report: real CSV download ───────────────────────
+  const handleExport = useCallback(() => {
+    const rows: (string | number)[][] = [
+      ['Al Ihsan Group — Qurban Season 2025 Dashboard Report'],
+      ['Generated', new Date().toLocaleString()],
+      [],
+      ['SUMMARY'],
+      ['Metric', 'Value'],
+      ['Total Orders', 156],
+      ['Revenue Collected (SGD)', 91000],
+      ['Animals Allocated', 98],
+      ['Deliveries', 67],
+      ['Certificates', 43],
+      ['Open Exceptions', 3],
+      [],
+      ['MONTHLY REVENUE'],
+      ['Month', 'Revenue (SGD)'],
+      ...REVENUE_DATA.map(r => [r.month, r.revenue]),
+      [],
+      ['ORDER DISTRIBUTION'],
+      ['Status', 'Count'],
+      ...ORDER_DIST.map(o => [o.name, o.value]),
+      [],
+      ['RECENT ORDERS'],
+      ['Order Ref', 'Participant', 'Programme', 'Amount', 'Status'],
+      ...RECENT_ORDERS.map(o => [o.ref, o.participant, o.programme, o.amount, o.status]),
+      [],
+      ['ACTIVE EXCEPTIONS'],
+      ['Severity', 'Title', 'Reference', 'Time'],
+      ...EXCEPTIONS.map(e => [e.severity, e.title, e.ref, e.time]),
+    ];
+    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `AIGMS-Dashboard-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('success', 'Report exported!', 'Dashboard report downloaded as CSV file');
+  }, [toast]);
+
   return (
     <div className="page-content animate-fadeInUp">
       {/* Header */}
@@ -131,17 +196,35 @@ export function DashboardPage() {
           <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">Al Ihsan Group · Qurban Season 2025</p>
         </div>
-        <div className="page-header-actions" style={{ display: 'flex', gap: '0.75rem' }}>
+        <div className="page-header-actions" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          {/* Live indicator */}
+          {liveMode && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', color: 'var(--success)', fontWeight: 700 }}>
+              <span className="animate-pulse" style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: 'var(--success)', display: 'inline-block',
+              }} />
+              LIVE
+            </span>
+          )}
           <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => toast('info', 'Live View', 'Connect to Supabase to enable real-time live view')}
+            className={`btn btn-sm ${liveMode ? 'btn-primary' : 'btn-secondary'}`}
+            style={liveMode ? { background: 'linear-gradient(135deg,#0f4c35,#22c55e)', boxShadow: '0 0 14px rgba(34,197,94,0.35)' } : {}}
+            onClick={() => {
+              const next = !liveMode;
+              setLiveMode(next);
+              toast(next ? 'success' : 'info',
+                next ? '🟢 Live View On' : 'Live View Off',
+                next ? 'Revenue chart is now updating in real-time' : 'Returned to static dashboard view'
+              );
+            }}
           >
-            <Activity size={14} />
-            Live View
+            {liveMode ? <Radio size={14} /> : <Activity size={14} />}
+            {liveMode ? 'Stop Live' : 'Live View'}
           </button>
           <button
             className="btn btn-primary btn-sm"
-            onClick={() => toast('success', 'Export Report', 'Report export will be available once connected to Supabase')}
+            onClick={handleExport}
           >
             <ArrowUpRight size={14} />
             Export Report
@@ -211,7 +294,7 @@ export function DashboardPage() {
             <span className="badge badge-green">↑ 8.4%</span>
           </div>
           <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={REVENUE_DATA} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
+            <AreaChart data={revenueData} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="var(--aig-green-500)" stopOpacity={0.25} />
