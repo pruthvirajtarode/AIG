@@ -45,9 +45,10 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 function RequireStaff({ children }: { children: React.ReactNode }) {
-  const { isStaff, isLoading } = useAuth();
+  const { isStaff, isLoading, profile } = useAuth();
 
-  if (isLoading) return null;
+  // Wait for both the auth loading AND the profile to be fetched
+  if (isLoading || profile === null) return null;
   if (!isStaff()) return <Navigate to="/portal" replace />;
 
   return <>{children}</>;
