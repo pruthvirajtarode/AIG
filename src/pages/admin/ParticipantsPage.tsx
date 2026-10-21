@@ -38,7 +38,7 @@ function ParticipantModal({ participant, onClose }: { participant?: typeof MOCK_
               </div>
             </div>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="settings-grid-2">
             <div className="form-group">
               <label className="form-label">First Name *</label>
               <input className="form-input" defaultValue={participant?.first_name} />
@@ -90,7 +90,7 @@ export function ParticipantsPage() {
     <div className="page-content animate-fadeInUp">
       {showModal && <ParticipantModal participant={editP} onClose={() => setShowModal(false)} />}
 
-      <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Participants</h1>
           <p className="page-subtitle">Registered Qurban participants across all programmes</p>
@@ -102,7 +102,7 @@ export function ParticipantsPage() {
       </div>
 
       {/* Stats */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '1.25rem' }}>
+      <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
           { label: 'Total Participants', value: String(MOCK_PARTICIPANTS.length), color: 'var(--aig-green-400)' },
           { label: 'Active', value: String(MOCK_PARTICIPANTS.filter(p => p.is_active).length), color: 'var(--success)' },

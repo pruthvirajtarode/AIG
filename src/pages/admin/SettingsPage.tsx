@@ -14,7 +14,7 @@ function GeneralSettings() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <div className="card">
         <div className="heading-md" style={{ marginBottom: '1.25rem' }}>Organisation Settings</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="settings-grid-2">
           <div className="form-group">
             <label className="form-label">Organisation Name</label>
             <input className="form-input" defaultValue="Al Ihsan Group" />
@@ -48,7 +48,7 @@ function GeneralSettings() {
 
       <div className="card">
         <div className="heading-md" style={{ marginBottom: '1.25rem' }}>Qurban Season Settings</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="settings-grid-2">
           <div className="form-group">
             <label className="form-label">Qurban Year</label>
             <input className="form-input" defaultValue="2025" type="number" />

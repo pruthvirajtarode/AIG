@@ -56,7 +56,7 @@ export function PortalOrdersPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '1.5rem' }}>
+      <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
         {[
           { label: 'Total Orders', value: String(PARTICIPANT_ORDERS.length), icon: ShoppingCart, color: 'var(--aig-green-400)' },
           { label: 'In Progress', value: String(PARTICIPANT_ORDERS.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length), icon: Clock, color: 'var(--warning)' },

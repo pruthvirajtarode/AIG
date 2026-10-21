@@ -128,7 +128,7 @@ export function ExceptionsPage() {
       </div>
 
       {/* Stats */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: '1.25rem' }}>
+      <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
           { label: 'Total', value: String(MOCK_EXCEPTIONS.length), color: 'var(--text-secondary)' },
           { label: 'Critical', value: String(MOCK_EXCEPTIONS.filter(e => e.severity === 'critical').length), color: 'var(--danger)' },

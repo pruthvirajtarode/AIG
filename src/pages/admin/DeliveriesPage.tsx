@@ -111,12 +111,12 @@ export function DeliveriesPage() {
     <div className="page-content animate-fadeInUp">
       {selected && <DeliveryModal delivery={selected} onClose={() => setSelected(null)} />}
 
-      <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Deliveries</h1>
           <p className="page-subtitle">Track all Qurban meat deliveries</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div className="page-header-actions" style={{ display: 'flex', gap: '0.75rem' }}>
           <button className="btn btn-secondary btn-sm">
             <Calendar size={14} />
             Schedule Delivery
@@ -125,7 +125,7 @@ export function DeliveriesPage() {
       </div>
 
       {/* Stats */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.25rem' }}>
+      <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
           { label: 'Total Deliveries', value: String(MOCK_DELIVERIES.length), color: 'var(--aig-green-400)' },
           { label: 'Active Today', value: String(todayDeliveries.length), color: 'var(--orange)' },

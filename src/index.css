@@ -68,6 +68,7 @@
   --sidebar-width: 260px;
   --sidebar-collapsed: 68px;
   --header-height: 64px;
+  --mobile-header-height: 56px;
   --border-radius: 10px;
   --border-radius-sm: 6px;
   --border-radius-lg: 16px;
@@ -708,6 +709,40 @@ h1, h2, h3, h4, h5, h6 {
 .sidebar-footer {
   padding: 1rem;
   border-top: 1px solid var(--border-subtle);
+}
+
+/* ── Hamburger Button ──────────────────────────────────────── */
+.hamburger-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.hamburger-btn:hover {
+  background: var(--surface-700);
+  color: var(--text-primary);
+}
+
+/* ── Sidebar Mobile Overlay ────────────────────────────────── */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 39;
+  animation: fadeIn 0.2s ease;
+}
+.sidebar-overlay.visible {
+  display: block;
 }
 
 /* ── Top Header ────────────────────────────────────────────── */
@@ -1383,13 +1418,79 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-@media (max-width: 640px) {
+/* ── Mobile (≤768px): Sidebar slides off-screen ─────────────── */
+@media (max-width: 768px) {
+  .hamburger-btn {
+    display: flex;
+  }
+
+  /* Sidebar hides off-screen by default */
+  .sidebar {
+    width: var(--sidebar-width);
+    transform: translateX(-100%);
+    transition: transform var(--transition-base);
+    z-index: 40;
+  }
+
+  /* When mobile-open class is added, slide it in */
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  /* Restore text labels in mobile open sidebar */
+  .sidebar.mobile-open .nav-item span,
+  .sidebar.mobile-open .nav-section-label,
+  .sidebar.mobile-open .logo-text,
+  .sidebar.mobile-open .nav-badge,
+  .sidebar.mobile-open .nav-item .nav-badge-neutral {
+    display: initial;
+  }
+
+  /* Main content takes full width */
+  .main-content {
+    margin-left: 0;
+  }
+
+  .topbar {
+    left: 0;
+    height: var(--mobile-header-height);
+    padding: 0 1rem;
+    gap: 0.75rem;
+  }
+
+  /* Topbar search bar hidden on mobile to save space */
+  .topbar .search-bar {
+    display: none;
+  }
+
+  /* Push page content down by mobile header height */
+  .main-content {
+    padding-top: var(--mobile-header-height);
+  }
+
   .page-content {
     padding: 1rem;
   }
+
+  /* Make all fixed-column stat grids responsive on mobile */
   .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, 1fr) !important;
   }
+
+  /* Prevent small stat cards from being super tiny */
+  .stat-card .stat-value {
+    font-size: 1.375rem;
+  }
+
+  /* Content grids stack on mobile */
+  .content-grid-2,
+  .content-grid-3,
+  .content-grid-21,
+  .content-grid-12 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Filter bar stacks vertically */
   .filter-bar {
     flex-direction: column;
     align-items: stretch;
@@ -1397,7 +1498,63 @@ h1, h2, h3, h4, h5, h6 {
   .search-bar {
     max-width: none;
   }
-  .topbar {
-    padding: 0 1rem;
+
+  /* Page headers — stack title and actions */
+  .page-header-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.75rem !important;
+  }
+  .page-header-row .page-header-actions {
+    width: 100%;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  /* Modal full screen on mobile */
+  .modal-overlay {
+    padding: 0.5rem;
+    align-items: flex-end;
+  }
+  .modal {
+    max-height: 95vh;
+    border-radius: var(--border-radius) var(--border-radius) 0 0;
+  }
+
+  /* Table: hide less important columns on mobile */
+  .table-mobile-hide {
+    display: none;
+  }
+
+  /* Toast narrower on mobile */
+  .toast {
+    min-width: 260px;
+    max-width: calc(100vw - 2rem);
+  }
+
+  /* Settings internal grids */
+  .settings-grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .filter-bar > div {
+    flex-wrap: wrap;
+  }
+
+  /* Auth page on tiny screens */
+  .auth-right {
+    padding: 1.5rem;
+  }
+
+  /* Hide topbar user name on very small screens */
+  .topbar-username {
+    display: none;
   }
 }

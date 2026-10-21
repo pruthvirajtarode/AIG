@@ -107,7 +107,7 @@ export function OrdersPage() {
     <div className="page-content animate-fadeInUp">
       {showCreate && <CreateOrderModal onClose={() => setShowCreate(false)} />}
 
-      <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Orders</h1>
           <p className="page-subtitle">Manage all Qurban orders across programmes</p>
@@ -119,7 +119,7 @@ export function OrdersPage() {
       </div>
 
       {/* Stats Strip */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.25rem' }}>
+      <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
           { label: 'Total Orders', value: '156', color: 'var(--aig-green-400)' },
           { label: 'Pending Payment', value: '19', color: 'var(--warning)' },

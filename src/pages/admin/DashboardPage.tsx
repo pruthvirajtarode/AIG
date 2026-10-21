@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import {
   ShoppingCart, CreditCard, Dog, Truck, Award,
   TrendingUp, TrendingDown, AlertTriangle, Clock, CheckCircle2, Users,
@@ -121,12 +122,12 @@ export function DashboardPage() {
   return (
     <div className="page-content animate-fadeInUp">
       {/* Header */}
-      <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">Al Ihsan Group · Qurban Season 2025</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div className="page-header-actions" style={{ display: 'flex', gap: '0.75rem' }}>
           <button className="btn btn-secondary btn-sm">
             <Activity size={14} />
             Live View
@@ -313,7 +314,7 @@ export function DashboardPage() {
             <div className="heading-md">Recent Orders</div>
             <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>Latest 5 orders</div>
           </div>
-          <a href="/admin/orders" className="btn btn-ghost btn-sm">View All →</a>
+          <Link to="/admin/orders" className="btn btn-ghost btn-sm">View All →</Link>
         </div>
         <div className="table-container">
           <table className="table">

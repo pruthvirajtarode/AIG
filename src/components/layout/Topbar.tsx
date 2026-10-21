@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { Bell, Search, ChevronDown } from 'lucide-react';
+import { Bell, Search, Menu } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface TopbarProps {
   title?: string;
+  onMenuClick?: () => void;
 }
 
-export function Topbar({ title }: TopbarProps) {
+export function Topbar({ title, onMenuClick }: TopbarProps) {
   const { profile } = useAuth();
   const [showNotifs, setShowNotifs] = useState(false);
   const initials = profile
@@ -15,6 +16,16 @@ export function Topbar({ title }: TopbarProps) {
 
   return (
     <header className="topbar">
+      {/* Hamburger menu — only visible on mobile */}
+      <button
+        className="hamburger-btn"
+        onClick={onMenuClick}
+        aria-label="Open navigation"
+        id="mobile-menu-btn"
+      >
+        <Menu size={18} />
+      </button>
+
       {/* Title (left side) */}
       {title && (
         <div style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--text-primary)', marginRight: 'auto' }}>
@@ -24,7 +35,7 @@ export function Topbar({ title }: TopbarProps) {
 
       <div style={{ flex: 1 }} />
 
-      {/* Search */}
+      {/* Search (hidden on mobile via CSS) */}
       <div className="search-bar" style={{ maxWidth: 280 }}>
         <Search className="search-icon" size={15} />
         <input
@@ -76,7 +87,7 @@ export function Topbar({ title }: TopbarProps) {
       {/* User Avatar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <div className="avatar avatar-sm">{initials}</div>
-        <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+        <span className="topbar-username" style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
           {profile?.first_name}
         </span>
       </div>

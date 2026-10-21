@@ -64,7 +64,7 @@ function AnimalDetailModal({ animal, onClose }: { animal: typeof MOCK_ANIMALS[0]
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="modal-body">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }} className="settings-grid-2">
             <div className="detail-list">
               {[
                 ['Tag Number', animal.tag_number],
@@ -137,7 +137,7 @@ export function AnimalsPage() {
     <div className="page-content animate-fadeInUp">
       {selected && <AnimalDetailModal animal={selected} onClose={() => setSelected(null)} />}
 
-      <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Animals</h1>
           <p className="page-subtitle">Track livestock status, weights, and inspections</p>
@@ -149,7 +149,7 @@ export function AnimalsPage() {
       </div>
 
       {/* Stats */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: '1.25rem' }}>
+      <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
           { label: 'Total Animals', value: '98', color: 'var(--aig-green-400)' },
           { label: 'Available', value: '12', color: 'var(--success)' },

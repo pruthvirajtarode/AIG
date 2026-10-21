@@ -126,12 +126,12 @@ export function CertificatesPage() {
     <div className="page-content animate-fadeInUp">
       {selected && <CertPreviewModal cert={selected} onClose={() => setSelected(null)} />}
 
-      <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Certificates</h1>
           <p className="page-subtitle">Generate and distribute Qurban certificates</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div className="page-header-actions" style={{ display: 'flex', gap: '0.75rem' }}>
           <button className="btn btn-secondary btn-sm">
             <RefreshCw size={14} />
             Bulk Generate
@@ -144,7 +144,7 @@ export function CertificatesPage() {
       </div>
 
       {/* Stats */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.25rem' }}>
+      <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
           { label: 'Total', value: String(MOCK_CERTIFICATES.length), color: 'var(--aig-green-400)' },
           { label: 'Not Generated', value: String(MOCK_CERTIFICATES.filter(c => c.status === 'not_generated').length), color: 'var(--text-muted)' },

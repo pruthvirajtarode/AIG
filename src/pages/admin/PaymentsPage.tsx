@@ -45,7 +45,7 @@ function PaymentDetailModal({ payment, onClose }: { payment: typeof MOCK_PAYMENT
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="modal-body">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }} className="settings-grid-2">
             <div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>Payment Info</div>
               <div className="detail-list">
@@ -132,7 +132,7 @@ export function PaymentsPage() {
     <div className="page-content animate-fadeInUp">
       {selected && <PaymentDetailModal payment={selected} onClose={() => setSelected(null)} />}
 
-      <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Payments</h1>
           <p className="page-subtitle">Review and verify payment submissions</p>
@@ -146,7 +146,7 @@ export function PaymentsPage() {
       </div>
 
       {/* Stats */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.25rem' }}>
+      <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
           { label: 'Total Collected', value: 'SGD 91K', color: 'var(--aig-green-400)' },
           { label: 'Pending Review', value: String(pendingReview), color: 'var(--warning)' },

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ShoppingCart, CreditCard, Dog, Users,
   Truck, Award, AlertTriangle, FileText, Settings,
   ChevronLeft, ChevronRight, BookOpen, Package, UserCheck,
-  Bell, LogOut, ChevronDown
+  Bell, LogOut,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -20,6 +20,11 @@ interface NavItem {
   badge?: number;
   staffOnly?: boolean;
   participantOnly?: boolean;
+}
+
+interface SidebarProps {
+  mobileOpen?: boolean;
+  onClose?: () => void;
 }
 
 const STAFF_NAV: NavGroup[] = [
@@ -71,18 +76,36 @@ const PARTICIPANT_NAV: NavGroup[] = [
   },
 ];
 
-export function Sidebar() {
+export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const { profile, isStaff, signOut } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const navGroups = isStaff() ? STAFF_NAV : PARTICIPANT_NAV;
   const initials = profile
     ? `${profile.first_name.charAt(0)}${profile.last_name.charAt(0)}`
     : 'U';
 
+  // Close mobile sidebar on nav click
+  const handleNavClick = () => {
+    if (onClose) onClose();
+  };
+
+  const handleSignOut = () => {
+    signOut();
+    if (onClose) onClose();
+  };
+
+  // Build className: sidebar, optionally collapsed, optionally mobile-open
+  const sidebarClass = [
+    'sidebar',
+    collapsed ? 'collapsed' : '',
+    mobileOpen ? 'mobile-open' : '',
+  ].filter(Boolean).join(' ');
+
   return (
-    <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
+    <aside className={sidebarClass}>
       {/* Logo */}
       <div className="sidebar-logo">
         <div className="logo-mark">A</div>
@@ -111,6 +134,7 @@ export function Sidebar() {
                   to={item.path}
                   className={`nav-item${isActive ? ' active' : ''}`}
                   title={collapsed ? item.label : undefined}
+                  onClick={handleNavClick}
                 >
                   <Icon className="nav-icon" />
                   <span>{item.label}</span>
@@ -153,7 +177,7 @@ export function Sidebar() {
 
         {/* Sign Out */}
         <button
-          onClick={signOut}
+          onClick={handleSignOut}
           className="nav-item"
           style={{ width: '100%', border: 'none', background: 'none', color: 'var(--text-muted)' }}
           title={collapsed ? 'Sign Out' : undefined}
@@ -162,12 +186,13 @@ export function Sidebar() {
           <span>Sign Out</span>
         </button>
 
-        {/* Collapse Toggle */}
+        {/* Collapse Toggle — only for desktop (hidden on mobile via: the mobile sidebar is full-width anyway) */}
         <button
           onClick={() => setCollapsed(c => !c)}
           className="nav-item"
           style={{ width: '100%', border: 'none', background: 'none', marginTop: '0.25rem' }}
           title={collapsed ? 'Expand' : 'Collapse'}
+          id="sidebar-collapse-btn"
         >
           {collapsed ? <ChevronRight className="nav-icon" /> : <ChevronLeft className="nav-icon" />}
           <span>Collapse</span>
