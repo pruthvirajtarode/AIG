@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, CheckCircle2, XCircle, Eye, Clock, X, Upload } from 'lucide-react';
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
 import type { PaymentStatus } from '@/lib/database.types';
@@ -113,6 +114,7 @@ function PaymentDetailModal({ payment, onClose }: { payment: typeof MOCK_PAYMENT
 }
 
 export function PaymentsPage() {
+  usePageTitle('Payments');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<typeof MOCK_PAYMENTS[0] | null>(null);

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { Bell, CheckCircle2, CreditCard, Truck, Award, AlertTriangle, Check } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/utils';
 
@@ -40,6 +41,7 @@ const MOCK_NOTIFICATIONS = [
 ];
 
 export function PortalNotificationsPage() {
+  usePageTitle('Notifications');
   const [notifications, setNotifications] = useState(MOCK_NOTIFICATIONS);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 

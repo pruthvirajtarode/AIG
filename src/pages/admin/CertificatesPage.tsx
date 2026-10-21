@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, Award, Download, Send, RefreshCw, Eye, X, QrCode } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import type { CertificateStatus } from '@/lib/database.types';
@@ -112,6 +113,7 @@ function CertPreviewModal({ cert, onClose }: { cert: typeof MOCK_CERTIFICATES[0]
 }
 
 export function CertificatesPage() {
+  usePageTitle('Certificates');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<typeof MOCK_CERTIFICATES[0] | null>(null);

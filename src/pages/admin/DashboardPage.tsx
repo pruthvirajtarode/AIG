@@ -10,6 +10,7 @@ import {
   ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell,
 } from 'recharts';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { usePageTitle } from '@/hooks/usePageTitle';
 
 // ── Mock data ────────────────────────────────────────────────
 const REVENUE_DATA = [
@@ -119,6 +120,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export function DashboardPage() {
+  usePageTitle('Dashboard');
   return (
     <div className="page-content animate-fadeInUp">
       {/* Header */}

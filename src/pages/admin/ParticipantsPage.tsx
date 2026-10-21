@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, Plus, UserCheck, Phone, Mail, MapPin, Eye, X } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
@@ -75,6 +76,7 @@ function ParticipantModal({ participant, onClose }: { participant?: typeof MOCK_
 }
 
 export function ParticipantsPage() {
+  usePageTitle('Participants');
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editP, setEditP] = useState<typeof MOCK_PARTICIPANTS[0] | undefined>();

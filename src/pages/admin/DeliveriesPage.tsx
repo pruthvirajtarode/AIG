@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, MapPin, Truck, CheckCircle2, Clock, X, Calendar } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import type { DeliveryStatus } from '@/lib/database.types';
@@ -95,6 +96,7 @@ function DeliveryModal({ delivery, onClose }: { delivery: typeof MOCK_DELIVERIES
 }
 
 export function DeliveriesPage() {
+  usePageTitle('Deliveries');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<typeof MOCK_DELIVERIES[0] | null>(null);

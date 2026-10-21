@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { ShoppingCart, Clock, CheckCircle2, ChevronDown, ChevronUp, Download, Eye } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -46,6 +47,7 @@ const PARTICIPANT_ORDERS = [
 ];
 
 export function PortalOrdersPage() {
+  usePageTitle('My Orders');
   const [expandedId, setExpandedId] = useState<string | null>('o1');
 
   return (

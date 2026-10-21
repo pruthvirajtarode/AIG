@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, Filter, Plus, Eye, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import type { OrderStatus } from '@/lib/database.types';
@@ -89,6 +90,7 @@ function CreateOrderModal({ onClose }: { onClose: () => void }) {
 
 // ── Main Page ─────────────────────────────────────────────────
 export function OrdersPage() {
+  usePageTitle('Orders');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);

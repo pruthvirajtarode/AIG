@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { Award, Download, QrCode, Eye, X } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
@@ -80,6 +81,7 @@ function CertViewModal({ cert, onClose }: { cert: typeof PARTICIPANT_CERTS[0]; o
 }
 
 export function PortalCertificatesPage() {
+  usePageTitle('My Certificates');
   const [selected, setSelected] = useState<typeof PARTICIPANT_CERTS[0] | null>(null);
 
   return (

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { Settings, Bell, Shield, Database, Globe, CreditCard, Save, ChevronRight } from 'lucide-react';
 
 const TABS = [
@@ -183,6 +184,7 @@ function PlaceholderSettings({ title }: { title: string }) {
 }
 
 export function SettingsPage() {
+  usePageTitle('Settings');
   const [activeTab, setActiveTab] = useState('general');
 
   return (

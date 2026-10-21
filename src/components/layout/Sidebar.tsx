@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, ShoppingCart, CreditCard, Dog, Users,
+  LayoutDashboard, ShoppingCart, CreditCard, Dog,
   Truck, Award, AlertTriangle, FileText, Settings,
   ChevronLeft, ChevronRight, BookOpen, Package, UserCheck,
-  Bell, LogOut,
+  Bell, LogOut, X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -18,8 +18,6 @@ interface NavItem {
   icon: React.ElementType;
   path: string;
   badge?: number;
-  staffOnly?: boolean;
-  participantOnly?: boolean;
 }
 
 interface SidebarProps {
@@ -36,32 +34,32 @@ const STAFF_NAV: NavGroup[] = [
   {
     label: 'Operations',
     items: [
-      { label: 'Orders',       icon: ShoppingCart, path: '/admin/orders' },
-      { label: 'Payments',     icon: CreditCard,   path: '/admin/payments' },
-      { label: 'Animals',      icon: Dog,          path: '/admin/animals' },
-      { label: 'Suppliers',    icon: Package,      path: '/admin/suppliers' },
+      { label: 'Orders',       icon: ShoppingCart,  path: '/admin/orders' },
+      { label: 'Payments',     icon: CreditCard,    path: '/admin/payments' },
+      { label: 'Animals',      icon: Dog,           path: '/admin/animals' },
+      { label: 'Suppliers',    icon: Package,       path: '/admin/suppliers' },
     ],
   },
   {
     label: 'Logistics',
     items: [
-      { label: 'Deliveries',   icon: Truck,        path: '/admin/deliveries' },
-      { label: 'Certificates', icon: Award,        path: '/admin/certificates' },
+      { label: 'Deliveries',   icon: Truck,         path: '/admin/deliveries' },
+      { label: 'Certificates', icon: Award,         path: '/admin/certificates' },
     ],
   },
   {
     label: 'Management',
     items: [
-      { label: 'Participants', icon: UserCheck,    path: '/admin/participants' },
-      { label: 'Programmes',   icon: BookOpen,     path: '/admin/programmes' },
+      { label: 'Participants', icon: UserCheck,     path: '/admin/participants' },
+      { label: 'Programmes',   icon: BookOpen,      path: '/admin/programmes' },
       { label: 'Exceptions',   icon: AlertTriangle, path: '/admin/exceptions', badge: 3 },
-      { label: 'Audit Log',    icon: FileText,     path: '/admin/audit' },
+      { label: 'Audit Log',    icon: FileText,      path: '/admin/audit' },
     ],
   },
   {
     label: 'System',
     items: [
-      { label: 'Settings',     icon: Settings,     path: '/admin/settings' },
+      { label: 'Settings',     icon: Settings,      path: '/admin/settings' },
     ],
   },
 ];
@@ -69,9 +67,9 @@ const STAFF_NAV: NavGroup[] = [
 const PARTICIPANT_NAV: NavGroup[] = [
   {
     items: [
-      { label: 'My Orders',    icon: ShoppingCart, path: '/portal' },
-      { label: 'Certificates', icon: Award,        path: '/portal/certificates' },
-      { label: 'Notifications', icon: Bell,        path: '/portal/notifications' },
+      { label: 'My Orders',     icon: ShoppingCart, path: '/portal' },
+      { label: 'Certificates',  icon: Award,        path: '/portal/certificates' },
+      { label: 'Notifications', icon: Bell,         path: '/portal/notifications' },
     ],
   },
 ];
@@ -80,24 +78,19 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const { profile, isStaff, signOut } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
-  const navigate = useNavigate();
 
   const navGroups = isStaff() ? STAFF_NAV : PARTICIPANT_NAV;
   const initials = profile
     ? `${profile.first_name.charAt(0)}${profile.last_name.charAt(0)}`
     : 'U';
 
-  // Close mobile sidebar on nav click
-  const handleNavClick = () => {
+  const handleNavClick = () => { if (onClose) onClose(); };
+
+  const handleSignOut = async () => {
+    await signOut();
     if (onClose) onClose();
   };
 
-  const handleSignOut = () => {
-    signOut();
-    if (onClose) onClose();
-  };
-
-  // Build className: sidebar, optionally collapsed, optionally mobile-open
   const sidebarClass = [
     'sidebar',
     collapsed ? 'collapsed' : '',
@@ -106,8 +99,9 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
 
   return (
     <aside className={sidebarClass}>
-      {/* Logo */}
-      <div className="sidebar-logo">
+
+      {/* ── Header: Logo + Collapse Arrow ─────────────────────── */}
+      <div className="sidebar-logo" style={{ position: 'relative' }}>
         <div className="logo-mark" style={{ background: 'transparent', padding: 0, overflow: 'hidden' }}>
           <img
             src="/logo.jpg"
@@ -115,14 +109,68 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
             style={{ width: '38px', height: '38px', objectFit: 'cover', borderRadius: '8px', display: 'block' }}
           />
         </div>
-        <div className="logo-text">
-          <div className="logo-name">Al Ihsan Group</div>
-          <div className="logo-sub">Qurban Management</div>
-        </div>
+
+        {!collapsed && (
+          <div className="logo-text">
+            <div className="logo-name">Al Ihsan Group</div>
+            <div className="logo-sub">Qurban Management</div>
+          </div>
+        )}
+
+        {/* Collapse / Expand arrow — desktop only */}
+        <button
+          id="sidebar-collapse-btn"
+          onClick={() => setCollapsed(c => !c)}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          style={{
+            position: 'absolute',
+            right: collapsed ? '50%' : '0.75rem',
+            transform: collapsed ? 'translateX(50%)' : 'none',
+            bottom: '-14px',
+            width: 28,
+            height: 28,
+            borderRadius: '50%',
+            background: 'var(--surface-700)',
+            border: '1px solid rgba(212,168,50,0.2)',
+            color: 'var(--gold-400)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+            transition: 'all 0.2s ease',
+            flexShrink: 0,
+          }}
+          className="sidebar-collapse-btn desktop-only"
+        >
+          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </button>
+
+        {/* Mobile close button */}
+        {mobileOpen && (
+          <button
+            onClick={onClose}
+            aria-label="Close sidebar"
+            style={{
+              marginLeft: 'auto',
+              width: 32, height: 32,
+              borderRadius: 8,
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
 
-      {/* Navigation */}
-      <nav className="sidebar-nav">
+      {/* ── Navigation ─────────────────────────────────────────── */}
+      <nav className="sidebar-nav" style={{ marginTop: '1rem' }}>
         {navGroups.map((group, gi) => (
           <div key={gi}>
             {group.label && !collapsed && (
@@ -140,13 +188,12 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
                   to={item.path}
                   className={`nav-item${isActive ? ' active' : ''}`}
                   title={collapsed ? item.label : undefined}
+                  aria-current={isActive ? 'page' : undefined}
                   onClick={handleNavClick}
                 >
                   <Icon className="nav-icon" />
                   <span>{item.label}</span>
-                  {item.badge ? (
-                    <span className="nav-badge">{item.badge}</span>
-                  ) : null}
+                  {item.badge ? <span className="nav-badge">{item.badge}</span> : null}
                 </NavLink>
               );
             })}
@@ -154,19 +201,19 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
         ))}
       </nav>
 
-      {/* Footer */}
+      {/* ── Footer: User Info + Logout ─────────────────────────── */}
       <div className="sidebar-footer">
-        {/* User Profile */}
+
+        {/* User profile card */}
         <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem',
-          padding: '0.625rem',
-          borderRadius: 'var(--border-radius-sm)',
-          marginBottom: '0.5rem',
-          background: 'var(--surface-700)',
+          display: 'flex', alignItems: 'center', gap: '0.625rem',
+          padding: '0.625rem 0.75rem',
+          borderRadius: 8,
+          background: 'rgba(212,168,50,0.06)',
+          border: '1px solid rgba(212,168,50,0.1)',
+          marginBottom: '0.625rem',
         }}>
-          <div className="avatar avatar-sm" style={{ flexShrink: 0 }}>
+          <div className="avatar avatar-sm" style={{ flexShrink: 0, background: 'var(--aig-green-700)' }}>
             {initials}
           </div>
           {!collapsed && (
@@ -174,34 +221,46 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
               <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {profile?.first_name} {profile?.last_name}
               </div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
+              <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textTransform: 'capitalize', marginTop: '0.0625rem' }}>
                 {profile?.role?.replace(/_/g, ' ')}
               </div>
             </div>
           )}
         </div>
 
-        {/* Sign Out */}
+        {/* Logout button — prominent red */}
         <button
+          id="logout-btn"
           onClick={handleSignOut}
-          className="nav-item"
-          style={{ width: '100%', border: 'none', background: 'none', color: 'var(--text-muted)' }}
           title={collapsed ? 'Sign Out' : undefined}
+          aria-label="Sign out"
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.625rem',
+            padding: '0.625rem 0.75rem',
+            borderRadius: 8,
+            background: 'rgba(239,68,68,0.08)',
+            border: '1px solid rgba(239,68,68,0.2)',
+            color: '#f87171',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            transition: 'all 0.18s ease',
+            justifyContent: collapsed ? 'center' : 'flex-start',
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.15)';
+            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(239,68,68,0.35)';
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.08)';
+            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(239,68,68,0.2)';
+          }}
         >
-          <LogOut className="nav-icon" />
-          <span>Sign Out</span>
-        </button>
-
-        {/* Collapse Toggle — only for desktop (hidden on mobile via: the mobile sidebar is full-width anyway) */}
-        <button
-          onClick={() => setCollapsed(c => !c)}
-          className="nav-item"
-          style={{ width: '100%', border: 'none', background: 'none', marginTop: '0.25rem' }}
-          title={collapsed ? 'Expand' : 'Collapse'}
-          id="sidebar-collapse-btn"
-        >
-          {collapsed ? <ChevronRight className="nav-icon" /> : <ChevronLeft className="nav-icon" />}
-          <span>Collapse</span>
+          <LogOut size={16} style={{ flexShrink: 0 }} />
+          {!collapsed && <span>Sign Out</span>}
         </button>
       </div>
     </aside>

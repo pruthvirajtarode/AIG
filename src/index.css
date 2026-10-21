@@ -581,12 +581,13 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .sidebar-logo {
-  padding: 1.25rem 1.25rem 1rem;
+  padding: 1.25rem 1.25rem 1.5rem;
   border-bottom: 1px solid rgba(212,168,50,0.08);
   display: flex;
   align-items: center;
   gap: 0.875rem;
   min-height: var(--header-height);
+  position: relative;
 }
 
 .sidebar-logo .logo-mark {
@@ -620,6 +621,16 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 0.7rem;
   color: var(--text-muted);
   white-space: nowrap;
+}
+
+/* Hide on mobile — collapse arrow is desktop-only */
+.desktop-only {
+  display: flex;
+}
+@media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
 }
 
 .sidebar-nav {

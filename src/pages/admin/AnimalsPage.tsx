@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, Plus, Eye, Weight, Activity, X } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import type { AnimalStatus, AnimalType } from '@/lib/database.types';
@@ -121,6 +122,7 @@ function AnimalDetailModal({ animal, onClose }: { animal: typeof MOCK_ANIMALS[0]
 }
 
 export function AnimalsPage() {
+  usePageTitle('Animals');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');

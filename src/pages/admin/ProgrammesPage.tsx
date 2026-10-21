@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, Plus, BookOpen, Globe, Eye, X } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { AnimalType, DistributionMethod } from '@/lib/database.types';
@@ -86,6 +87,7 @@ function ProgrammeModal({ programme, onClose }: { programme?: typeof MOCK_PROGRA
 }
 
 export function ProgrammesPage() {
+  usePageTitle('Programmes');
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editProgramme, setEditProgramme] = useState<typeof MOCK_PROGRAMMES[0] | undefined>();
@@ -111,7 +113,7 @@ export function ProgrammesPage() {
       </div>
 
       {/* Stats */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.25rem' }}>
+      <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
           { label: 'Total Programmes', value: String(MOCK_PROGRAMMES.length), color: 'var(--aig-green-400)' },
           { label: 'Active', value: String(MOCK_PROGRAMMES.filter(p => p.is_active).length), color: 'var(--success)' },

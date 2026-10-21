@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { AlertTriangle, Search, CheckCircle2, Clock, X, User } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/utils';
 import type { ExceptionSeverity, ExceptionStatus } from '@/lib/database.types';
@@ -106,6 +107,7 @@ function ExceptionModal({ exception: ex, onClose }: { exception: typeof MOCK_EXC
 }
 
 export function ExceptionsPage() {
+  usePageTitle('Exceptions');
   const [search, setSearch] = useState('');
   const [severityFilter, setSeverityFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('open');
