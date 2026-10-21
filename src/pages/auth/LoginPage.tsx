@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, LogIn } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Eye, EyeOff, LogIn, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 
 export function LoginPage() {
-  const { signIn } = useAuth();
+  const { signIn, isStaff } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isParticipantMode = searchParams.get('mode') === 'participant';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -23,7 +25,12 @@ export function LoginPage() {
       toast('error', 'Sign in failed', error);
     } else {
       toast('success', 'Welcome back!');
-      navigate('/admin');
+      // Route to correct portal based on role
+      if (isParticipantMode || !isStaff()) {
+        navigate('/portal');
+      } else {
+        navigate('/admin');
+      }
     }
   };
 
@@ -130,10 +137,12 @@ export function LoginPage() {
         </div>
 
         <h2 style={{ fontSize: '1.625rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.375rem' }}>
-          Sign in
+          {isParticipantMode ? 'Participant Sign In' : 'Sign in'}
         </h2>
         <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '2rem' }}>
-          Enter your credentials to access the system
+          {isParticipantMode
+            ? 'Access your orders, certificates and notifications'
+            : 'Enter your credentials to access the system'}
         </p>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.125rem' }}>
@@ -207,19 +216,30 @@ export function LoginPage() {
             {loading ? (
               <span className="spinner" style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#fff' }} />
             ) : (
-              <LogIn size={18} />
+              isParticipantMode ? <Users size={18} /> : <LogIn size={18} />
             )}
-            {loading ? 'Signing in…' : 'Sign In'}
+            {loading ? 'Signing in…' : isParticipantMode ? 'Access My Portal' : 'Sign In'}
           </button>
         </form>
 
         <div className="divider" style={{ margin: '1.5rem 0' }} />
 
         <p style={{ textAlign: 'center', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-          Are you a participant?{' '}
-          <Link to="/portal" style={{ color: 'var(--gold-400)', fontWeight: 500 }}>
-            Access the portal
-          </Link>
+          {isParticipantMode ? (
+            <>
+              Admin staff?{' '}
+              <Link to="/login" style={{ color: 'var(--gold-400)', fontWeight: 500 }}>
+                Sign in to admin panel
+              </Link>
+            </>
+          ) : (
+            <>
+              Are you a participant?{' '}
+              <Link to="/login?mode=participant" style={{ color: 'var(--gold-400)', fontWeight: 500 }}>
+                Access the portal
+              </Link>
+            </>
+          )}
         </p>
 
         <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-disabled)', marginTop: '2rem' }}>
