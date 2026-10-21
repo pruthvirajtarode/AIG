@@ -44,3 +44,10 @@ supabase/.temp/
 
 # Coverage
 coverage/
+
+# Client data — contains personal data (PDPA). Never commit.
+*.xlsx
+*.csv
+/Nael.png
+/Kathija Nachiar.png
+client-samples/
