@@ -3,6 +3,7 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, MapPin, Truck, CheckCircle2, Clock, X, Calendar } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import type { DeliveryStatus } from '@/lib/database.types';
+import { useToast } from '@/contexts/ToastContext';
 
 const DELIVERY_STATUS_BADGE: Record<DeliveryStatus, string> = {
   pending:         'badge-gray',
@@ -24,16 +25,35 @@ const DELIVERY_STATUS_LABEL: Record<DeliveryStatus, string> = {
   cancelled:       'Cancelled',
 };
 
-const MOCK_DELIVERIES = [
-  { id: 'd1', delivery_ref: 'DEL-2025-001', order_ref: 'AIG-2025-000155', participant: 'Siti Norzahra binti Md Zain', contact_phone: '+60 12-3456789', status: 'delivered' as DeliveryStatus, scheduled_date: '2025-05-10', delivered_at: '2025-05-10T14:32:00Z', address: '12, Jalan Damai 3, Taman Damai, 43000 Kajang, Selangor', driver: 'Roslan bin Ahmad', delivery_slot: '2:00 PM – 5:00 PM' },
-  { id: 'd2', delivery_ref: 'DEL-2025-002', order_ref: 'AIG-2025-000156', participant: 'Mohamad Faiz bin Ali', contact_phone: '+60 11-9876543', status: 'out_for_delivery' as DeliveryStatus, scheduled_date: '2025-05-15', delivered_at: null, address: '88B, Jalan Pudu Lama, 55100 Kuala Lumpur', driver: 'Hamidi bin Salleh', delivery_slot: '10:00 AM – 1:00 PM' },
-  { id: 'd3', delivery_ref: 'DEL-2025-003', order_ref: 'AIG-2025-000157', participant: 'Nurul Ain binti Hassan', contact_phone: '+60 16-5554321', status: 'scheduled' as DeliveryStatus, scheduled_date: '2025-05-16', delivered_at: null, address: 'Unit 12-04, Menara Vista, Jalan PJU 8/5A, 47820 Petaling Jaya', driver: 'Pending assignment', delivery_slot: '9:00 AM – 12:00 PM' },
-  { id: 'd4', delivery_ref: 'DEL-2025-004', order_ref: 'AIG-2025-000150', participant: 'Faridah binti Salleh', contact_phone: '+60 17-3214567', status: 'delivered' as DeliveryStatus, scheduled_date: '2025-05-08', delivered_at: '2025-05-08T11:15:00Z', address: '5, Jalan Beringin 6, Taman Hillpark, 56100 Kuala Lumpur', driver: 'Roslan bin Ahmad', delivery_slot: '10:00 AM – 1:00 PM' },
-  { id: 'd5', delivery_ref: 'DEL-2025-005', order_ref: 'AIG-2025-000153', participant: 'Nur Izzati binti Kamal', contact_phone: '+60 14-7774444', status: 'failed' as DeliveryStatus, scheduled_date: '2025-05-12', delivered_at: null, address: '23, Lorong Maju 5, Taman Maju, 81300 Skudai, Johor', driver: 'Hamidi bin Salleh', delivery_slot: '2:00 PM – 5:00 PM' },
-  { id: 'd6', delivery_ref: 'DEL-2025-006', order_ref: 'AIG-2025-000152', participant: 'Hafizuddin bin Ramli', contact_phone: '+60 13-2223333', status: 'pending' as DeliveryStatus, scheduled_date: null, delivered_at: null, address: '77, Jalan Aman, Taman Aman, 70400 Seremban, Negeri Sembilan', driver: null, delivery_slot: null },
+type Delivery = {
+  id: string;
+  delivery_ref: string;
+  order_ref: string;
+  participant: string;
+  contact_phone: string;
+  status: DeliveryStatus;
+  scheduled_date: string | null;
+  delivered_at: string | null;
+  address: string;
+  driver: string | null;
+  delivery_slot: string | null;
+};
+
+const INITIAL_DELIVERIES: Delivery[] = [
+  { id: 'd1', delivery_ref: 'DEL-2025-001', order_ref: 'AIG-2025-000155', participant: 'Siti Norzahra binti Md Zain', contact_phone: '+60 12-3456789', status: 'delivered',       scheduled_date: '2025-05-10', delivered_at: '2025-05-10T14:32:00Z', address: '12, Jalan Damai 3, Taman Damai, 43000 Kajang, Selangor',             driver: 'Roslan bin Ahmad',   delivery_slot: '2:00 PM – 5:00 PM' },
+  { id: 'd2', delivery_ref: 'DEL-2025-002', order_ref: 'AIG-2025-000156', participant: 'Mohamad Faiz bin Ali',       contact_phone: '+60 11-9876543', status: 'out_for_delivery', scheduled_date: '2025-05-15', delivered_at: null,                    address: '88B, Jalan Pudu Lama, 55100 Kuala Lumpur',                          driver: 'Hamidi bin Salleh',  delivery_slot: '10:00 AM – 1:00 PM' },
+  { id: 'd3', delivery_ref: 'DEL-2025-003', order_ref: 'AIG-2025-000157', participant: 'Nurul Ain binti Hassan',     contact_phone: '+60 16-5554321', status: 'scheduled',        scheduled_date: '2025-05-16', delivered_at: null,                    address: 'Unit 12-04, Menara Vista, Jalan PJU 8/5A, 47820 Petaling Jaya',    driver: 'Pending assignment', delivery_slot: '9:00 AM – 12:00 PM' },
+  { id: 'd4', delivery_ref: 'DEL-2025-004', order_ref: 'AIG-2025-000150', participant: 'Faridah binti Salleh',       contact_phone: '+60 17-3214567', status: 'delivered',        scheduled_date: '2025-05-08', delivered_at: '2025-05-08T11:15:00Z', address: '5, Jalan Beringin 6, Taman Hillpark, 56100 Kuala Lumpur',           driver: 'Roslan bin Ahmad',   delivery_slot: '10:00 AM – 1:00 PM' },
+  { id: 'd5', delivery_ref: 'DEL-2025-005', order_ref: 'AIG-2025-000153', participant: 'Nur Izzati binti Kamal',     contact_phone: '+60 14-7774444', status: 'failed',           scheduled_date: '2025-05-12', delivered_at: null,                    address: '23, Lorong Maju 5, Taman Maju, 81300 Skudai, Johor',               driver: 'Hamidi bin Salleh',  delivery_slot: '2:00 PM – 5:00 PM' },
+  { id: 'd6', delivery_ref: 'DEL-2025-006', order_ref: 'AIG-2025-000152', participant: 'Hafizuddin bin Ramli',       contact_phone: '+60 13-2223333', status: 'pending',          scheduled_date: null,         delivered_at: null,                    address: '77, Jalan Aman, Taman Aman, 70400 Seremban, Negeri Sembilan',      driver: null,                 delivery_slot: null },
 ];
 
-function DeliveryModal({ delivery, onClose }: { delivery: typeof MOCK_DELIVERIES[0]; onClose: () => void }) {
+function DeliveryModal({ delivery, onClose, onUpdateStatus }: {
+  delivery: Delivery;
+  onClose: () => void;
+  onUpdateStatus: (id: string, status: DeliveryStatus) => void;
+}) {
+  const { toast } = useToast();
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
@@ -45,9 +65,9 @@ function DeliveryModal({ delivery, onClose }: { delivery: typeof MOCK_DELIVERIES
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="modal-body">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }} className="settings-grid-2">
             <div className="detail-list">
-              {[
+              {([
                 ['Delivery Ref', delivery.delivery_ref],
                 ['Order', delivery.order_ref],
                 ['Recipient', delivery.participant],
@@ -56,7 +76,7 @@ function DeliveryModal({ delivery, onClose }: { delivery: typeof MOCK_DELIVERIES
                 ['Slot', delivery.delivery_slot || '—'],
                 ['Scheduled', delivery.scheduled_date ? formatDate(delivery.scheduled_date) : '—'],
                 ['Delivered', delivery.delivered_at ? formatDate(delivery.delivered_at) : '—'],
-              ].map(([k, v]) => (
+              ] as [string, string][]).map(([k, v]) => (
                 <div key={k} className="detail-row">
                   <div className="detail-key">{k}</div>
                   <div className="detail-val">{v}</div>
@@ -79,14 +99,22 @@ function DeliveryModal({ delivery, onClose }: { delivery: typeof MOCK_DELIVERIES
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Close</button>
+          {delivery.status === 'scheduled' && (
+            <button className="btn btn-secondary" style={{ gap: '0.5rem', color: 'var(--aig-green-300)', borderColor: 'var(--aig-green-700)' }}
+              onClick={() => { onUpdateStatus(delivery.id, 'out_for_delivery'); toast('info', 'Out for Delivery', `${delivery.delivery_ref} is now out for delivery`); onClose(); }}>
+              <Truck size={15} /> Mark Out for Delivery
+            </button>
+          )}
           {delivery.status === 'out_for_delivery' && (
-            <button className="btn btn-primary" style={{ gap: '0.5rem' }}>
+            <button className="btn btn-primary" style={{ gap: '0.5rem' }}
+              onClick={() => { onUpdateStatus(delivery.id, 'delivered'); toast('success', 'Delivery Confirmed! ✓', `${delivery.delivery_ref} marked as delivered`); onClose(); }}>
               <CheckCircle2 size={15} /> Confirm Delivered
             </button>
           )}
-          {delivery.status === 'scheduled' && (
-            <button className="btn btn-outline-green" style={{ gap: '0.5rem' }}>
-              <Truck size={15} /> Mark Out for Delivery
+          {delivery.status === 'failed' && (
+            <button className="btn btn-secondary" style={{ gap: '0.5rem' }}
+              onClick={() => { onUpdateStatus(delivery.id, 'scheduled'); toast('info', 'Rescheduled', `${delivery.delivery_ref} rescheduled for re-delivery`); onClose(); }}>
+              <Calendar size={15} /> Reschedule Delivery
             </button>
           )}
         </div>
@@ -97,21 +125,36 @@ function DeliveryModal({ delivery, onClose }: { delivery: typeof MOCK_DELIVERIES
 
 export function DeliveriesPage() {
   usePageTitle('Deliveries');
+  const { toast } = useToast();
+  const [deliveries, setDeliveries] = useState<Delivery[]>(INITIAL_DELIVERIES);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [selected, setSelected] = useState<typeof MOCK_DELIVERIES[0] | null>(null);
+  const [selected, setSelected] = useState<Delivery | null>(null);
 
-  const filtered = MOCK_DELIVERIES.filter(d => {
-    const matchSearch = d.delivery_ref.toLowerCase().includes(search.toLowerCase()) || d.participant.toLowerCase().includes(search.toLowerCase()) || d.order_ref.toLowerCase().includes(search.toLowerCase());
+  const updateStatus = (id: string, status: DeliveryStatus) => {
+    setDeliveries(prev => prev.map(d => d.id === id
+      ? { ...d, status, delivered_at: status === 'delivered' ? new Date().toISOString() : d.delivered_at }
+      : d
+    ));
+  };
+
+  const filtered = deliveries.filter(d => {
+    const matchSearch = d.delivery_ref.toLowerCase().includes(search.toLowerCase())
+      || d.participant.toLowerCase().includes(search.toLowerCase())
+      || d.order_ref.toLowerCase().includes(search.toLowerCase());
     const matchStatus = !statusFilter || d.status === statusFilter;
     return matchSearch && matchStatus;
   });
 
-  const todayDeliveries = MOCK_DELIVERIES.filter(d => d.status === 'out_for_delivery' || d.status === 'scheduled');
-
   return (
     <div className="page-content animate-fadeInUp">
-      {selected && <DeliveryModal delivery={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <DeliveryModal
+          delivery={selected}
+          onClose={() => setSelected(null)}
+          onUpdateStatus={updateStatus}
+        />
+      )}
 
       <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
@@ -119,7 +162,8 @@ export function DeliveriesPage() {
           <p className="page-subtitle">Track all Qurban meat deliveries</p>
         </div>
         <div className="page-header-actions" style={{ display: 'flex', gap: '0.75rem' }}>
-          <button className="btn btn-secondary btn-sm">
+          <button className="btn btn-secondary btn-sm"
+            onClick={() => toast('info', 'Schedule Delivery', 'Open a pending order and use the scheduling form to assign a driver and time slot')}>
             <Calendar size={14} />
             Schedule Delivery
           </button>
@@ -129,10 +173,10 @@ export function DeliveriesPage() {
       {/* Stats */}
       <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
-          { label: 'Total Deliveries', value: String(MOCK_DELIVERIES.length), color: 'var(--aig-green-400)' },
-          { label: 'Active Today', value: String(todayDeliveries.length), color: 'var(--orange)' },
-          { label: 'Delivered', value: String(MOCK_DELIVERIES.filter(d => d.status === 'delivered').length), color: 'var(--success)' },
-          { label: 'Failed', value: String(MOCK_DELIVERIES.filter(d => d.status === 'failed').length), color: 'var(--danger)' },
+          { label: 'Total Deliveries',  value: String(deliveries.length), color: 'var(--aig-green-400)' },
+          { label: 'Active Today',      value: String(deliveries.filter(d => d.status === 'out_for_delivery' || d.status === 'scheduled').length), color: 'var(--orange)' },
+          { label: 'Delivered',         value: String(deliveries.filter(d => d.status === 'delivered').length), color: 'var(--success)' },
+          { label: 'Failed',            value: String(deliveries.filter(d => d.status === 'failed').length), color: 'var(--danger)' },
         ].map(s => (
           <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
             <div className="stat-value" style={{ fontSize: '1.375rem', color: s.color }}>{s.value}</div>
@@ -145,11 +189,13 @@ export function DeliveriesPage() {
       <div className="filter-bar">
         <div className="search-bar">
           <Search className="search-icon" size={15} />
-          <input id="deliveries-search" type="search" className="form-input" placeholder="Search deliveries..." value={search} onChange={e => setSearch(e.target.value)} style={{ height: 38 }} />
+          <input id="deliveries-search" type="search" className="form-input" placeholder="Search deliveries..."
+            value={search} onChange={e => setSearch(e.target.value)} style={{ height: 38 }} />
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           {(['', 'pending', 'scheduled', 'out_for_delivery', 'delivered', 'failed'] as const).map(s => (
-            <button key={s} className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setStatusFilter(s)}>
+            <button key={s} className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setStatusFilter(s)}>
               {s === '' ? 'All' : DELIVERY_STATUS_LABEL[s as DeliveryStatus]}
             </button>
           ))}
@@ -174,9 +220,7 @@ export function DeliveriesPage() {
             <tbody>
               {filtered.map(d => (
                 <tr key={d.id}>
-                  <td>
-                    <span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--aig-green-300)' }}>{d.delivery_ref}</span>
-                  </td>
+                  <td><span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--aig-green-300)' }}>{d.delivery_ref}</span></td>
                   <td>
                     <div style={{ fontWeight: 500 }}>{d.participant}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{d.contact_phone}</div>
@@ -199,7 +243,7 @@ export function DeliveriesPage() {
           </table>
         </div>
         <div style={{ padding: '0.875rem 1.25rem', borderTop: '1px solid var(--border-subtle)', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-          Showing {filtered.length} of {MOCK_DELIVERIES.length} deliveries
+          Showing {filtered.length} of {deliveries.length} deliveries
         </div>
       </div>
     </div>

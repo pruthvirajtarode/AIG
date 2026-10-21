@@ -3,6 +3,7 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { AlertTriangle, Search, CheckCircle2, Clock, X, User } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/utils';
 import type { ExceptionSeverity, ExceptionStatus } from '@/lib/database.types';
+import { useToast } from '@/contexts/ToastContext';
 
 const SEVERITY_BADGE: Record<ExceptionSeverity, string> = {
   low:      'badge-blue',
@@ -27,15 +28,36 @@ const STATUS_LABEL: Record<ExceptionStatus, string> = {
   escalated:   'Escalated',
 };
 
-const MOCK_EXCEPTIONS = [
-  { id: 'e1', severity: 'critical' as ExceptionSeverity, status: 'open' as ExceptionStatus, category: 'Animal', title: 'Animal weight below minimum threshold', description: 'Animal A-2025-008 (Limousin cow) is at 280kg, below the required minimum of 350kg. The Qurban date is in 13 days. Immediate intervention required.', related_entity: 'animal', related_entity_id: 'A-2025-008', assigned_to: null, created_at: '2025-05-15T07:30:00Z' },
-  { id: 'e2', severity: 'high' as ExceptionSeverity, status: 'in_progress' as ExceptionStatus, category: 'Payment', title: 'Payment bank slip unreadable', description: 'Payment PAY-2025-000041 bank slip image is too blurry to verify. Participant has been notified to resubmit.', related_entity: 'payment', related_entity_id: 'PAY-2025-000041', assigned_to: 'Ahmad Salihin', created_at: '2025-05-14T10:00:00Z' },
-  { id: 'e3', severity: 'medium' as ExceptionSeverity, status: 'open' as ExceptionStatus, category: 'Delivery', title: 'Delivery failed — recipient not home', description: 'Driver Hamidi attempted delivery of DEL-2025-005 at 3:15 PM but recipient was not home. Second attempt needs to be scheduled.', related_entity: 'delivery', related_entity_id: 'DEL-2025-005', assigned_to: null, created_at: '2025-05-12T16:00:00Z' },
-  { id: 'e4', severity: 'low' as ExceptionSeverity, status: 'resolved' as ExceptionStatus, category: 'Certificate', title: 'Certificate generation failed', description: 'PDF generation service timeout caused CERT-2025-00003 to fail. Issue was retried and certificate generated successfully.', related_entity: 'certificate', related_entity_id: 'CERT-2025-00003', assigned_to: 'D3 Technical Admin', created_at: '2025-05-11T14:20:00Z' },
-  { id: 'e5', severity: 'high' as ExceptionSeverity, status: 'escalated' as ExceptionStatus, category: 'Payment', title: 'Duplicate payment detected', description: 'Participant Ahmad Rizal appears to have submitted two payments for Order AIG-2025-000158. Refund process initiated.', related_entity: 'payment', related_entity_id: 'PAY-2025-000040', assigned_to: 'Operations Admin', created_at: '2025-05-10T11:00:00Z' },
+type ExceptionItem = {
+  id: string;
+  severity: ExceptionSeverity;
+  status: ExceptionStatus;
+  category: string;
+  title: string;
+  description: string;
+  related_entity: string;
+  related_entity_id: string;
+  assigned_to: string | null;
+  created_at: string;
+};
+
+const INITIAL_EXCEPTIONS: ExceptionItem[] = [
+  { id: 'e1', severity: 'critical', status: 'open',        category: 'Animal',      title: 'Animal weight below minimum threshold',   description: 'Animal A-2025-008 (Limousin cow) is at 280kg, below the required minimum of 350kg. The Qurban date is in 13 days. Immediate intervention required.',   related_entity: 'animal',      related_entity_id: 'A-2025-008',      assigned_to: null,               created_at: '2025-05-15T07:30:00Z' },
+  { id: 'e2', severity: 'high',     status: 'in_progress', category: 'Payment',     title: 'Payment bank slip unreadable',             description: 'Payment PAY-2025-000041 bank slip image is too blurry to verify. Participant has been notified to resubmit.',                                           related_entity: 'payment',     related_entity_id: 'PAY-2025-000041', assigned_to: 'Ahmad Salihin',    created_at: '2025-05-14T10:00:00Z' },
+  { id: 'e3', severity: 'medium',   status: 'open',        category: 'Delivery',    title: 'Delivery failed — recipient not home',     description: 'Driver Hamidi attempted delivery of DEL-2025-005 at 3:15 PM but recipient was not home. Second attempt needs to be scheduled.',                         related_entity: 'delivery',    related_entity_id: 'DEL-2025-005',    assigned_to: null,               created_at: '2025-05-12T16:00:00Z' },
+  { id: 'e4', severity: 'low',      status: 'resolved',    category: 'Certificate', title: 'Certificate generation failed',            description: 'PDF generation service timeout caused CERT-2025-00003 to fail. Issue was retried and certificate generated successfully.',                             related_entity: 'certificate', related_entity_id: 'CERT-2025-00003', assigned_to: 'D3 Technical Admin', created_at: '2025-05-11T14:20:00Z' },
+  { id: 'e5', severity: 'high',     status: 'escalated',   category: 'Payment',     title: 'Duplicate payment detected',               description: 'Participant Ahmad Rizal appears to have submitted two payments for Order AIG-2025-000158. Refund process initiated.',                                  related_entity: 'payment',     related_entity_id: 'PAY-2025-000040', assigned_to: 'Operations Admin', created_at: '2025-05-10T11:00:00Z' },
 ];
 
-function ExceptionModal({ exception: ex, onClose }: { exception: typeof MOCK_EXCEPTIONS[0]; onClose: () => void }) {
+function ExceptionModal({ exception: ex, onClose, onResolve, onAssign }: {
+  exception: ExceptionItem;
+  onClose: () => void;
+  onResolve: (id: string) => void;
+  onAssign: (id: string, person: string) => void;
+}) {
+  const { toast } = useToast();
+  const [assignee, setAssignee] = useState(ex.assigned_to || '');
+  const [resolutionNotes, setResolutionNotes] = useState('');
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
@@ -58,11 +80,11 @@ function ExceptionModal({ exception: ex, onClose }: { exception: typeof MOCK_EXC
           </div>
 
           <div className="detail-list">
-            {[
+            {([
               ['Related Entity', `${ex.related_entity} · ${ex.related_entity_id}`],
               ['Assigned To', ex.assigned_to || 'Unassigned'],
               ['Reported', formatRelativeTime(ex.created_at)],
-            ].map(([k, v]) => (
+            ] as [string, string][]).map(([k, v]) => (
               <div key={k} className="detail-row">
                 <div className="detail-key">{k}</div>
                 <div className="detail-val">{v}</div>
@@ -70,15 +92,16 @@ function ExceptionModal({ exception: ex, onClose }: { exception: typeof MOCK_EXC
             ))}
           </div>
 
-          {ex.status === 'open' || ex.status === 'in_progress' ? (
+          {(ex.status === 'open' || ex.status === 'in_progress') ? (
             <div style={{ marginTop: '1.25rem' }}>
               <div className="form-group" style={{ marginBottom: '0.75rem' }}>
                 <label className="form-label">Resolution Notes</label>
-                <textarea className="form-input" rows={3} placeholder="Describe how this exception was resolved..." style={{ resize: 'none' }} />
+                <textarea className="form-input" rows={3} placeholder="Describe how this exception was resolved..." style={{ resize: 'none' }}
+                  value={resolutionNotes} onChange={e => setResolutionNotes(e.target.value)} />
               </div>
               <div className="form-group">
                 <label className="form-label">Assign To</label>
-                <select className="form-input form-select">
+                <select className="form-input form-select" value={assignee} onChange={e => setAssignee(e.target.value)}>
                   <option value="">Select staff member</option>
                   <option>Ahmad Salihin</option>
                   <option>Operations Admin</option>
@@ -92,10 +115,21 @@ function ExceptionModal({ exception: ex, onClose }: { exception: typeof MOCK_EXC
           <button className="btn btn-secondary" onClick={onClose}>Close</button>
           {(ex.status === 'open' || ex.status === 'in_progress') && (
             <>
-              <button className="btn btn-secondary" style={{ gap: '0.5rem' }}>
+              <button className="btn btn-secondary" style={{ gap: '0.5rem' }}
+                onClick={() => {
+                  if (!assignee) { toast('warning', 'Select a staff member', 'Please select who to assign this exception to'); return; }
+                  onAssign(ex.id, assignee);
+                  toast('info', 'Exception assigned', `${ex.title.slice(0, 30)}... assigned to ${assignee}`);
+                  onClose();
+                }}>
                 <User size={14} /> Assign
               </button>
-              <button className="btn btn-primary" style={{ gap: '0.5rem' }}>
+              <button className="btn btn-primary" style={{ gap: '0.5rem' }}
+                onClick={() => {
+                  onResolve(ex.id);
+                  toast('success', 'Exception resolved ✓', `${ex.title.slice(0, 40)}... marked as resolved`);
+                  onClose();
+                }}>
                 <CheckCircle2 size={14} /> Mark Resolved
               </button>
             </>
@@ -108,12 +142,21 @@ function ExceptionModal({ exception: ex, onClose }: { exception: typeof MOCK_EXC
 
 export function ExceptionsPage() {
   usePageTitle('Exceptions');
+  const [exceptions, setExceptions] = useState<ExceptionItem[]>(INITIAL_EXCEPTIONS);
   const [search, setSearch] = useState('');
   const [severityFilter, setSeverityFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('open');
-  const [selected, setSelected] = useState<typeof MOCK_EXCEPTIONS[0] | null>(null);
+  const [selected, setSelected] = useState<ExceptionItem | null>(null);
 
-  const filtered = MOCK_EXCEPTIONS.filter(e => {
+  const resolveException = (id: string) => {
+    setExceptions(prev => prev.map(e => e.id === id ? { ...e, status: 'resolved' as ExceptionStatus } : e));
+  };
+
+  const assignException = (id: string, person: string) => {
+    setExceptions(prev => prev.map(e => e.id === id ? { ...e, assigned_to: person, status: 'in_progress' as ExceptionStatus } : e));
+  };
+
+  const filtered = exceptions.filter(e => {
     const matchSearch = e.title.toLowerCase().includes(search.toLowerCase()) || e.category.toLowerCase().includes(search.toLowerCase());
     const matchSeverity = !severityFilter || e.severity === severityFilter;
     const matchStatus = !statusFilter || e.status === statusFilter;
@@ -122,7 +165,14 @@ export function ExceptionsPage() {
 
   return (
     <div className="page-content animate-fadeInUp">
-      {selected && <ExceptionModal exception={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <ExceptionModal
+          exception={selected}
+          onClose={() => setSelected(null)}
+          onResolve={resolveException}
+          onAssign={assignException}
+        />
+      )}
 
       <div className="page-header">
         <h1 className="page-title">Exceptions</h1>
@@ -132,11 +182,11 @@ export function ExceptionsPage() {
       {/* Stats */}
       <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
-          { label: 'Total', value: String(MOCK_EXCEPTIONS.length), color: 'var(--text-secondary)' },
-          { label: 'Critical', value: String(MOCK_EXCEPTIONS.filter(e => e.severity === 'critical').length), color: 'var(--danger)' },
-          { label: 'High', value: String(MOCK_EXCEPTIONS.filter(e => e.severity === 'high').length), color: 'var(--orange)' },
-          { label: 'Open', value: String(MOCK_EXCEPTIONS.filter(e => e.status === 'open').length), color: 'var(--warning)' },
-          { label: 'Resolved', value: String(MOCK_EXCEPTIONS.filter(e => e.status === 'resolved').length), color: 'var(--success)' },
+          { label: 'Total',    value: String(exceptions.length), color: 'var(--text-secondary)' },
+          { label: 'Critical', value: String(exceptions.filter(e => e.severity === 'critical').length), color: 'var(--danger)' },
+          { label: 'High',     value: String(exceptions.filter(e => e.severity === 'high').length), color: 'var(--orange)' },
+          { label: 'Open',     value: String(exceptions.filter(e => e.status === 'open').length), color: 'var(--warning)' },
+          { label: 'Resolved', value: String(exceptions.filter(e => e.status === 'resolved').length), color: 'var(--success)' },
         ].map(s => (
           <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
             <div className="stat-value" style={{ fontSize: '1.375rem', color: s.color }}>{s.value}</div>
