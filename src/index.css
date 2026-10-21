@@ -1163,7 +1163,7 @@ h1, h2, h3, h4, h5, h6 {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 4rem;
+  padding: 3rem;
   position: relative;
   overflow: hidden;
 }
@@ -1191,14 +1191,14 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .auth-right {
-  width: 480px;
+  width: 580px;
   min-height: 100vh;
   background: var(--surface-900);
   border-left: 1px solid rgba(212,168,50,0.1);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 3rem;
+  padding: 3rem 3.5rem;
 }
 
 .auth-logo {
