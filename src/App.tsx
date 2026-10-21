@@ -45,13 +45,21 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 function RequireStaff({ children }: { children: React.ReactNode }) {
-  const { isStaff, isLoading } = useAuth();
+  const { isStaff, isLoading, profile, isAuthenticated } = useAuth();
 
-  if (isLoading) return (
+  const spinner = (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d1117' }}>
       <LoadingSpinner size="lg" />
     </div>
   );
+
+  // Still loading auth state
+  if (isLoading) return spinner;
+
+  // Authenticated but profile not yet fetched — wait instead of redirecting
+  // This handles the race where navigate('/admin') fires before onAuthStateChange loads profile
+  if (isAuthenticated && !profile) return spinner;
+
   if (!isStaff()) return <Navigate to="/portal" replace />;
 
   return <>{children}</>;
