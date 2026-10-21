@@ -328,11 +328,11 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
               </div>
 
               {/* Real animal photo */}
-              <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-subtle)', height: 120 }}>
+              <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-subtle)', height: 160, background: '#0e1a14', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <img
                   src={ANIMAL_IMAGES[animal.animal_type]}
                   alt={`${animal.animal_type} photo`}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
                   onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                 />
               </div>
@@ -494,11 +494,11 @@ export function AnimalsPage() {
               onClick={() => setSelected(a)}
             >
               {/* Real animal image at top */}
-              <div style={{ height: 140, background: '#111', overflow: 'hidden', position: 'relative' }}>
+              <div style={{ height: 180, background: '#0e1a14', overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <img
                   src={ANIMAL_IMAGES[a.animal_type]}
                   alt={a.animal_type}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
                   onError={e => {
                     const el = e.currentTarget as HTMLImageElement;
                     el.style.display = 'none';

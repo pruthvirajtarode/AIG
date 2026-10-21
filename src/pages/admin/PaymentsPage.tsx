@@ -3,6 +3,7 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, CheckCircle2, XCircle, Eye, Clock, X, Upload } from 'lucide-react';
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
 import type { PaymentStatus } from '@/lib/database.types';
+import { useToast } from '@/contexts/ToastContext';
 
 const STATUS_COLOR: Record<PaymentStatus, string> = {
   pending:      'badge-yellow',
@@ -34,7 +35,14 @@ const MOCK_PAYMENTS = [
   { id: 'p7', payment_ref: 'PAY-2025-000036', order_ref: 'AIG-2025-000152', participant: 'Hafizuddin bin Ramli', amount: 1260, currency: 'SGD', method: 'bank_transfer', status: 'pending' as PaymentStatus, submitted_at: null, verified_at: null, bank: null, notes: null },
 ];
 
-function PaymentDetailModal({ payment, onClose }: { payment: typeof MOCK_PAYMENTS[0]; onClose: () => void }) {
+function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
+  payment: typeof MOCK_PAYMENTS[0];
+  onClose: () => void;
+  onVerify: (id: string) => void;
+  onReject: (id: string) => void;
+}) {
+  const { toast } = useToast();
+  const [rejectReason, setRejectReason] = useState('');
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
@@ -95,13 +103,27 @@ function PaymentDetailModal({ payment, onClose }: { payment: typeof MOCK_PAYMENT
               <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', fontWeight: 600 }}>Review Action</div>
               <div className="form-group" style={{ marginBottom: '0.75rem' }}>
                 <label className="form-label">Rejection Reason (if applicable)</label>
-                <textarea className="form-input" rows={2} placeholder="State reason for rejection..." style={{ resize: 'none' }} />
+                <textarea
+                  className="form-input"
+                  rows={2}
+                  placeholder="State reason for rejection..."
+                  style={{ resize: 'none' }}
+                  value={rejectReason}
+                  onChange={e => setRejectReason(e.target.value)}
+                />
               </div>
               <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <button className="btn btn-primary" style={{ gap: '0.5rem' }}>
+                <button
+                  className="btn btn-primary"
+                  style={{ gap: '0.5rem' }}
+                  onClick={() => { onVerify(payment.id); onClose(); toast('success', 'Payment verified!', `${payment.payment_ref} has been verified.`); }}
+                >
                   <CheckCircle2 size={15} /> Verify Payment
                 </button>
-                <button className="btn btn-danger">
+                <button
+                  className="btn btn-danger"
+                  onClick={() => { onReject(payment.id); onClose(); toast('error', 'Payment rejected', rejectReason || `${payment.payment_ref} has been rejected.`); }}
+                >
                   <XCircle size={15} /> Reject
                 </button>
               </div>
@@ -115,11 +137,26 @@ function PaymentDetailModal({ payment, onClose }: { payment: typeof MOCK_PAYMENT
 
 export function PaymentsPage() {
   usePageTitle('Payments');
+  const [payments, setPayments] = useState(MOCK_PAYMENTS);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<typeof MOCK_PAYMENTS[0] | null>(null);
 
-  const filtered = MOCK_PAYMENTS.filter(p => {
+  const verifyPayment = (id: string) => {
+    setPayments(prev => prev.map(p => p.id === id
+      ? { ...p, status: 'verified' as PaymentStatus, verified_at: new Date().toISOString() }
+      : p
+    ));
+  };
+
+  const rejectPayment = (id: string) => {
+    setPayments(prev => prev.map(p => p.id === id
+      ? { ...p, status: 'rejected' as PaymentStatus }
+      : p
+    ));
+  };
+
+  const filtered = payments.filter(p => {
     const matchSearch =
       p.payment_ref.toLowerCase().includes(search.toLowerCase()) ||
       p.participant.toLowerCase().includes(search.toLowerCase()) ||
@@ -128,11 +165,18 @@ export function PaymentsPage() {
     return matchSearch && matchStatus;
   });
 
-  const pendingReview = MOCK_PAYMENTS.filter(p => p.status === 'submitted' || p.status === 'under_review').length;
+  const pendingReview = payments.filter(p => p.status === 'submitted' || p.status === 'under_review').length;
 
   return (
     <div className="page-content animate-fadeInUp">
-      {selected && <PaymentDetailModal payment={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <PaymentDetailModal
+          payment={selected}
+          onClose={() => setSelected(null)}
+          onVerify={verifyPayment}
+          onReject={rejectPayment}
+        />
+      )}
 
       <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
@@ -245,7 +289,7 @@ export function PaymentsPage() {
           </table>
         </div>
         <div style={{ padding: '0.875rem 1.25rem', borderTop: '1px solid var(--border-subtle)', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-          Showing {filtered.length} of {MOCK_PAYMENTS.length} payments
+          Showing {filtered.length} of {payments.length} payments
         </div>
       </div>
     </div>

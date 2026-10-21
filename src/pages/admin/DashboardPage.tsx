@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import { useToast } from '@/contexts/ToastContext';
 
 // ── Mock data ────────────────────────────────────────────────
 const REVENUE_DATA = [
@@ -121,6 +122,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export function DashboardPage() {
   usePageTitle('Dashboard');
+  const { toast } = useToast();
   return (
     <div className="page-content animate-fadeInUp">
       {/* Header */}
@@ -130,11 +132,17 @@ export function DashboardPage() {
           <p className="page-subtitle">Al Ihsan Group · Qurban Season 2025</p>
         </div>
         <div className="page-header-actions" style={{ display: 'flex', gap: '0.75rem' }}>
-          <button className="btn btn-secondary btn-sm">
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => toast('info', 'Live View', 'Connect to Supabase to enable real-time live view')}
+          >
             <Activity size={14} />
             Live View
           </button>
-          <button className="btn btn-primary btn-sm">
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => toast('success', 'Export Report', 'Report export will be available once connected to Supabase')}
+          >
             <ArrowUpRight size={14} />
             Export Report
           </button>
