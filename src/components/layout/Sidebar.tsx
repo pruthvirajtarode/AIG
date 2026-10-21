@@ -108,9 +108,15 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
     <aside className={sidebarClass}>
       {/* Logo */}
       <div className="sidebar-logo">
-        <div className="logo-mark">A</div>
+        <div className="logo-mark" style={{ background: 'transparent', padding: 0, overflow: 'hidden' }}>
+          <img
+            src="/logo.jpg"
+            alt="Al Ihsan Group"
+            style={{ width: '38px', height: '38px', objectFit: 'cover', borderRadius: '8px', display: 'block' }}
+          />
+        </div>
         <div className="logo-text">
-          <div className="logo-name">AIGMS</div>
+          <div className="logo-name">Al Ihsan Group</div>
           <div className="logo-sub">Qurban Management</div>
         </div>
       </div>
