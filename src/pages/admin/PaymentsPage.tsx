@@ -25,18 +25,34 @@ const STATUS_LABEL: Record<PaymentStatus, string> = {
   cancelled:    'Cancelled',
 };
 
-const MOCK_PAYMENTS = [
-  { id: 'p1', payment_ref: 'PAY-2025-000042', order_ref: 'AIG-2025-000158', participant: 'Ahmad Rizal bin Yusof', amount: 850, currency: 'SGD', method: 'bank_transfer', status: 'verified' as PaymentStatus, submitted_at: '2025-05-14T08:22:00Z', verified_at: '2025-05-14T10:05:00Z', bank: 'Maybank', notes: null },
-  { id: 'p2', payment_ref: 'PAY-2025-000041', order_ref: 'AIG-2025-000157', participant: 'Nurul Ain binti Hassan', amount: 840, currency: 'SGD', method: 'bank_transfer', status: 'submitted' as PaymentStatus, submitted_at: '2025-05-13T15:47:00Z', verified_at: null, bank: 'CIMB', notes: 'Transferred via IBG' },
-  { id: 'p3', payment_ref: 'PAY-2025-000040', order_ref: 'AIG-2025-000156', participant: 'Mohamad Faiz bin Ali', amount: 950, currency: 'SGD', method: 'online_gateway', status: 'verified' as PaymentStatus, submitted_at: '2025-05-13T11:05:00Z', verified_at: '2025-05-13T13:30:00Z', bank: null, notes: null },
-  { id: 'p4', payment_ref: 'PAY-2025-000039', order_ref: 'AIG-2025-000155', participant: 'Siti Norzahra binti Md Zain', amount: 380, currency: 'SGD', method: 'bank_transfer', status: 'under_review' as PaymentStatus, submitted_at: '2025-05-12T09:30:00Z', verified_at: null, bank: 'RHB', notes: null },
-  { id: 'p5', payment_ref: 'PAY-2025-000038', order_ref: 'AIG-2025-000154', participant: 'Zulkifli bin Othman', amount: 390, currency: 'SGD', method: 'bank_transfer', status: 'rejected' as PaymentStatus, submitted_at: '2025-05-11T16:20:00Z', verified_at: null, bank: 'Public Bank', notes: 'Bank slip unclear, cannot verify' },
-  { id: 'p6', payment_ref: 'PAY-2025-000037', order_ref: 'AIG-2025-000153', participant: 'Nur Izzati binti Kamal', amount: 850, currency: 'SGD', method: 'credit_card', status: 'verified' as PaymentStatus, submitted_at: '2025-05-11T10:15:00Z', verified_at: '2025-05-11T10:16:00Z', bank: null, notes: null },
-  { id: 'p7', payment_ref: 'PAY-2025-000036', order_ref: 'AIG-2025-000152', participant: 'Hafizuddin bin Ramli', amount: 1260, currency: 'SGD', method: 'bank_transfer', status: 'pending' as PaymentStatus, submitted_at: null, verified_at: null, bank: null, notes: null },
+// ── Payment type ──────────────────────────────────────────────
+type Payment = {
+  id: string;
+  payment_ref: string;
+  order_ref: string;
+  participant: string;
+  amount: number;
+  currency: string;
+  method: string;
+  status: PaymentStatus;
+  submitted_at: string | null;
+  verified_at: string | null;
+  bank: string | null;
+  notes: string | null;
+};
+
+const MOCK_PAYMENTS: Payment[] = [
+  { id: 'p1', payment_ref: 'PAY-2025-000042', order_ref: 'AIG-2025-000158', participant: 'Ahmad Rizal bin Yusof', amount: 850, currency: 'SGD', method: 'bank_transfer', status: 'verified', submitted_at: '2025-05-14T08:22:00Z', verified_at: '2025-05-14T10:05:00Z', bank: 'Maybank', notes: null },
+  { id: 'p2', payment_ref: 'PAY-2025-000041', order_ref: 'AIG-2025-000157', participant: 'Nurul Ain binti Hassan', amount: 840, currency: 'SGD', method: 'bank_transfer', status: 'submitted', submitted_at: '2025-05-13T15:47:00Z', verified_at: null, bank: 'CIMB', notes: 'Transferred via IBG' },
+  { id: 'p3', payment_ref: 'PAY-2025-000040', order_ref: 'AIG-2025-000156', participant: 'Mohamad Faiz bin Ali', amount: 950, currency: 'SGD', method: 'online_gateway', status: 'verified', submitted_at: '2025-05-13T11:05:00Z', verified_at: '2025-05-13T13:30:00Z', bank: null, notes: null },
+  { id: 'p4', payment_ref: 'PAY-2025-000039', order_ref: 'AIG-2025-000155', participant: 'Siti Norzahra binti Md Zain', amount: 380, currency: 'SGD', method: 'bank_transfer', status: 'under_review', submitted_at: '2025-05-12T09:30:00Z', verified_at: null, bank: 'RHB', notes: null },
+  { id: 'p5', payment_ref: 'PAY-2025-000038', order_ref: 'AIG-2025-000154', participant: 'Zulkifli bin Othman', amount: 390, currency: 'SGD', method: 'bank_transfer', status: 'rejected', submitted_at: '2025-05-11T16:20:00Z', verified_at: null, bank: 'Public Bank', notes: 'Bank slip unclear, cannot verify' },
+  { id: 'p6', payment_ref: 'PAY-2025-000037', order_ref: 'AIG-2025-000153', participant: 'Nur Izzati binti Kamal', amount: 850, currency: 'SGD', method: 'credit_card', status: 'verified', submitted_at: '2025-05-11T10:15:00Z', verified_at: '2025-05-11T10:16:00Z', bank: null, notes: null },
+  { id: 'p7', payment_ref: 'PAY-2025-000036', order_ref: 'AIG-2025-000152', participant: 'Hafizuddin bin Ramli', amount: 1260, currency: 'SGD', method: 'bank_transfer', status: 'pending', submitted_at: null, verified_at: null, bank: null, notes: null },
 ];
 
 function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
-  payment: typeof MOCK_PAYMENTS[0];
+  payment: Payment;
   onClose: () => void;
   onVerify: (id: string) => void;
   onReject: (id: string) => void;
@@ -137,10 +153,10 @@ function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
 
 export function PaymentsPage() {
   usePageTitle('Payments');
-  const [payments, setPayments] = useState(MOCK_PAYMENTS);
+  const [payments, setPayments] = useState<Payment[]>(MOCK_PAYMENTS);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [selected, setSelected] = useState<typeof MOCK_PAYMENTS[0] | null>(null);
+  const [selected, setSelected] = useState<Payment | null>(null);
 
   const verifyPayment = (id: string) => {
     setPayments(prev => prev.map(p => p.id === id
