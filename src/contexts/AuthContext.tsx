@@ -10,6 +10,7 @@ interface AuthContextValue {
   role: UserRole | null;
   tenantId: string | null;
   isLoading: boolean;
+  profileFetchAttempted: boolean;
   isAuthenticated: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (params: SignUpParams) => Promise<{ error: string | null }>;
@@ -37,22 +38,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileFetchAttempted, setProfileFetchAttempted] = useState(false);
 
   const fetchProfile = useCallback(async (userId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
+      // Use RPC to bypass RLS issues — SECURITY DEFINER runs as superuser
+      const { data, error } = await supabase.rpc('get_my_profile');
       if (!error && data) {
         setProfile(data as Profile);
       } else {
-        console.warn('Profile fetch error:', error?.message);
+        // Fallback: direct table query
+        const { data: row, error: rowErr } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single();
+        if (!rowErr && row) setProfile(row as Profile);
+        else console.warn('Profile fetch failed:', rowErr?.message ?? error?.message);
       }
     } catch (e) {
       console.warn('Profile fetch exception:', e);
+    } finally {
+      setProfileFetchAttempted(true);
     }
   }, []);
 
@@ -147,6 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     role: profile?.role ?? null,
     tenantId: profile?.tenant_id ?? null,
     isLoading,
+    profileFetchAttempted,
     isAuthenticated: !!user,
     signIn,
     signUp,
