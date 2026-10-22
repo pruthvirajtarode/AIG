@@ -10,6 +10,7 @@ const ANIMAL_IMAGES: Record<AnimalType, string> = {
   cow:     '/animal-cow.png',
   sheep:   '/animal-sheep.png',
   goat:    '/animal-goat.png',
+  lamb:    '/animal-sheep.png',
   camel:   '/animal-cow.png',   // fallback
   buffalo: '/animal-cow.png',   // fallback
 };
@@ -470,7 +471,7 @@ export function AnimalsPage() {
         </div>
         <select className="form-input form-select" style={{ width: 'auto', height: 38, fontSize: '0.875rem' }} value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
           <option value="">All Types</option>
-          {(['cow', 'goat', 'sheep', 'camel', 'buffalo'] as AnimalType[]).map(t => (
+          {(['cow', 'goat', 'sheep', 'lamb', 'camel', 'buffalo'] as AnimalType[]).map(t => (
             <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
           ))}
         </select>

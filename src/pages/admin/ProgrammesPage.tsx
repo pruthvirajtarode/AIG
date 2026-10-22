@@ -12,7 +12,7 @@ const DISTRIBUTION_LABEL: Record<DistributionMethod, string> = {
   pickup: 'Pickup',
 };
 
-const ANIMAL_EMOJI: Record<AnimalType, string> = { cow: '🐄', goat: '🐐', sheep: '🐑', camel: '🐪', buffalo: '🐃' };
+const ANIMAL_EMOJI: Record<AnimalType, string> = { cow: '🐄', goat: '🐐', sheep: '🐑', lamb: '🐑', camel: '🐪', buffalo: '🐃' };
 
 const MOCK_PROGRAMMES = [
   { id: 'pr1', name: 'Cow Share — Somalia', slug: 'cow-somalia-2025', country: 'Somalia', animal_type: 'cow' as AnimalType, animals_per_share: 7, price_per_share: 850, currency: 'SGD', shares_available: 28, min_quantity: 1, distribution_method: 'air_freight' as DistributionMethod, is_active: true, qurban_date: '2025-06-28', orders_count: 42 },
@@ -45,7 +45,7 @@ function ProgrammeModal({ programme, onClose }: { programme?: typeof MOCK_PROGRA
               <div className="form-group">
                 <label className="form-label">Animal Type *</label>
                 <select className="form-input form-select" defaultValue={programme?.animal_type}>
-                  {(['cow', 'goat', 'sheep', 'camel', 'buffalo'] as AnimalType[]).map(t => (
+                  {(['cow', 'goat', 'sheep', 'lamb', 'camel', 'buffalo'] as AnimalType[]).map(t => (
                     <option key={t} value={t}>{ANIMAL_EMOJI[t]} {t.charAt(0).toUpperCase() + t.slice(1)}</option>
                   ))}
                 </select>

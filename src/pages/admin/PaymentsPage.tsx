@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { Search, CheckCircle2, XCircle, Eye, Clock, X, Upload } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, Eye, Clock, X, Upload, Download, ExternalLink, ZoomIn, ZoomOut, FileX } from 'lucide-react';
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
 import type { PaymentStatus } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
@@ -39,6 +39,8 @@ type Payment = {
   verified_at: string | null;
   bank: string | null;
   notes: string | null;
+  /** URL (signed/public) of the uploaded bank slip. When absent, a sample slip is rendered for submitted payments. */
+  proof_url?: string | null;
 };
 
 const MOCK_PAYMENTS: Payment[] = [
@@ -51,6 +53,119 @@ const MOCK_PAYMENTS: Payment[] = [
   { id: 'p7', payment_ref: 'PAY-2025-000036', order_ref: 'AIG-2025-000152', participant: 'Hafizuddin bin Ramli', amount: 1260, currency: 'SGD', method: 'bank_transfer', status: 'pending', submitted_at: null, verified_at: null, bank: null, notes: null },
 ];
 
+// ── Proof helpers ─────────────────────────────────────────────
+const escapeXml = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** Builds a sample bank-slip SVG for mock data (until real proofs come from storage). */
+function buildSampleSlipSvg(p: Payment): string {
+  const rows: [string, string][] = [
+    ['Reference', p.payment_ref],
+    ['Order', p.order_ref],
+    ['Sender', p.participant],
+    ['Bank', p.bank || '—'],
+    ['Amount', formatCurrency(p.amount, p.currency)],
+    ['Date', p.submitted_at ? formatDateTime(p.submitted_at) : '—'],
+    ['Status', 'SUCCESSFUL'],
+  ];
+  const body = rows.map(([k, v], i) =>
+    `<text x="40" y="${190 + i * 44}" font-size="16" fill="#6b7280">${escapeXml(k)}</text>` +
+    `<text x="560" y="${190 + i * 44}" font-size="18" font-weight="600" fill="#111827" text-anchor="end">${escapeXml(v)}</text>` +
+    `<line x1="40" y1="${202 + i * 44}" x2="560" y2="${202 + i * 44}" stroke="#e5e7eb"/>`
+  ).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="560" viewBox="0 0 600 560" font-family="Arial, Helvetica, sans-serif">` +
+    `<rect width="600" height="560" fill="#ffffff"/>` +
+    `<rect width="600" height="110" fill="#0f6b4d"/>` +
+    `<text x="40" y="58" font-size="26" font-weight="700" fill="#ffffff">${escapeXml(p.bank || 'Bank')} — Transfer Receipt</text>` +
+    `<text x="40" y="88" font-size="14" fill="#bbf7d0">Sample proof of payment</text>` +
+    body +
+    `<text x="300" y="530" font-size="13" fill="#9ca3af" text-anchor="middle">This is a system-generated sample slip</text>` +
+    `</svg>`;
+}
+
+function ProofViewer({ payment, onClose }: { payment: Payment; onClose: () => void }) {
+  const [zoom, setZoom] = useState(1);
+  const [failed, setFailed] = useState(false);
+  const hasProof = !!payment.proof_url || !!payment.submitted_at;
+
+  // Resolve the proof URL (blob URL for generated sample slips so it can be opened/downloaded)
+  const [sampleUrl, setSampleUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (payment.proof_url || !payment.submitted_at) { setSampleUrl(null); return; }
+    const objectUrl = URL.createObjectURL(new Blob([buildSampleSlipSvg(payment)], { type: 'image/svg+xml' }));
+    setSampleUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [payment]);
+
+  const url = payment.proof_url ?? sampleUrl;
+  const isPdf = !!url && /\.pdf($|\?)/i.test(url);
+  const fileName = `${payment.payment_ref}-proof.${isPdf ? 'pdf' : payment.proof_url ? (payment.proof_url.split('?')[0].split('.').pop() || 'png') : 'svg'}`;
+
+  // Esc closes only the viewer (not the parent modal)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+
+  return (
+    <div className="modal-overlay" style={{ zIndex: 200 }} onClick={e => { e.stopPropagation(); onClose(); }} role="dialog" aria-modal="true" aria-label="Proof of payment">
+      <div className="modal modal-lg" style={{ maxWidth: 820 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <div className="heading-md">Proof of Payment</div>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.125rem' }}>{payment.payment_ref} · {payment.participant}</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+            {hasProof && url && !failed && !isPdf && (
+              <>
+                <button type="button" className="btn btn-ghost btn-sm" title="Zoom out" onClick={() => setZoom(z => Math.max(0.5, +(z - 0.25).toFixed(2)))}><ZoomOut size={16} /></button>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', minWidth: 38, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
+                <button type="button" className="btn btn-ghost btn-sm" title="Zoom in" onClick={() => setZoom(z => Math.min(3, +(z + 0.25).toFixed(2)))}><ZoomIn size={16} /></button>
+              </>
+            )}
+            <button type="button" className="btn btn-ghost btn-sm" aria-label="Close proof viewer" onClick={onClose}><X size={18} /></button>
+          </div>
+        </div>
+        <div className="modal-body" style={{ background: 'var(--surface-900)', minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', maxHeight: '65vh' }}>
+          {!hasProof || !url || failed ? (
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+              <FileX size={36} style={{ margin: '0 auto 0.75rem' }} />
+              <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
+                {failed ? 'Unable to load proof file' : 'No proof uploaded yet'}
+              </div>
+              <div style={{ fontSize: '0.8125rem', marginTop: '0.25rem' }}>
+                {failed ? 'The file may have expired or been removed.' : 'The participant has not submitted a bank slip for this payment.'}
+              </div>
+            </div>
+          ) : isPdf ? (
+            <iframe src={url} title="Payment proof PDF" style={{ width: '100%', height: '60vh', border: 'none', borderRadius: 8, background: '#fff' }} />
+          ) : (
+            <img
+              src={url}
+              alt={`Proof of payment ${payment.payment_ref}`}
+              onError={() => setFailed(true)}
+              style={{ width: `${zoom * 100}%`, maxWidth: zoom <= 1 ? 560 : 'none', borderRadius: 8, transition: 'width 0.15s ease', boxShadow: 'var(--shadow-lg)' }}
+            />
+          )}
+        </div>
+        {hasProof && url && !failed && (
+          <div className="modal-footer">
+            <a className="btn btn-secondary btn-sm" href={url} target="_blank" rel="noopener noreferrer" style={{ gap: '0.375rem' }}>
+              <ExternalLink size={14} /> Open in new tab
+            </a>
+            <a className="btn btn-primary btn-sm" href={url} download={fileName} style={{ gap: '0.375rem' }}>
+              <Download size={14} /> Download
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
   payment: Payment;
   onClose: () => void;
@@ -59,6 +174,7 @@ function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
 }) {
   const { toast } = useToast();
   const [rejectReason, setRejectReason] = useState('');
+  const [showProof, setShowProof] = useState(false);
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
@@ -109,7 +225,15 @@ function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
               <div style={{ marginTop: '1.25rem', padding: '1rem', background: 'var(--surface-700)', borderRadius: 8, border: '1px dashed var(--border-default)', textAlign: 'center' }}>
                 <Upload size={20} color="var(--text-muted)" style={{ margin: '0 auto 0.5rem' }} />
                 <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Bank slip / proof of payment</div>
-                <button className="btn btn-secondary btn-sm" style={{ marginTop: '0.5rem' }}>View Proof</button>
+                <button
+                  type="button"
+                  id="view-proof-btn"
+                  className="btn btn-secondary btn-sm"
+                  style={{ marginTop: '0.5rem' }}
+                  onClick={() => setShowProof(true)}
+                >
+                  View Proof
+                </button>
               </div>
             </div>
           </div>
@@ -147,6 +271,7 @@ function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
           ) : null}
         </div>
       </div>
+      {showProof && <ProofViewer payment={payment} onClose={() => setShowProof(false)} />}
     </div>
   );
 }

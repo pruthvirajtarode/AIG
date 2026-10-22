@@ -3,7 +3,7 @@ import { Search, Plus, MapPin, Phone, Mail, Package, X } from 'lucide-react';
 import type { AnimalType } from '@/lib/database.types';
 
 const TYPE_EMOJI: Record<AnimalType, string> = {
-  cow: '🐄', goat: '🐐', sheep: '🐑', camel: '🐪', buffalo: '🐃',
+  cow: '🐄', goat: '🐐', sheep: '🐑', lamb: '🐑', camel: '🐪', buffalo: '🐃',
 };
 
 const MOCK_SUPPLIERS = [
@@ -57,7 +57,7 @@ function SupplierModal({ supplier, onClose }: { supplier?: typeof MOCK_SUPPLIERS
             <div className="form-group">
               <label className="form-label">Animal Types</label>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
-                {(['cow', 'goat', 'sheep', 'camel', 'buffalo'] as AnimalType[]).map(t => (
+                {(['cow', 'goat', 'sheep', 'lamb', 'camel', 'buffalo'] as AnimalType[]).map(t => (
                   <label key={t} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.875rem', cursor: 'pointer' }}>
                     <input type="checkbox" defaultChecked={supplier?.animal_types.includes(t)} />
                     {TYPE_EMOJI[t]} {t.charAt(0).toUpperCase() + t.slice(1)}

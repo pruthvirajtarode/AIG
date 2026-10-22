@@ -38,9 +38,13 @@ export type OrderStatus =
   | 'refunded';
 
 export type PaymentStatus = 'pending' | 'submitted' | 'under_review' | 'verified' | 'rejected' | 'refunded' | 'cancelled';
-export type PaymentMethod = 'bank_transfer' | 'credit_card' | 'debit_card' | 'online_gateway' | 'cash' | 'manual';
+export type PaymentMethod = 'bank_transfer' | 'paynow' | 'credit_card' | 'debit_card' | 'online_gateway' | 'cash' | 'manual';
 export type AnimalStatus = 'available' | 'reserved' | 'allocated' | 'growing' | 'inspection_pending' | 'inspection_passed' | 'qurban_ready' | 'slaughtered' | 'processed' | 'completed' | 'rejected';
-export type AnimalType = 'cow' | 'goat' | 'sheep' | 'camel' | 'buffalo';
+export type AnimalType = 'cow' | 'goat' | 'sheep' | 'lamb' | 'camel' | 'buffalo';
+export type ServiceType = 'qurban' | 'aqiqah' | 'nazar';
+/** Doorstep delivery share for Australia Qurban: 1/3, 2/3 or the full animal. */
+export type DeliveryPortion = 'one_third' | 'two_thirds' | 'full';
+export type WouldRecommend = 'definitely' | 'probably' | 'not_sure' | 'no';
 export type DeliveryStatus = 'pending' | 'scheduled' | 'out_for_delivery' | 'delivered' | 'failed' | 'returned' | 'cancelled';
 export type CertificateStatus = 'not_generated' | 'generating' | 'generated' | 'sent' | 'regenerated' | 'failed';
 export type NotificationChannel = 'email' | 'whatsapp' | 'sms' | 'in_app';
@@ -109,6 +113,9 @@ export interface Programme {
   description: string | null;
   country: string;
   region: string | null;
+  service_type: ServiceType;
+  supports_portions: boolean;
+  hijri_year: number | null;
   animal_type: AnimalType;
   animals_per_share: number;
   shares_available: number | null;
@@ -183,6 +190,20 @@ export interface Order {
   unit_price: number;
   total_amount: number;
   currency: string;
+  service_type: ServiceType;
+  /** Name the Qurban is performed for (certificate name); falls back to the payer. */
+  qurban_name: string | null;
+  qurban_phone: string | null;
+  qurban_email: string | null;
+  preferred_animal: AnimalType | null;
+  delivery_portion: DeliveryPortion | null;
+  hijri_year: number | null;
+  supplier_id: string | null;
+  /** Reference from the client's previous spreadsheet, used by the Excel import. */
+  legacy_ref: string | null;
+  is_returning_customer: boolean | null;
+  would_recommend: WouldRecommend | null;
+  feedback: string | null;
   recipient_name: string | null;
   recipient_notes: string | null;
   delivery_address: Json | null;
@@ -225,6 +246,8 @@ export interface Payment {
   refunded_at: string | null;
   refund_reference: string | null;
   notes: string | null;
+  /** Name shown on the PayNow / bank transfer; may differ from the participant. */
+  payee_name: string | null;
   metadata: Json;
   created_by: string | null;
   updated_by: string | null;
@@ -472,6 +495,11 @@ export interface Certificate {
   status: CertificateStatus;
   programme_name: string;
   participant_name: string;
+  service_type: ServiceType;
+  country: string | null;
+  hijri_year: number | null;
+  gregorian_year: number | null;
+  serial_number: string | null;
   qurban_date: string | null;
   animal_ref: string | null;
   animal_type: string | null;

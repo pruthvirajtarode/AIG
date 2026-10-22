@@ -49,7 +49,7 @@ const INITIAL_CERTIFICATES: Certificate[] = [
   { id: 'c5', certificate_ref: 'CERT-2025-00005', order_ref: 'AIG-2025-000156', participant_name: 'Mohamad Faiz bin Ali', programme_name: 'Cow Share — Palestine', country: 'Palestine', animal_ref: 'A-2025-001', animal_type: 'cow', animal_label: 'Cow', qurban_date: '2025-06-29', status: 'not_generated', generated_at: null, sent_at: null, verification_code: 'AIGCERT-I9J0-U5N6', year: '2025/1446H' },
 ];
 
-const ANIMAL_EMOJI: Record<string, string> = { cow: '🐄', goat: '🐐', sheep: '🐑', camel: '🐪', buffalo: '🐃' };
+const ANIMAL_EMOJI: Record<string, string> = { cow: '🐄', goat: '🐐', sheep: '🐑', lamb: '🐑', camel: '🐪', buffalo: '🐃' };
 
 // ── Islamic Lantern SVG ────────────────────────────────────────
 function Lantern({ x, y, scale = 1 }: { x: number; y: number; scale?: number }) {
