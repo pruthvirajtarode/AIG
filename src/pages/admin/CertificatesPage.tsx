@@ -4,6 +4,7 @@ import { Search, Award, Download, Send, RefreshCw, Eye, X, CheckCircle2, Printer
 import { formatDate } from '@/lib/utils';
 import type { CertificateStatus } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
+import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 
 const CERT_STATUS_BADGE: Record<CertificateStatus, string> = {
   not_generated: 'badge-gray',
@@ -49,7 +50,6 @@ const INITIAL_CERTIFICATES: Certificate[] = [
   { id: 'c5', certificate_ref: 'CERT-2025-00005', order_ref: 'AIG-2025-000156', participant_name: 'Mohamad Faiz bin Ali', programme_name: 'Cow Share — Palestine', country: 'Palestine', animal_ref: 'A-2025-001', animal_type: 'cow', animal_label: 'Cow', qurban_date: '2025-06-29', status: 'not_generated', generated_at: null, sent_at: null, verification_code: 'AIGCERT-I9J0-U5N6', year: '2025/1446H' },
 ];
 
-const ANIMAL_EMOJI: Record<string, string> = { cow: '🐄', goat: '🐐', sheep: '🐑', lamb: '🐑', camel: '🐪', buffalo: '🐃' };
 
 // ── Islamic Lantern SVG ────────────────────────────────────────
 function Lantern({ x, y, scale = 1 }: { x: number; y: number; scale?: number }) {
@@ -556,7 +556,10 @@ export function CertificatesPage() {
                   <td style={{ fontWeight: 500 }}>{c.participant_name}</td>
                   <td style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>{c.programme_name}</td>
                   <td>
-                    <span>{ANIMAL_EMOJI[c.animal_type]} {c.animal_ref}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <AnimalPhoto type={c.animal_type} size={32} radius={8} />
+                      {c.animal_ref}
+                    </span>
                   </td>
                   <td style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
                     {c.qurban_date ? formatDate(c.qurban_date) : '—'}

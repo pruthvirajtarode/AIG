@@ -4,13 +4,14 @@ import { ShoppingCart, Clock, CheckCircle2, ChevronDown, ChevronUp, Download, Ey
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { OrderStatus } from '@/lib/database.types';
+import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 
 const PARTICIPANT_ORDERS = [
   {
     id: 'o1',
     order_ref: 'AIG-2025-000158',
     programme: 'Cow Share — Somalia',
-    animal_type: '🐄',
+    animal_type: 'cow',
     quantity: 1,
     total_amount: 850,
     currency: 'SGD',
@@ -29,7 +30,7 @@ const PARTICIPANT_ORDERS = [
     id: 'o2',
     order_ref: 'AIG-2025-000110',
     programme: 'Goat — Malaysia',
-    animal_type: '🐐',
+    animal_type: 'goat',
     quantity: 2,
     total_amount: 840,
     currency: 'SGD',
@@ -87,7 +88,7 @@ export function PortalOrdersPage() {
               onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <span style={{ fontSize: '2rem' }}>{order.animal_type}</span>
+                <AnimalPhoto type={order.animal_type} size={56} radius={12} />
                 <div>
                   <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{order.programme}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>

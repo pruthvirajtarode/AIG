@@ -3,6 +3,7 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, Plus, BookOpen, Globe, Eye, X } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { AnimalType, DistributionMethod } from '@/lib/database.types';
+import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 
 const DISTRIBUTION_LABEL: Record<DistributionMethod, string> = {
   local_distribution: 'Local Distribution',
@@ -140,8 +141,8 @@ export function ProgrammesPage() {
           return (
             <div key={p.id} className="card card-hover" style={{ cursor: 'pointer' }} onClick={() => { setEditProgramme(p); setShowModal(true); }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.875rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                  <span style={{ fontSize: '1.875rem' }}>{ANIMAL_EMOJI[p.animal_type]}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+                  <AnimalPhoto type={p.animal_type} size={60} radius={12} />
                   <div>
                     <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9375rem' }}>{p.name}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.125rem' }}>

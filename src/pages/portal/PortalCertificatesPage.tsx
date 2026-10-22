@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { Award, Download, QrCode, Eye, X } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 
 const PARTICIPANT_CERTS = [
   {
@@ -9,7 +10,7 @@ const PARTICIPANT_CERTS = [
     certificate_ref: 'CERT-2024-00042',
     programme_name: 'Goat — Malaysia',
     animal_ref: 'A-2024-087',
-    animal_type: '🐐',
+    animal_type: 'goat',
     qurban_date: '2024-06-30',
     status: 'sent',
     generated_at: '2024-07-01T09:00:00Z',
@@ -49,7 +50,7 @@ function CertViewModal({ cert, onClose }: { cert: typeof PARTICIPANT_CERTS[0]; o
               </div>
               <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '2rem' }}>
                 {[
-                  ['Animal', `${cert.animal_type} ${cert.animal_ref}`],
+                  ['Animal', `${cert.animal_type.charAt(0).toUpperCase() + cert.animal_type.slice(1)} · ${cert.animal_ref}`],
                   ['Qurban Date', formatDate(cert.qurban_date)],
                   ['Certificate', cert.certificate_ref],
                 ].map(([label, value]) => (
@@ -108,7 +109,7 @@ export function PortalCertificatesPage() {
               {/* Certificate preview */}
               <div style={{ padding: '2rem 1rem', background: 'linear-gradient(160deg, var(--aig-green-900), var(--surface-800))', borderRadius: 10, marginBottom: '1rem', position: 'relative', overflow: 'hidden' }}>
                 <div style={{ position: 'absolute', width: 150, height: 150, borderRadius: '50%', background: 'radial-gradient(circle, rgba(31,133,97,0.2), transparent)', top: -50, right: -50, pointerEvents: 'none' }} />
-                <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>{cert.animal_type}</div>
+                <AnimalPhoto type={cert.animal_type} size={88} radius={16} style={{ margin: '0 auto 0.75rem' }} />
                 <Award size={36} color="var(--gold-400)" style={{ margin: '0 auto 0.75rem' }} />
                 <div style={{ fontSize: '0.75rem', color: 'var(--gold-400)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                   Certificate of Qurban

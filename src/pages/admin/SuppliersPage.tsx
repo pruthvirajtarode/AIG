@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Plus, MapPin, Phone, Mail, Package, X } from 'lucide-react';
 import type { AnimalType } from '@/lib/database.types';
+import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 
 const TYPE_EMOJI: Record<AnimalType, string> = {
   cow: '🐄', goat: '🐐', sheep: '🐑', lamb: '🐑', camel: '🐪', buffalo: '🐃',
@@ -158,7 +159,7 @@ export function SuppliersPage() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
                 {s.animal_types.map(t => (
-                  <span key={t} style={{ fontSize: '1rem' }} title={t}>{TYPE_EMOJI[t]}</span>
+                  <AnimalPhoto key={t} type={t} size={34} radius={8} />
                 ))}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>

@@ -4,16 +4,9 @@ import { Search, Plus, X, Weight, CheckCircle2, ClipboardCheck, RefreshCw } from
 import { formatDate } from '@/lib/utils';
 import type { AnimalStatus, AnimalType } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
+import { ANIMAL_IMAGES } from '@/lib/animalImages';
 
-// ── Real photorealistic animal images ─────────────────────────
-const ANIMAL_IMAGES: Record<AnimalType, string> = {
-  cow:     '/animal-cow.png',
-  sheep:   '/animal-sheep.png',
-  goat:    '/animal-goat.png',
-  lamb:    '/animal-sheep.png',
-  camel:   '/animal-cow.png',   // fallback
-  buffalo: '/animal-cow.png',   // fallback
-};
+// ── Real photorealistic animal images (shared map in lib/animalImages) ──
 
 const ANIMAL_STATUS_BADGE: Record<AnimalStatus, string> = {
   available:          'badge-green',
