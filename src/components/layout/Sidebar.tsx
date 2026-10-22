@@ -79,7 +79,18 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
 
-  const navGroups = isStaff() ? STAFF_NAV : PARTICIPANT_NAV;
+  // Menu follows the section being viewed. Staff browsing /portal get the participant menu
+  // plus a shortcut back to the admin panel.
+  const inPortal = location.pathname.startsWith('/portal');
+  const navGroups: NavGroup[] = inPortal
+    ? [
+        ...PARTICIPANT_NAV,
+        ...(isStaff()
+          ? [{ label: 'Staff', items: [{ label: 'Admin Panel', icon: LayoutDashboard, path: '/admin' }] }]
+          : []),
+      ]
+    : (isStaff() ? STAFF_NAV : PARTICIPANT_NAV);
+  const rootPath = inPortal || !isStaff() ? '/portal' : '/admin';
   const initials = profile
     ? `${profile.first_name.charAt(0)}${profile.last_name.charAt(0)}`
     : 'U';
@@ -178,7 +189,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
             )}
             {group.items.map(item => {
               const Icon = item.icon;
-              const isActive = item.path === (isStaff() ? '/admin' : '/portal')
+              const isActive = item.path === rootPath || item.path === '/admin'
                 ? location.pathname === item.path
                 : location.pathname.startsWith(item.path);
 

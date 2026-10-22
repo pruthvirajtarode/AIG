@@ -25,9 +25,10 @@ export function LoginPage() {
       toast('error', 'Sign in failed', error);
     } else {
       toast('success', 'Welcome back!');
-      // Route by the role that signIn() just loaded (not by stale context state).
-      // Staff (incl. super admin) always land in the admin panel; participants in the portal.
-      navigate(staffUser ? '/admin' : '/portal', { replace: true });
+      // Route by the role that signIn() just loaded (not by stale context state):
+      //  - Participant sign-in page  -> always the participant portal
+      //  - Admin sign-in page        -> staff go to /admin, participants to /portal
+      navigate(isParticipantMode || !staffUser ? '/portal' : '/admin', { replace: true });
     }
   };
 
