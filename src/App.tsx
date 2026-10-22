@@ -146,10 +146,13 @@ function RequireStaff({ children }: { children: React.ReactNode }) {
 }
 
 function RequireParticipant({ children }: { children: React.ReactNode }) {
-  const { isParticipant, isStaff, isLoading } = useAuth();
+  const { isParticipant, isStaff, isLoading, isAuthenticated, profileFetchAttempted } = useAuth();
 
   if (isLoading) return <AuthLoader message="Loading…" />;
-  if (!isParticipant() && !isStaff()) return <Navigate to="/admin" replace />;
+  if (isAuthenticated && !profileFetchAttempted) return <AuthLoader message="Loading profile…" />;
+
+  // No usable role (profile missing) — go back to login instead of bouncing between /admin and /portal
+  if (!isParticipant() && !isStaff()) return <Navigate to="/login" replace />;
 
   return <>{children}</>;
 }

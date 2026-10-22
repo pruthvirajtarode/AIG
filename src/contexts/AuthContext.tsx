@@ -12,7 +12,7 @@ interface AuthContextValue {
   isLoading: boolean;
   profileFetchAttempted: boolean;
   isAuthenticated: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signIn: (email: string, password: string) => Promise<{ error: string | null; role?: UserRole | null; isStaff?: boolean }>;
   signUp: (params: SignUpParams) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -36,6 +36,11 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 // ── Auth timeout constant ─────────────────────────────────────
 const AUTH_TIMEOUT_MS = 4000;
 
+// Roles that belong in the admin panel (everything except 'participant')
+const STAFF_ROLES: UserRole[] = [
+  'super_admin', 'operations_admin', 'supplier_manager', 'field_team', 'driver', 'd3_technical_admin',
+];
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -44,10 +49,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profileFetchAttempted, setProfileFetchAttempted] = useState(false);
   const initialised = useRef(false);
 
-  const fetchProfile = useCallback(async (userId: string) => {
+  const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
     if (!isSupabaseConfigured) {
       // Dev mode: set a mock profile so the UI still loads
-      setProfile({
+      const mock = {
         id: userId,
         tenant_id: 'demo',
         first_name: 'Demo',
@@ -58,14 +63,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         is_active: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      } as Profile);
+      } as Profile;
+      setProfile(mock);
       setProfileFetchAttempted(true);
-      return;
+      return mock;
     }
 
     // Set up an abort timer — after AUTH_TIMEOUT_MS, just stop waiting
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; }, AUTH_TIMEOUT_MS);
+    let result: Profile | null = null;
 
     try {
       // Try RPC first (SECURITY DEFINER function bypasses RLS)
@@ -73,14 +80,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const rpcResp = await supabase.rpc('get_my_profile') as unknown as RpcResult;
       if (!timedOut && !rpcResp.error && rpcResp.data) {
         setProfile(rpcResp.data);
-        setProfileFetchAttempted(true);
-        clearTimeout(timer);
-        return;
+        result = rpcResp.data;
+        return result;
       }
 
       if (timedOut) {
         console.warn('Profile RPC timed out');
-        return;
+        return null;
       }
 
       // Fallback: direct table query
@@ -88,11 +94,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const rowResp = await supabase.from('profiles').select('*').eq('id', userId).single() as unknown as RowResult;
       if (!timedOut && !rowResp.error && rowResp.data) {
         setProfile(rowResp.data);
+        result = rowResp.data;
       } else if (!timedOut) {
         console.warn('Profile fetch failed — running without profile data');
       }
+      return result;
     } catch (e) {
       console.warn('Profile fetch exception:', e);
+      return null;
     } finally {
       clearTimeout(timer);
       setProfileFetchAttempted(true);
@@ -139,7 +148,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session?.user ?? null);
 
         if (event === 'SIGNED_IN' && session?.user) {
-          await fetchProfile(session.user.id);
+          // Defer: calling supabase APIs synchronously inside this callback can deadlock
+          // the auth lock while signInWithPassword() is still resolving.
+          const uid = session.user.id;
+          setTimeout(() => { void fetchProfile(uid); }, 0);
         } else if (event === 'SIGNED_OUT') {
           setProfile(null);
           setProfileFetchAttempted(false);
@@ -154,7 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [fetchProfile]);
 
-  const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
+  const signIn = async (email: string, password: string): Promise<{ error: string | null; role?: UserRole | null; isStaff?: boolean }> => {
     try {
       const race = <T,>(p: Promise<T>, ms: number): Promise<T | null> =>
         Promise.race<T | null>([p, new Promise<null>(res => setTimeout(() => res(null), ms))]);
@@ -166,11 +178,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!result) return { error: 'Login timed out — please check your connection and try again.' };
       const { data, error } = result;
       if (error) return { error: error.message };
-      if (data.user) {
-        setUser(data.user);
-        setSession(data.session);
+      if (!data.user) return { error: 'Sign in failed — no user returned.' };
+
+      setUser(data.user);
+      setSession(data.session);
+
+      // Load the profile BEFORE returning so the caller can route by the real role.
+      const loaded = await fetchProfile(data.user.id);
+      if (!loaded) {
+        await supabase.auth.signOut();
+        return { error: 'Signed in, but your profile could not be loaded. Please try again.' };
       }
-      return { error: null };
+      return { error: null, role: loaded.role, isStaff: STAFF_ROLES.includes(loaded.role) };
     } catch (e: unknown) {
       return { error: e instanceof Error ? e.message : 'An unexpected error occurred' };
     }
@@ -217,8 +236,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return roles.includes(profile.role);
   };
 
-  const isStaff = () =>
-    hasRole('super_admin', 'operations_admin', 'supplier_manager', 'field_team', 'driver', 'd3_technical_admin');
+  const isStaff = () => !!profile && STAFF_ROLES.includes(profile.role);
 
   const isSuperAdmin = () => hasRole('super_admin');
   const isParticipant = () => hasRole('participant');

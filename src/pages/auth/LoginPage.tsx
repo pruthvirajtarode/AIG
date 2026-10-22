@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 
 export function LoginPage() {
-  const { signIn, isStaff } = useAuth();
+  const { signIn } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -19,18 +19,15 @@ export function LoginPage() {
     e.preventDefault();
     if (!email || !password) return;
     setLoading(true);
-    const { error } = await signIn(email, password);
+    const { error, isStaff: staffUser } = await signIn(email, password);
     setLoading(false);
     if (error) {
       toast('error', 'Sign in failed', error);
     } else {
       toast('success', 'Welcome back!');
-      // Route to correct portal based on role
-      if (isParticipantMode || !isStaff()) {
-        navigate('/portal');
-      } else {
-        navigate('/admin');
-      }
+      // Route by the role that signIn() just loaded (not by stale context state).
+      // Staff (incl. super admin) always land in the admin panel; participants in the portal.
+      navigate(staffUser ? '/admin' : '/portal', { replace: true });
     }
   };
 
