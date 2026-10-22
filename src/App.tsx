@@ -20,6 +20,7 @@ const AuditLogPage      = lazy(() => import('@/pages/admin/AuditLogPage').then(m
 const SettingsPage      = lazy(() => import('@/pages/admin/SettingsPage').then(m => ({ default: m.SettingsPage })));
 
 // ── Participant Portal Pages (lazy loaded) ────────────────────
+const PortalDashboardPage     = lazy(() => import('@/pages/portal/PortalDashboardPage').then(m => ({ default: m.PortalDashboardPage })));
 const PortalOrdersPage        = lazy(() => import('@/pages/portal/PortalOrdersPage').then(m => ({ default: m.PortalOrdersPage })));
 const PortalCertificatesPage  = lazy(() => import('@/pages/portal/PortalCertificatesPage').then(m => ({ default: m.PortalCertificatesPage })));
 const PortalNotificationsPage = lazy(() => import('@/pages/portal/PortalNotificationsPage').then(m => ({ default: m.PortalNotificationsPage })));
@@ -39,6 +40,7 @@ const prefetchAllPages = () => {
     () => import('@/pages/admin/ExceptionsPage'),
     () => import('@/pages/admin/AuditLogPage'),
     () => import('@/pages/admin/SettingsPage'),
+    () => import('@/pages/portal/PortalDashboardPage'),
     () => import('@/pages/portal/PortalOrdersPage'),
     () => import('@/pages/portal/PortalCertificatesPage'),
     () => import('@/pages/portal/PortalNotificationsPage'),
@@ -221,7 +223,8 @@ export default function App() {
               </RequireAuth>
             }
           >
-            <Route index element={<PortalOrdersPage />} />
+            <Route index element={<PortalDashboardPage />} />
+            <Route path="orders"        element={<PortalOrdersPage />} />
             <Route path="certificates"  element={<PortalCertificatesPage />} />
             <Route path="notifications" element={<PortalNotificationsPage />} />
           </Route>

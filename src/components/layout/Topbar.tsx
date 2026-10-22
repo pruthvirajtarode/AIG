@@ -10,9 +10,10 @@ interface TopbarProps {
 export function Topbar({ title, onMenuClick }: TopbarProps) {
   const { profile } = useAuth();
   const [showNotifs, setShowNotifs] = useState(false);
-  const initials = profile
-    ? `${profile.first_name.charAt(0)}${profile.last_name.charAt(0)}`
-    : 'U';
+  const fullName = `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim();
+  const initials = fullName
+    ? `${profile!.first_name.charAt(0)}${profile!.last_name.charAt(0)}`.toUpperCase()
+    : (profile?.email?.charAt(0).toUpperCase() ?? 'U');
 
   return (
     <header className="topbar">

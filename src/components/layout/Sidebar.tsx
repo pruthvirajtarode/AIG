@@ -67,7 +67,8 @@ const STAFF_NAV: NavGroup[] = [
 const PARTICIPANT_NAV: NavGroup[] = [
   {
     items: [
-      { label: 'My Orders',     icon: ShoppingCart, path: '/portal' },
+      { label: 'Home',          icon: LayoutDashboard, path: '/portal' },
+      { label: 'My Orders',     icon: ShoppingCart, path: '/portal/orders' },
       { label: 'Certificates',  icon: Award,        path: '/portal/certificates' },
       { label: 'Notifications', icon: Bell,         path: '/portal/notifications' },
     ],
@@ -91,9 +92,11 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
       ]
     : (isStaff() ? STAFF_NAV : PARTICIPANT_NAV);
   const rootPath = inPortal || !isStaff() ? '/portal' : '/admin';
-  const initials = profile
-    ? `${profile.first_name.charAt(0)}${profile.last_name.charAt(0)}`
-    : 'U';
+  const fullName = `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim();
+  const displayName = fullName || (inPortal ? (profile?.email ?? '') : '');
+  const initials = fullName
+    ? `${profile!.first_name.charAt(0)}${profile!.last_name.charAt(0)}`.toUpperCase()
+    : (profile?.email?.charAt(0).toUpperCase() ?? 'U');
 
   const handleNavClick = () => { if (onClose) onClose(); };
 
@@ -229,12 +232,17 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
           </div>
           {!collapsed && (
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {profile?.first_name} {profile?.last_name}
-              </div>
-              <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textTransform: 'capitalize', marginTop: '0.0625rem' }}>
-                {profile?.role?.replace(/_/g, ' ')}
-              </div>
+              {displayName && (
+                <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {displayName}
+                </div>
+              )}
+              {/* Role label is for the admin panel only — never shown to participants / in the portal */}
+              {!inPortal && (
+                <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textTransform: 'capitalize', marginTop: '0.0625rem' }}>
+                  {profile?.role?.replace(/_/g, ' ')}
+                </div>
+              )}
             </div>
           )}
         </div>
