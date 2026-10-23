@@ -15,13 +15,12 @@ const DISTRIBUTION_LABEL: Record<DistributionMethod, string> = {
 
 const ANIMAL_EMOJI: Record<AnimalType, string> = { cow: '🐄', goat: '🐐', sheep: '🐑', lamb: '🐑', camel: '🐪', buffalo: '🐃' };
 
-const MOCK_PROGRAMMES = [
-  { id: 'pr1', name: 'Cow Share — Somalia', slug: 'cow-somalia-2025', country: 'Somalia', animal_type: 'cow' as AnimalType, animals_per_share: 7, price_per_share: 850, currency: 'SGD', shares_available: 28, min_quantity: 1, distribution_method: 'air_freight' as DistributionMethod, is_active: true, qurban_date: '2025-06-28', orders_count: 42 },
-  { id: 'pr2', name: 'Goat — Malaysia', slug: 'goat-malaysia-2025', country: 'Malaysia', animal_type: 'goat' as AnimalType, animals_per_share: 1, price_per_share: 420, currency: 'SGD', shares_available: 50, min_quantity: 1, distribution_method: 'local_distribution' as DistributionMethod, is_active: true, qurban_date: '2025-06-29', orders_count: 31 },
-  { id: 'pr3', name: 'Sheep — Turkey', slug: 'sheep-turkey-2025', country: 'Turkey', animal_type: 'sheep' as AnimalType, animals_per_share: 1, price_per_share: 380, currency: 'SGD', shares_available: 35, min_quantity: 1, distribution_method: 'air_freight' as DistributionMethod, is_active: true, qurban_date: '2025-06-28', orders_count: 28 },
-  { id: 'pr4', name: 'Cow Share — Palestine', slug: 'cow-palestine-2025', country: 'Palestine', animal_type: 'cow' as AnimalType, animals_per_share: 7, price_per_share: 950, currency: 'SGD', shares_available: 14, min_quantity: 1, distribution_method: 'sea_freight' as DistributionMethod, is_active: true, qurban_date: '2025-06-29', orders_count: 18 },
-  { id: 'pr5', name: 'Goat — Bangladesh', slug: 'goat-bangladesh-2025', country: 'Bangladesh', animal_type: 'goat' as AnimalType, animals_per_share: 1, price_per_share: 390, currency: 'SGD', shares_available: 0, min_quantity: 1, distribution_method: 'air_freight' as DistributionMethod, is_active: false, qurban_date: '2025-06-28', orders_count: 24 },
-];
+const MOCK_PROGRAMMES: {
+  id: string; name: string; slug: string; country: string; animal_type: AnimalType;
+  animals_per_share: number; price_per_share: number; currency: string;
+  shares_available: number; min_quantity: number; distribution_method: DistributionMethod;
+  is_active: boolean; qurban_date: string; orders_count: number;
+}[] = [];
 
 function ProgrammeModal({ programme, onClose }: { programme?: typeof MOCK_PROGRAMMES[0]; onClose: () => void }) {
   const isNew = !programme;

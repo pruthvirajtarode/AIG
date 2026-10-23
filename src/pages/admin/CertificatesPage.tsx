@@ -26,13 +26,7 @@ const CERT_STATUS_LABEL: Record<CertificateStatus, string> = {
 };
 
 
-const INITIAL_CERTIFICATES: Certificate[] = [
-  { id: 'c1', certificate_ref: 'CERT-2025-00001', order_ref: 'AIG-2025-000155', participant_name: 'Siti Norzahra binti Md Zain', programme_name: 'Sheep — Turkey', country: 'Turkey', animal_ref: 'A-2025-007', animal_type: 'sheep', animal_label: 'Sheep', qurban_date: '2025-06-28', status: 'sent', generated_at: '2025-07-01T09:00:00Z', sent_at: '2025-07-01T09:05:00Z', verification_code: 'AIGCERT-A7B2-X9Q1', year: '2025/1446H' },
-  { id: 'c2', certificate_ref: 'CERT-2025-00002', order_ref: 'AIG-2025-000154', participant_name: 'Zulkifli bin Othman', programme_name: 'Goat — Bangladesh', country: 'Bangladesh', animal_ref: 'A-2025-002', animal_type: 'goat', animal_label: 'Goat', qurban_date: '2025-06-28', status: 'sent', generated_at: '2025-07-01T09:10:00Z', sent_at: '2025-07-01T09:15:00Z', verification_code: 'AIGCERT-C3D4-Y7W2', year: '2025/1446H' },
-  { id: 'c3', certificate_ref: 'CERT-2025-00003', order_ref: 'AIG-2025-000150', participant_name: 'Faridah binti Salleh', programme_name: 'Goat — Bangladesh', country: 'Bangladesh', animal_ref: 'A-2025-005', animal_type: 'goat', animal_label: 'Goat', qurban_date: '2025-06-28', status: 'generated', generated_at: '2025-07-02T08:30:00Z', sent_at: null, verification_code: 'AIGCERT-E5F6-Z3K8', year: '2025/1446H' },
-  { id: 'c4', certificate_ref: 'CERT-2025-00004', order_ref: 'AIG-2025-000153', participant_name: 'Nur Izzati binti Kamal', programme_name: 'Cow Share — Somalia', country: 'Somalia', animal_ref: 'A-2025-004', animal_type: 'cow', animal_label: 'Cow', qurban_date: '2025-06-28', status: 'not_generated', generated_at: null, sent_at: null, verification_code: 'AIGCERT-G7H8-V1M4', year: '2025/1446H' },
-  { id: 'c5', certificate_ref: 'CERT-2025-00005', order_ref: 'AIG-2025-000156', participant_name: 'Mohamad Faiz bin Ali', programme_name: 'Cow Share — Palestine', country: 'Palestine', animal_ref: 'A-2025-001', animal_type: 'cow', animal_label: 'Cow', qurban_date: '2025-06-29', status: 'not_generated', generated_at: null, sent_at: null, verification_code: 'AIGCERT-I9J0-U5N6', year: '2025/1446H' },
-];
+const INITIAL_CERTIFICATES: Certificate[] = [];
 
 
 // ── Certificate Preview + Action Modal ─────────────────────────

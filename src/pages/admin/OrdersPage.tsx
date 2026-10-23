@@ -22,20 +22,7 @@ type Order = {
 };
 
 // ── Mock Data ─────────────────────────────────────────────────
-const INITIAL_ORDERS: Order[] = [
-  { id: '1',  order_ref: 'AIG-2025-000158', participant: 'Ahmad Rizal bin Yusof',       programme: 'Cow Share — Somalia',    quantity: 1, total_amount: 850,  currency: 'SGD', status: 'payment_verified'  as OrderStatus, created_at: '2025-05-14T08:22:00Z' },
-  { id: '2',  order_ref: 'AIG-2025-000157', participant: 'Nurul Ain binti Hassan',        programme: 'Goat — Malaysia',        quantity: 2, total_amount: 840,  currency: 'SGD', status: 'payment_submitted' as OrderStatus, created_at: '2025-05-13T15:47:00Z' },
-  { id: '3',  order_ref: 'AIG-2025-000156', participant: 'Mohamad Faiz bin Ali',          programme: 'Cow Share — Palestine',  quantity: 1, total_amount: 950,  currency: 'SGD', status: 'animal_allocated'  as OrderStatus, created_at: '2025-05-13T11:05:00Z' },
-  { id: '4',  order_ref: 'AIG-2025-000155', participant: 'Siti Norzahra binti Md Zain',  programme: 'Sheep — Turkey',         quantity: 1, total_amount: 380,  currency: 'SGD', status: 'delivered'         as OrderStatus, created_at: '2025-05-12T09:30:00Z' },
-  { id: '5',  order_ref: 'AIG-2025-000154', participant: 'Zulkifli bin Othman',           programme: 'Goat — Bangladesh',     quantity: 1, total_amount: 390,  currency: 'SGD', status: 'completed'         as OrderStatus, created_at: '2025-05-11T16:20:00Z' },
-  { id: '6',  order_ref: 'AIG-2025-000153', participant: 'Nur Izzati binti Kamal',        programme: 'Cow Share — Somalia',    quantity: 1, total_amount: 850,  currency: 'SGD', status: 'confirmed'         as OrderStatus, created_at: '2025-05-11T10:15:00Z' },
-  { id: '7',  order_ref: 'AIG-2025-000152', participant: 'Hafizuddin bin Ramli',          programme: 'Goat — Malaysia',        quantity: 3, total_amount: 1260, currency: 'SGD', status: 'pending_payment'   as OrderStatus, created_at: '2025-05-10T14:00:00Z' },
-  { id: '8',  order_ref: 'AIG-2025-000151', participant: 'Rohani binti Abdul Ghani',      programme: 'Sheep — Turkey',         quantity: 2, total_amount: 760,  currency: 'SGD', status: 'draft'             as OrderStatus, created_at: '2025-05-10T09:45:00Z' },
-  { id: '9',  order_ref: 'AIG-2025-000150', participant: 'Khairul Anwar bin Ibrahim',     programme: 'Cow Share — Palestine',  quantity: 1, total_amount: 950,  currency: 'SGD', status: 'payment_rejected'  as OrderStatus, created_at: '2025-05-09T11:30:00Z' },
-  { id: '10', order_ref: 'AIG-2025-000149', participant: 'Faridah binti Salleh',          programme: 'Goat — Bangladesh',     quantity: 1, total_amount: 390,  currency: 'SGD', status: 'certificate_generated' as OrderStatus, created_at: '2025-05-08T08:00:00Z' },
-  { id: '11', order_ref: 'AIG-2025-000148', participant: 'Azlina binti Mohd Noor',        programme: 'Sheep — Turkey',         quantity: 1, total_amount: 380,  currency: 'SGD', status: 'confirmed'         as OrderStatus, created_at: '2025-05-07T10:00:00Z' },
-  { id: '12', order_ref: 'AIG-2025-000147', participant: 'Rahmat bin Sulaiman',            programme: 'Cow Share — Somalia',    quantity: 1, total_amount: 850,  currency: 'SGD', status: 'animal_allocated'  as OrderStatus, created_at: '2025-05-07T08:00:00Z' },
-];
+const INITIAL_ORDERS: Order[] = [];
 
 const NEXT_STATUSES: Partial<Record<OrderStatus, OrderStatus>> = {
   draft:             'pending_payment',

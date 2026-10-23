@@ -7,14 +7,11 @@ const TYPE_EMOJI: Record<AnimalType, string> = {
   cow: '🐄', goat: '🐐', sheep: '🐑', lamb: '🐑', camel: '🐪', buffalo: '🐃',
 };
 
-const MOCK_SUPPLIERS = [
-  { id: 's1', supplier_ref: 'SUP-001', name: 'Ternakan Maju Sdn Bhd', contact_name: 'Hj. Mazlan bin Ismail', email: 'mazlan@ternakan-maju.com.my', phone: '+60 9 7712345', country: 'Malaysia', region: 'Kelantan', animal_types: ['cow', 'goat'] as AnimalType[], is_active: true, animals_count: 42 },
-  { id: 's2', supplier_ref: 'SUP-002', name: 'Horn Africa Livestock', contact_name: 'Abdi Farah Hassan', email: 'abdi@hornafricaLV.so', phone: '+252 61 5004321', country: 'Somalia', region: null, animal_types: ['cow', 'camel'] as AnimalType[], is_active: true, animals_count: 28 },
-  { id: 's3', supplier_ref: 'SUP-003', name: 'Serasi Livestock', contact_name: 'Zainal Abidin bin Kassim', email: 'zainal@serasi.com.my', phone: '+60 9 2231122', country: 'Malaysia', region: 'Pahang', animal_types: ['goat', 'sheep'] as AnimalType[], is_active: true, animals_count: 19 },
-  { id: 's4', supplier_ref: 'SUP-004', name: 'Anatolia Livestock', contact_name: 'Mehmet Yilmaz', email: 'mehmet@anatolia-ls.tr', phone: '+90 312 4445566', country: 'Turkey', region: null, animal_types: ['sheep'] as AnimalType[], is_active: true, animals_count: 15 },
-  { id: 's5', supplier_ref: 'SUP-005', name: 'Dhaka Livestock Cooperative', contact_name: 'Md. Karimullah', email: 'karimullah@dhakaLS.bd', phone: '+880 1712 334455', country: 'Bangladesh', region: null, animal_types: ['cow', 'goat'] as AnimalType[], is_active: false, animals_count: 0 },
-  { id: 's6', supplier_ref: 'SUP-006', name: 'JB Livestock Hub', contact_name: 'Tan Ah Kow', email: 'ahkow@jblivestock.com.my', phone: '+60 7 2234567', country: 'Malaysia', region: 'Johor', animal_types: ['cow'] as AnimalType[], is_active: true, animals_count: 8 },
-];
+const MOCK_SUPPLIERS: {
+  id: string; supplier_ref: string; name: string; contact_name: string;
+  email: string; phone: string; country: string; region: string | null;
+  animal_types: AnimalType[]; is_active: boolean; animals_count: number;
+}[] = [];
 
 function SupplierModal({ supplier, onClose }: { supplier?: typeof MOCK_SUPPLIERS[0]; onClose: () => void }) {
   const isNew = !supplier;

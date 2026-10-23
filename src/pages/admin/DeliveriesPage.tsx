@@ -39,14 +39,7 @@ type Delivery = {
   delivery_slot: string | null;
 };
 
-const INITIAL_DELIVERIES: Delivery[] = [
-  { id: 'd1', delivery_ref: 'DEL-2025-001', order_ref: 'AIG-2025-000155', participant: 'Siti Norzahra binti Md Zain', contact_phone: '+60 12-3456789', status: 'delivered',       scheduled_date: '2025-05-10', delivered_at: '2025-05-10T14:32:00Z', address: '12, Jalan Damai 3, Taman Damai, 43000 Kajang, Selangor',             driver: 'Roslan bin Ahmad',   delivery_slot: '2:00 PM – 5:00 PM' },
-  { id: 'd2', delivery_ref: 'DEL-2025-002', order_ref: 'AIG-2025-000156', participant: 'Mohamad Faiz bin Ali',       contact_phone: '+60 11-9876543', status: 'out_for_delivery', scheduled_date: '2025-05-15', delivered_at: null,                    address: '88B, Jalan Pudu Lama, 55100 Kuala Lumpur',                          driver: 'Hamidi bin Salleh',  delivery_slot: '10:00 AM – 1:00 PM' },
-  { id: 'd3', delivery_ref: 'DEL-2025-003', order_ref: 'AIG-2025-000157', participant: 'Nurul Ain binti Hassan',     contact_phone: '+60 16-5554321', status: 'scheduled',        scheduled_date: '2025-05-16', delivered_at: null,                    address: 'Unit 12-04, Menara Vista, Jalan PJU 8/5A, 47820 Petaling Jaya',    driver: 'Pending assignment', delivery_slot: '9:00 AM – 12:00 PM' },
-  { id: 'd4', delivery_ref: 'DEL-2025-004', order_ref: 'AIG-2025-000150', participant: 'Faridah binti Salleh',       contact_phone: '+60 17-3214567', status: 'delivered',        scheduled_date: '2025-05-08', delivered_at: '2025-05-08T11:15:00Z', address: '5, Jalan Beringin 6, Taman Hillpark, 56100 Kuala Lumpur',           driver: 'Roslan bin Ahmad',   delivery_slot: '10:00 AM – 1:00 PM' },
-  { id: 'd5', delivery_ref: 'DEL-2025-005', order_ref: 'AIG-2025-000153', participant: 'Nur Izzati binti Kamal',     contact_phone: '+60 14-7774444', status: 'failed',           scheduled_date: '2025-05-12', delivered_at: null,                    address: '23, Lorong Maju 5, Taman Maju, 81300 Skudai, Johor',               driver: 'Hamidi bin Salleh',  delivery_slot: '2:00 PM – 5:00 PM' },
-  { id: 'd6', delivery_ref: 'DEL-2025-006', order_ref: 'AIG-2025-000152', participant: 'Hafizuddin bin Ramli',       contact_phone: '+60 13-2223333', status: 'pending',          scheduled_date: null,         delivered_at: null,                    address: '77, Jalan Aman, Taman Aman, 70400 Seremban, Negeri Sembilan',      driver: null,                 delivery_slot: null },
-];
+const INITIAL_DELIVERIES: Delivery[] = [];
 
 function DeliveryModal({ delivery, onClose, onUpdateStatus }: {
   delivery: Delivery;

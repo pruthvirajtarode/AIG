@@ -41,13 +41,7 @@ type ExceptionItem = {
   created_at: string;
 };
 
-const INITIAL_EXCEPTIONS: ExceptionItem[] = [
-  { id: 'e1', severity: 'critical', status: 'open',        category: 'Animal',      title: 'Animal weight below minimum threshold',   description: 'Animal A-2025-008 (Limousin cow) is at 280kg, below the required minimum of 350kg. The Qurban date is in 13 days. Immediate intervention required.',   related_entity: 'animal',      related_entity_id: 'A-2025-008',      assigned_to: null,               created_at: '2025-05-15T07:30:00Z' },
-  { id: 'e2', severity: 'high',     status: 'in_progress', category: 'Payment',     title: 'Payment bank slip unreadable',             description: 'Payment PAY-2025-000041 bank slip image is too blurry to verify. Participant has been notified to resubmit.',                                           related_entity: 'payment',     related_entity_id: 'PAY-2025-000041', assigned_to: 'Ahmad Salihin',    created_at: '2025-05-14T10:00:00Z' },
-  { id: 'e3', severity: 'medium',   status: 'open',        category: 'Delivery',    title: 'Delivery failed — recipient not home',     description: 'Driver Hamidi attempted delivery of DEL-2025-005 at 3:15 PM but recipient was not home. Second attempt needs to be scheduled.',                         related_entity: 'delivery',    related_entity_id: 'DEL-2025-005',    assigned_to: null,               created_at: '2025-05-12T16:00:00Z' },
-  { id: 'e4', severity: 'low',      status: 'resolved',    category: 'Certificate', title: 'Certificate generation failed',            description: 'PDF generation service timeout caused CERT-2025-00003 to fail. Issue was retried and certificate generated successfully.',                             related_entity: 'certificate', related_entity_id: 'CERT-2025-00003', assigned_to: 'D3 Technical Admin', created_at: '2025-05-11T14:20:00Z' },
-  { id: 'e5', severity: 'high',     status: 'escalated',   category: 'Payment',     title: 'Duplicate payment detected',               description: 'Participant Ahmad Rizal appears to have submitted two payments for Order AIG-2025-000158. Refund process initiated.',                                  related_entity: 'payment',     related_entity_id: 'PAY-2025-000040', assigned_to: 'Operations Admin', created_at: '2025-05-10T11:00:00Z' },
-];
+const INITIAL_EXCEPTIONS: ExceptionItem[] = [];
 
 function ExceptionModal({ exception: ex, onClose, onResolve, onAssign }: {
   exception: ExceptionItem;

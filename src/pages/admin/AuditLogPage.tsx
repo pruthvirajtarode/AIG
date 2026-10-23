@@ -3,18 +3,11 @@ import { Search, FileText, Filter } from 'lucide-react';
 import { formatDateTime } from '@/lib/utils';
 import type { UserRole } from '@/lib/database.types';
 
-const MOCK_AUDIT_LOGS = [
-  { id: 'al1', actor_email: 'admin@aigms.com', actor_role: 'super_admin' as UserRole, action: 'payment.verified', entity: 'payment', entity_id: 'PAY-2025-000042', description: 'Payment verified for order AIG-2025-000158', created_at: '2025-05-14T10:05:00Z' },
-  { id: 'al2', actor_email: 'ops@aigms.com', actor_role: 'operations_admin' as UserRole, action: 'order.status_changed', entity: 'order', entity_id: 'AIG-2025-000158', description: 'Order status changed from payment_verified to confirmed', created_at: '2025-05-14T10:08:00Z' },
-  { id: 'al3', actor_email: 'field@aigms.com', actor_role: 'field_team' as UserRole, action: 'animal.allocated', entity: 'animal', entity_id: 'A-2025-001', description: 'Animal A-2025-001 allocated to order AIG-2025-000156', created_at: '2025-05-13T11:30:00Z' },
-  { id: 'al4', actor_email: 'admin@aigms.com', actor_role: 'super_admin' as UserRole, action: 'payment.rejected', entity: 'payment', entity_id: 'PAY-2025-000038', description: 'Payment rejected — bank slip unclear, requested resubmission', created_at: '2025-05-11T16:45:00Z' },
-  { id: 'al5', actor_email: 'driver@aigms.com', actor_role: 'driver' as UserRole, action: 'delivery.status_changed', entity: 'delivery', entity_id: 'DEL-2025-001', description: 'Delivery DEL-2025-001 marked as delivered', created_at: '2025-05-10T14:32:00Z' },
-  { id: 'al6', actor_email: 'admin@aigms.com', actor_role: 'super_admin' as UserRole, action: 'certificate.generated', entity: 'certificate', entity_id: 'CERT-2025-00001', description: 'Certificate generated for Siti Norzahra binti Md Zain', created_at: '2025-07-01T09:00:00Z' },
-  { id: 'al7', actor_email: 'admin@aigms.com', actor_role: 'super_admin' as UserRole, action: 'certificate.sent', entity: 'certificate', entity_id: 'CERT-2025-00001', description: 'Certificate sent to siti.norzahra@email.com', created_at: '2025-07-01T09:05:00Z' },
-  { id: 'al8', actor_email: 'ops@aigms.com', actor_role: 'operations_admin' as UserRole, action: 'order.created', entity: 'order', entity_id: 'AIG-2025-000158', description: 'New Qurban order created for Ahmad Rizal bin Yusof', created_at: '2025-05-14T08:22:00Z' },
-  { id: 'al9', actor_email: 'd3@aigms.com', actor_role: 'd3_technical_admin' as UserRole, action: 'd3.access', entity: 'system', entity_id: null, description: 'D3 Technical Admin accessed system configuration', created_at: '2025-05-10T09:00:00Z' },
-  { id: 'al10', actor_email: 'supplier@aigms.com', actor_role: 'supplier_manager' as UserRole, action: 'animal.status_changed', entity: 'animal', entity_id: 'A-2025-003', description: 'Animal A-2025-003 status changed from growing to inspection_pending', created_at: '2025-05-09T14:15:00Z' },
-];
+const MOCK_AUDIT_LOGS: {
+  id: string; actor_email: string; actor_role: UserRole;
+  action: string; entity: string; entity_id: string | null;
+  description: string; created_at: string;
+}[] = [];
 
 const ACTION_COLOR: Record<string, string> = {
   'payment.verified': 'var(--success)',
