@@ -4,6 +4,7 @@ import { AlertTriangle, Search, CheckCircle2, Clock, X, User } from 'lucide-reac
 import { formatRelativeTime } from '@/lib/utils';
 import type { ExceptionSeverity, ExceptionStatus } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
+import { useAppData, type AppException as ExceptionItem } from '@/contexts/AppDataContext';
 
 const SEVERITY_BADGE: Record<ExceptionSeverity, string> = {
   low:      'badge-blue',
@@ -28,20 +29,6 @@ const STATUS_LABEL: Record<ExceptionStatus, string> = {
   escalated:   'Escalated',
 };
 
-type ExceptionItem = {
-  id: string;
-  severity: ExceptionSeverity;
-  status: ExceptionStatus;
-  category: string;
-  title: string;
-  description: string;
-  related_entity: string;
-  related_entity_id: string;
-  assigned_to: string | null;
-  created_at: string;
-};
-
-const INITIAL_EXCEPTIONS: ExceptionItem[] = [];
 
 function ExceptionModal({ exception: ex, onClose, onResolve, onAssign }: {
   exception: ExceptionItem;
@@ -136,19 +123,14 @@ function ExceptionModal({ exception: ex, onClose, onResolve, onAssign }: {
 
 export function ExceptionsPage() {
   usePageTitle('Exceptions');
-  const [exceptions, setExceptions] = useState<ExceptionItem[]>(INITIAL_EXCEPTIONS);
+  const { exceptions, resolveException: ctxResolve, assignException: ctxAssign } = useAppData();
   const [search, setSearch] = useState('');
   const [severityFilter, setSeverityFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('open');
   const [selected, setSelected] = useState<ExceptionItem | null>(null);
 
-  const resolveException = (id: string) => {
-    setExceptions(prev => prev.map(e => e.id === id ? { ...e, status: 'resolved' as ExceptionStatus } : e));
-  };
-
-  const assignException = (id: string, person: string) => {
-    setExceptions(prev => prev.map(e => e.id === id ? { ...e, assigned_to: person, status: 'in_progress' as ExceptionStatus } : e));
-  };
+  const resolveException = (id: string) => { ctxResolve(id); };
+  const assignException = (id: string, person: string) => { ctxAssign(id, person); };
 
   const filtered = exceptions.filter(e => {
     const matchSearch = e.title.toLowerCase().includes(search.toLowerCase()) || e.category.toLowerCase().includes(search.toLowerCase());

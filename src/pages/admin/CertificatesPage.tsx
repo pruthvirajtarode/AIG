@@ -6,6 +6,7 @@ import type { CertificateStatus } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 import { CertificateDesign, type Certificate } from '@/components/ui/CertificateDesign';
+import { useAppData } from '@/contexts/AppDataContext';
 
 const CERT_STATUS_BADGE: Record<CertificateStatus, string> = {
   not_generated: 'badge-gray',
@@ -148,7 +149,9 @@ function CertPreviewModal({
 export function CertificatesPage() {
   usePageTitle('Certificates');
   const { toast } = useToast();
-  const [certs, setCerts] = useState<Certificate[]>(INITIAL_CERTIFICATES);
+  const { certificates: rawCerts, updateCertStatus } = useAppData();
+  // Adapt context type to local Certificate type used by CertificateDesign
+  const certs = rawCerts as unknown as Certificate[];
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<Certificate | null>(null);
@@ -157,13 +160,9 @@ export function CertificatesPage() {
   const [bulkSending, setBulkSending] = useState(false);
 
   const updateStatus = useCallback((id: string, status: CertificateStatus) => {
-    setCerts(prev => prev.map(c => c.id === id
-      ? { ...c, status, generated_at: c.generated_at ?? new Date().toISOString() }
-      : c
-    ));
-    // Update selected if open
+    updateCertStatus(id, status);
     setSelected(prev => prev?.id === id ? { ...prev, status } : prev);
-  }, []);
+  }, [updateCertStatus]);
 
   const handleGenerate = useCallback(async (id: string, name: string) => {
     setGenerating(id);
@@ -178,30 +177,26 @@ export function CertificatesPage() {
     if (!notGen.length) { toast('info', 'All certificates already generated'); return; }
     setBulkGenerating(true);
     await new Promise(r => setTimeout(r, 2000));
-    setCerts(prev => prev.map(c =>
-      c.status === 'not_generated' ? { ...c, status: 'generated', generated_at: new Date().toISOString() } : c
-    ));
+    notGen.forEach(c => updateCertStatus(c.id, 'generated'));
     setBulkGenerating(false);
     toast('success', `${notGen.length} certificates generated!`);
-  }, [certs, toast]);
+  }, [certs, toast, updateCertStatus]);
 
   const handleBulkSend = useCallback(async () => {
     const toSend = certs.filter(c => c.status === 'generated');
     if (!toSend.length) { toast('info', 'No generated certificates to send'); return; }
     setBulkSending(true);
     await new Promise(r => setTimeout(r, 2000));
-    setCerts(prev => prev.map(c =>
-      c.status === 'generated' ? { ...c, status: 'sent', sent_at: new Date().toISOString() } : c
-    ));
+    toSend.forEach(c => updateCertStatus(c.id, 'sent'));
     setBulkSending(false);
     toast('success', `${toSend.length} certificates sent to participants!`);
-  }, [certs, toast]);
+  }, [certs, toast, updateCertStatus]);
 
   const handleSend = useCallback(async (cert: Certificate) => {
     await new Promise(r => setTimeout(r, 1200));
-    updateStatus(cert.id, 'sent');
+    updateCertStatus(cert.id, 'sent');
     toast('success', 'Certificate sent!', `Email sent for ${cert.participant_name}`);
-  }, [toast, updateStatus]);
+  }, [toast, updateCertStatus]);
 
   const filtered = certs.filter(c => {
     const q = search.toLowerCase();

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, FileText, Filter } from 'lucide-react';
 import { formatDateTime } from '@/lib/utils';
 import type { UserRole } from '@/lib/database.types';
+import { useAppData } from '@/contexts/AppDataContext';
 
 const MOCK_AUDIT_LOGS: {
   id: string; actor_email: string; actor_role: UserRole;
@@ -33,9 +34,10 @@ const ROLE_BADGE: Record<UserRole, string> = {
 };
 
 export function AuditLogPage() {
+  const { auditLogs } = useAppData();
   const [search, setSearch] = useState('');
 
-  const filtered = MOCK_AUDIT_LOGS.filter(l =>
+  const filtered = auditLogs.filter(l =>
     l.description.toLowerCase().includes(search.toLowerCase()) ||
     l.action.toLowerCase().includes(search.toLowerCase()) ||
     l.actor_email.toLowerCase().includes(search.toLowerCase()) ||

@@ -4,6 +4,7 @@ import { Search, MapPin, Truck, CheckCircle2, Clock, X, Calendar } from 'lucide-
 import { formatDate } from '@/lib/utils';
 import type { DeliveryStatus } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
+import { useAppData, type AppDelivery as Delivery } from '@/contexts/AppDataContext';
 
 const DELIVERY_STATUS_BADGE: Record<DeliveryStatus, string> = {
   pending:         'badge-gray',
@@ -25,21 +26,6 @@ const DELIVERY_STATUS_LABEL: Record<DeliveryStatus, string> = {
   cancelled:       'Cancelled',
 };
 
-type Delivery = {
-  id: string;
-  delivery_ref: string;
-  order_ref: string;
-  participant: string;
-  contact_phone: string;
-  status: DeliveryStatus;
-  scheduled_date: string | null;
-  delivered_at: string | null;
-  address: string;
-  driver: string | null;
-  delivery_slot: string | null;
-};
-
-const INITIAL_DELIVERIES: Delivery[] = [];
 
 function DeliveryModal({ delivery, onClose, onUpdateStatus }: {
   delivery: Delivery;
@@ -119,16 +105,13 @@ function DeliveryModal({ delivery, onClose, onUpdateStatus }: {
 export function DeliveriesPage() {
   usePageTitle('Deliveries');
   const { toast } = useToast();
-  const [deliveries, setDeliveries] = useState<Delivery[]>(INITIAL_DELIVERIES);
+  const { deliveries, updateDeliveryStatus: ctxUpdateStatus } = useAppData();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<Delivery | null>(null);
 
   const updateStatus = (id: string, status: DeliveryStatus) => {
-    setDeliveries(prev => prev.map(d => d.id === id
-      ? { ...d, status, delivered_at: status === 'delivered' ? new Date().toISOString() : d.delivered_at }
-      : d
-    ));
+    ctxUpdateStatus(id, status);
   };
 
   const filtered = deliveries.filter(d => {

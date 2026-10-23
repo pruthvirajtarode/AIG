@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, Plus, MapPin, Phone, Mail, Package, X } from 'lucide-react';
 import type { AnimalType } from '@/lib/database.types';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
+import { useAppData, type AppSupplier } from '@/contexts/AppDataContext';
 
 const TYPE_EMOJI: Record<AnimalType, string> = {
   cow: '🐄', goat: '🐐', sheep: '🐑', lamb: '🐑', camel: '🐪', buffalo: '🐃',
@@ -75,17 +76,18 @@ function SupplierModal({ supplier, onClose }: { supplier?: typeof MOCK_SUPPLIERS
 }
 
 export function SuppliersPage() {
+  const { suppliers } = useAppData();
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [editSupplier, setEditSupplier] = useState<typeof MOCK_SUPPLIERS[0] | undefined>();
+  const [editSupplier, setEditSupplier] = useState<AppSupplier | undefined>();
 
-  const filtered = MOCK_SUPPLIERS.filter(s =>
+  const filtered = suppliers.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||
     s.country.toLowerCase().includes(search.toLowerCase()) ||
     s.contact_name?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const openEdit = (s: typeof MOCK_SUPPLIERS[0]) => { setEditSupplier(s); setShowModal(true); };
+  const openEdit = (s: AppSupplier) => { setEditSupplier(s); setShowModal(true); };
   const openNew = () => { setEditSupplier(undefined); setShowModal(true); };
 
   return (
@@ -106,9 +108,9 @@ export function SuppliersPage() {
       {/* Stats */}
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '1.25rem' }}>
         {[
-          { label: 'Active Suppliers', value: String(MOCK_SUPPLIERS.filter(s => s.is_active).length), color: 'var(--aig-green-400)' },
-          { label: 'Countries', value: String(new Set(MOCK_SUPPLIERS.map(s => s.country)).size), color: 'var(--info)' },
-          { label: 'Total Animals', value: String(MOCK_SUPPLIERS.reduce((a, s) => a + s.animals_count, 0)), color: 'var(--purple)' },
+          { label: 'Active Suppliers', value: String(suppliers.filter(s => s.is_active).length), color: 'var(--aig-green-400)' },
+          { label: 'Countries', value: String(new Set(suppliers.map(s => s.country)).size), color: 'var(--info)' },
+          { label: 'Total Animals', value: String(suppliers.reduce((a, s) => a + s.animals_count, 0)), color: 'var(--purple)' },
         ].map(s => (
           <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
             <div className="stat-value" style={{ color: s.color }}>{s.value}</div>

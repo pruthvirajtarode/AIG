@@ -127,7 +127,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
         {!collapsed && (
           <div className="logo-text">
             <div className="logo-name">Al Ihsan Group</div>
-            <div className="logo-sub">Qurban Management</div>
+            <div className="logo-sub">AIG Management</div>
           </div>
         )}
 

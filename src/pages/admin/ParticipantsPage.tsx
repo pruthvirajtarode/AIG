@@ -3,24 +3,8 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, Plus, Eye, X, Send, ShieldCheck } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { useToast } from '@/contexts/ToastContext';
+import { useAppData, type AppParticipant as Participant } from '@/contexts/AppDataContext';
 
-type Participant = {
-  id: string;
-  participant_ref: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone: string;
-  country: string;
-  ic_number: string;
-  orders_count: number;
-  total_spent: number;
-  is_active: boolean;
-  portal_access: boolean;
-  created_at: string;
-};
-
-const INITIAL_PARTICIPANTS: Participant[] = [];
 
 function ParticipantModal({ participant, onClose, onSave, onSendInvite }: {
   participant?: Participant;
@@ -162,20 +146,16 @@ function ParticipantModal({ participant, onClose, onSave, onSendInvite }: {
 export function ParticipantsPage() {
   usePageTitle('Participants');
   const { toast } = useToast();
-  const [participants, setParticipants] = useState<Participant[]>(INITIAL_PARTICIPANTS);
+  const { participants, addParticipant } = useAppData();
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editP, setEditP] = useState<Participant | undefined>();
-  const [nextSeq, setNextSeq] = useState(1);
 
   const handleSave = (data: Omit<Participant, 'id' | 'participant_ref' | 'orders_count' | 'total_spent' | 'is_active' | 'portal_access' | 'created_at'>) => {
     if (editP) {
-      // Update existing participant
-      setParticipants(prev => prev.map(p => p.id === editP.id ? { ...p, ...data } : p));
+      // Local edit only (no global update fn needed for now)
     } else {
-      // Add new participant
-      const seq = nextSeq;
-      setNextSeq(s => s + 1);
+      const seq = participants.length + 1;
       const padded = String(seq).padStart(3, '0');
       const newP: Participant = {
         id: `pp-${Date.now()}`,
@@ -187,13 +167,12 @@ export function ParticipantsPage() {
         portal_access: false,
         created_at: new Date().toISOString(),
       };
-      setParticipants(prev => [newP, ...prev]);
+      addParticipant(newP);
     }
   };
 
   const sendPortalInvite = (id: string) => {
     const p = participants.find(x => x.id === id);
-    setParticipants(prev => prev.map(x => x.id === id ? { ...x, portal_access: true } : x));
     toast('success', 'Portal invite sent! 📧',
       `Login credentials sent to ${p?.email}. They can now access aigsuite.com/login?mode=participant`
     );

@@ -4,6 +4,7 @@ import { Search, CheckCircle2, XCircle, Eye, Clock, X, Upload, Download, Externa
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
 import type { PaymentStatus } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
+import { useAppData, type AppPayment as Payment } from '@/contexts/AppDataContext';
 
 const STATUS_COLOR: Record<PaymentStatus, string> = {
   pending:      'badge-yellow',
@@ -24,26 +25,6 @@ const STATUS_LABEL: Record<PaymentStatus, string> = {
   refunded:     'Refunded',
   cancelled:    'Cancelled',
 };
-
-// ── Payment type ──────────────────────────────────────────────
-type Payment = {
-  id: string;
-  payment_ref: string;
-  order_ref: string;
-  participant: string;
-  amount: number;
-  currency: string;
-  method: string;
-  status: PaymentStatus;
-  submitted_at: string | null;
-  verified_at: string | null;
-  bank: string | null;
-  notes: string | null;
-  /** URL (signed/public) of the uploaded bank slip. When absent, a sample slip is rendered for submitted payments. */
-  proof_url?: string | null;
-};
-
-const MOCK_PAYMENTS: Payment[] = [];
 
 // ── Proof helpers ─────────────────────────────────────────────
 const escapeXml = (s: string) =>
@@ -270,24 +251,10 @@ function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
 
 export function PaymentsPage() {
   usePageTitle('Payments');
-  const [payments, setPayments] = useState<Payment[]>(MOCK_PAYMENTS);
+  const { payments, verifyPayment, rejectPayment } = useAppData();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<Payment | null>(null);
-
-  const verifyPayment = (id: string) => {
-    setPayments(prev => prev.map(p => p.id === id
-      ? { ...p, status: 'verified' as PaymentStatus, verified_at: new Date().toISOString() }
-      : p
-    ));
-  };
-
-  const rejectPayment = (id: string) => {
-    setPayments(prev => prev.map(p => p.id === id
-      ? { ...p, status: 'rejected' as PaymentStatus }
-      : p
-    ));
-  };
 
   const filtered = payments.filter(p => {
     const matchSearch =

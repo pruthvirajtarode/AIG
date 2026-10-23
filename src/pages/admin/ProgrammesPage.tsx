@@ -4,6 +4,7 @@ import { Search, Plus, BookOpen, Globe, Eye, X } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { AnimalType, DistributionMethod } from '@/lib/database.types';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
+import { useAppData, type AppProgramme } from '@/contexts/AppDataContext';
 
 const DISTRIBUTION_LABEL: Record<DistributionMethod, string> = {
   local_distribution: 'Local Distribution',
@@ -88,11 +89,12 @@ function ProgrammeModal({ programme, onClose }: { programme?: typeof MOCK_PROGRA
 
 export function ProgrammesPage() {
   usePageTitle('Programmes');
+  const { programmes } = useAppData();
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [editProgramme, setEditProgramme] = useState<typeof MOCK_PROGRAMMES[0] | undefined>();
+  const [editProgramme, setEditProgramme] = useState<AppProgramme | undefined>();
 
-  const filtered = MOCK_PROGRAMMES.filter(p =>
+  const filtered = programmes.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     p.country.toLowerCase().includes(search.toLowerCase())
   );

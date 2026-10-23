@@ -12,6 +12,7 @@ import {
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useToast } from '@/contexts/ToastContext';
+import { useAppData } from '@/contexts/AppDataContext';
 
 // ── Mock data ────────────────────────────────────────────────
 const REVENUE_DATA = [
@@ -113,26 +114,54 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 export function DashboardPage() {
   usePageTitle('Dashboard');
   const { toast } = useToast();
+  const { orders, animals, payments, deliveries, certificates, exceptions } = useAppData();
   const [liveMode, setLiveMode] = useState(false);
-  const [revenueData, setRevenueData] = useState(REVENUE_DATA);
 
-  // ── Live View: simulate real-time data ticks every 5s ──────
-  useEffect(() => {
-    if (!liveMode) {
-      setRevenueData(REVENUE_DATA);
-      return;
-    }
-    const interval = setInterval(() => {
-      setRevenueData(prev => {
-        const updated = [...prev];
-        const last = updated[updated.length - 1];
-        const delta = Math.floor(Math.random() * 2400) - 800;
-        updated[updated.length - 1] = { ...last, revenue: Math.max(86000, last.revenue + delta) };
-        return updated;
-      });
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [liveMode]);
+  // Compute live stats from real data
+  const totalOrders = orders.filter(o => o.status !== 'cancelled').length;
+  const totalRevenue = payments.filter(p => p.status === 'verified').reduce((s, p) => s + p.amount, 0);
+  const allocatedAnimals = animals.filter(a => ['allocated','growing','inspection_pending','inspection_passed','qurban_ready'].includes(a.status)).length;
+  const totalDeliveries = deliveries.length;
+  const totalCertificates = certificates.length;
+  const openExceptions = exceptions.filter(e => e.status === 'open' || e.status === 'escalated').length;
+
+  // Build revenue chart data from real payments (group by month)
+  const revMap: Record<string, number> = {};
+  payments.filter(p => p.status === 'verified' && p.submitted_at).forEach(p => {
+    const month = new Date(p.submitted_at!).toLocaleString('default', { month: 'short' });
+    revMap[month] = (revMap[month] || 0) + p.amount;
+  });
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const revenueData = MONTHS.map(m => ({ month: m, revenue: revMap[m] || 0 }));
+
+  // Order distribution pie
+  const ORDER_DIST = [
+    { name: 'Confirmed',   value: orders.filter(o => o.status === 'confirmed').length,   color: '#3b82f6' },
+    { name: 'In Progress', value: orders.filter(o => ['animal_allocated','animal_growing','final_inspection'].includes(o.status)).length, color: '#a855f7' },
+    { name: 'Completed',   value: orders.filter(o => o.status === 'completed').length,   color: '#22c55e' },
+    { name: 'Pending',     value: orders.filter(o => ['draft','pending_payment','payment_submitted'].includes(o.status)).length, color: '#eab308' },
+  ];
+
+  // Recent orders (latest 5)
+  const RECENT_ORDERS = orders.slice(0, 5).map(o => ({
+    ref: o.order_ref, participant: o.participant,
+    programme: o.programme, amount: `${o.currency} ${o.total_amount}`, status: o.status,
+  }));
+
+  // Active exceptions (latest 5)
+  const EXCEPTIONS = exceptions.filter(e => e.status !== 'resolved').slice(0, 5).map(e => ({
+    severity: e.severity, title: e.title, ref: e.related_entity_id, time: e.created_at,
+  }));
+
+  // Daily orders chart (last 7 days)
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const DAILY_ORDERS = days.map(day => ({
+    day,
+    orders: orders.filter(o => {
+      const d = new Date(o.created_at);
+      return days[d.getDay()] === day;
+    }).length,
+  }));
 
   // ── Export Report: real CSV download ───────────────────────
   const handleExport = useCallback(() => {
@@ -228,37 +257,37 @@ export function DashboardPage() {
           icon={ShoppingCart}
           iconBg="linear-gradient(135deg, #155f41, #1f8561)"
           label="Total Orders"
-          value="0"
+          value={String(totalOrders)}
         />
         <StatCard
           icon={CreditCard}
           iconBg="linear-gradient(135deg, #1e3a5f, #3b82f6)"
           label="Revenue Collected"
-          value="SGD 0"
+          value={`SGD ${totalRevenue.toLocaleString()}`}
         />
         <StatCard
           icon={Dog}
           iconBg="linear-gradient(135deg, #3b1f5f, #a855f7)"
           label="Animals Allocated"
-          value="0"
+          value={String(allocatedAnimals)}
         />
         <StatCard
           icon={Truck}
           iconBg="linear-gradient(135deg, #1a4a3a, #14b8a6)"
           label="Deliveries"
-          value="0"
+          value={String(totalDeliveries)}
         />
         <StatCard
           icon={Award}
           iconBg="linear-gradient(135deg, #3d2800, #d4a832)"
           label="Certificates"
-          value="0"
+          value={String(totalCertificates)}
         />
         <StatCard
           icon={AlertTriangle}
           iconBg="linear-gradient(135deg, #2d0d0d, #ef4444)"
           label="Open Exceptions"
-          value="0"
+          value={String(openExceptions)}
         />
       </div>
 

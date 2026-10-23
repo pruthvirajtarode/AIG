@@ -5,6 +5,7 @@ import { formatDate } from '@/lib/utils';
 import type { AnimalStatus, AnimalType } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
 import { ANIMAL_IMAGES } from '@/lib/animalImages';
+import { useAppData, type AppAnimal as Animal } from '@/contexts/AppDataContext';
 
 // ── Real photorealistic animal images (shared map in lib/animalImages) ──
 
@@ -35,24 +36,6 @@ const ANIMAL_STATUS_LABEL: Record<AnimalStatus, string> = {
   completed:          'Completed',
   rejected:           'Rejected',
 };
-
-type Animal = {
-  id: string;
-  animal_ref: string;
-  animal_type: AnimalType;
-  breed: string;
-  gender: string;
-  status: AnimalStatus;
-  current_weight_kg: number;
-  min_weight_kg: number;
-  location: string;
-  supplier: string;
-  created_at: string;
-  tag_number: string;
-  last_inspection?: string;
-};
-
-const INITIAL_ANIMALS: Animal[] = [];
 
 
 // ── Register Animal Modal ────────────────────────────────────
@@ -472,7 +455,7 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
 export function AnimalsPage() {
   usePageTitle('Animals');
   const { toast } = useToast();
-  const [animals, setAnimals] = useState<Animal[]>(INITIAL_ANIMALS);
+  const { animals, addAnimal, updateAnimalStatus } = useAppData();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -481,17 +464,19 @@ export function AnimalsPage() {
   const [inspectionAnimal, setInspectionAnimal] = useState<Animal | null>(null);
   const [statusAnimal, setStatusAnimal] = useState<Animal | null>(null);
   const [showRegister, setShowRegister] = useState(false);
-  const [animalSeq, setAnimalSeq] = useState(1);
+
+  // next seq = animals.length + 1 (always correct)
+  const animalSeq = animals.length + 1;
 
   const registerAnimal = useCallback((animal: Animal) => {
-    setAnimals(prev => [animal, ...prev]);
-    setAnimalSeq(s => s + 1);
-  }, []);
+    addAnimal(animal);
+  }, [addAnimal]);
 
   const updateAnimal = useCallback((id: string, patch: Partial<Animal>) => {
-    setAnimals(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a));
+    if (patch.status) updateAnimalStatus(id, patch.status);
     setSelected(prev => prev?.id === id ? { ...prev, ...patch } : prev);
-  }, []);
+  }, [updateAnimalStatus]);
+
 
   const handleWeightUpdate = useCallback((id: string, weight: number) => {
     updateAnimal(id, { current_weight_kg: weight });

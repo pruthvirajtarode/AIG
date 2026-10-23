@@ -129,7 +129,7 @@ export function LoginPage() {
               color: 'var(--text-primary)',
             }}>Al Ihsan Group</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--gold-400)', fontWeight: 500 }}>
-              Qurban Management System
+              AIG Management System
             </div>
           </div>
         </div>

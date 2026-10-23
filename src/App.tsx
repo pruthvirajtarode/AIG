@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
+import { AppDataProvider } from '@/contexts/AppDataContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { LoginPage } from '@/pages/auth/LoginPage';
 
@@ -99,7 +100,7 @@ function AuthLoader({ message = 'Loading…' }: { message?: string }) {
           Al Ihsan Group
         </div>
         <div style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.4)' }}>
-          Qurban Management System
+          AIG Management System
         </div>
       </div>
 
@@ -181,8 +182,9 @@ export default function App() {
   useEffect(() => { prefetchAllPages(); }, []);
 
   return (
-    <ToastProvider>
-      <Suspense fallback={<PageLoader />}>
+    <AppDataProvider>
+      <ToastProvider>
+        <Suspense fallback={<PageLoader />}>
         <Routes>
           {/* Public */}
           <Route path="/login" element={<LoginPage />} />
@@ -235,5 +237,6 @@ export default function App() {
         </Routes>
       </Suspense>
     </ToastProvider>
+    </AppDataProvider>
   );
 }

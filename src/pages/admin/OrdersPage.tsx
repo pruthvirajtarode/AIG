@@ -5,24 +5,8 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import type { OrderStatus } from '@/lib/database.types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useToast } from '@/contexts/ToastContext';
+import { useAppData, type AppOrder as Order } from '@/contexts/AppDataContext';
 
-// ── Types ─────────────────────────────────────────────────────
-type Order = {
-  id: string;
-  order_ref: string;
-  participant: string;
-  programme: string;
-  quantity: number;
-  total_amount: number;
-  currency: string;
-  status: OrderStatus;
-  created_at: string;
-  recipient?: string;
-  notes?: string;
-};
-
-// ── Mock Data ─────────────────────────────────────────────────
-const INITIAL_ORDERS: Order[] = [];
 
 const NEXT_STATUSES: Partial<Record<OrderStatus, OrderStatus>> = {
   draft:             'pending_payment',
@@ -273,7 +257,7 @@ function UpdateStatusModal({ order, onClose, onUpdate }: {
 export function OrdersPage() {
   usePageTitle('Orders');
   const { toast } = useToast();
-  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
+  const { orders, addOrder, updateOrderStatus, cancelOrder: ctxCancelOrder } = useAppData();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -283,17 +267,15 @@ export function OrdersPage() {
   const [updateStatusOrder, setUpdateStatusOrder] = useState<Order | null>(null);
 
   const updateStatus = useCallback((id: string, status: OrderStatus) => {
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
-  }, []);
+    updateOrderStatus(id, status);
+    // keep detail modal in sync
+    setDetailOrder(prev => prev?.id === id ? { ...prev, status } : prev);
+  }, [updateOrderStatus]);
 
   const cancelOrder = useCallback((id: string) => {
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'cancelled' as OrderStatus } : o));
+    ctxCancelOrder(id);
     toast('info', 'Order cancelled');
-  }, [toast]);
-
-  const addOrder = useCallback((o: Order) => {
-    setOrders(prev => [o, ...prev]);
-  }, []);
+  }, [ctxCancelOrder, toast]);
 
   const filtered = orders.filter(o => {
     const q = search.toLowerCase();
