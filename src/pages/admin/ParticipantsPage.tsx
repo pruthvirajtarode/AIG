@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { Search, Plus, UserCheck, Eye, X, Send, ShieldCheck } from 'lucide-react';
+import { Search, Plus, Eye, X, Send, ShieldCheck } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -20,26 +20,31 @@ type Participant = {
   created_at: string;
 };
 
-const INITIAL_PARTICIPANTS: Participant[] = [
-  { id: 'pp1', participant_ref: 'PRT-2025-001', first_name: 'Ahmad Rizal',    last_name: 'bin Yusof',      email: 'ahmad.rizal@email.com',       phone: '+60 12-3456789', country: 'Malaysia', ic_number: '810405-14-5678', orders_count: 3, total_spent: 2550, is_active: true,  portal_access: true,  created_at: '2024-11-15T00:00:00Z' },
-  { id: 'pp2', participant_ref: 'PRT-2025-002', first_name: 'Nurul Ain',      last_name: 'binti Hassan',   email: 'nurul.ain@email.com',          phone: '+60 16-5554321', country: 'Malaysia', ic_number: '890215-03-7890', orders_count: 2, total_spent: 840,  is_active: true,  portal_access: true,  created_at: '2024-12-01T00:00:00Z' },
-  { id: 'pp3', participant_ref: 'PRT-2025-003', first_name: 'Mohamad Faiz',   last_name: 'bin Ali',        email: 'faiz.ali@email.com',           phone: '+60 11-9876543', country: 'Malaysia', ic_number: '760812-07-3456', orders_count: 1, total_spent: 950,  is_active: true,  portal_access: false, created_at: '2025-01-10T00:00:00Z' },
-  { id: 'pp4', participant_ref: 'PRT-2025-004', first_name: 'Siti Norzahra',  last_name: 'binti Md Zain',  email: 'norzahra@email.com',           phone: '+60 13-7771234', country: 'Malaysia', ic_number: '920530-10-2345', orders_count: 2, total_spent: 760,  is_active: true,  portal_access: false, created_at: '2025-01-22T00:00:00Z' },
-  { id: 'pp5', participant_ref: 'PRT-2025-005', first_name: 'Zulkifli',       last_name: 'bin Othman',     email: 'zulkifli.othman@email.com',    phone: '+60 17-3214567', country: 'Malaysia', ic_number: '730619-08-9012', orders_count: 1, total_spent: 390,  is_active: false, portal_access: false, created_at: '2025-02-05T00:00:00Z' },
-  { id: 'pp6', participant_ref: 'PRT-2025-006', first_name: 'Nur Izzati',     last_name: 'binti Kamal',    email: 'izzati.kamal@email.com',       phone: '+60 14-7774444', country: 'Malaysia', ic_number: '950720-14-6789', orders_count: 1, total_spent: 850,  is_active: true,  portal_access: true,  created_at: '2025-02-18T00:00:00Z' },
-  { id: 'pp7', participant_ref: 'PRT-2025-007', first_name: 'Hafizuddin',     last_name: 'bin Ramli',      email: 'hafiz.ramli@email.com',        phone: '+60 13-2223333', country: 'Malaysia', ic_number: '850325-05-4321', orders_count: 1, total_spent: 1260, is_active: true,  portal_access: false, created_at: '2025-03-01T00:00:00Z' },
-];
+const INITIAL_PARTICIPANTS: Participant[] = [];
 
-function ParticipantModal({ participant, onClose, onSendInvite }: {
+function ParticipantModal({ participant, onClose, onSave, onSendInvite }: {
   participant?: Participant;
   onClose: () => void;
+  onSave: (data: Omit<Participant, 'id' | 'participant_ref' | 'orders_count' | 'total_spent' | 'is_active' | 'portal_access' | 'created_at'>) => void;
   onSendInvite?: (id: string) => void;
 }) {
   const { toast } = useToast();
   const isNew = !participant;
 
+  const [firstName, setFirstName]   = useState(participant?.first_name  ?? '');
+  const [lastName,  setLastName]    = useState(participant?.last_name   ?? '');
+  const [email,     setEmail]       = useState(participant?.email       ?? '');
+  const [phone,     setPhone]       = useState(participant?.phone       ?? '');
+  const [icNumber,  setIcNumber]    = useState(participant?.ic_number   ?? '');
+  const [country,   setCountry]     = useState(participant?.country     ?? 'Singapore');
+
   const handleSave = () => {
-    toast('success', isNew ? 'Participant added!' : 'Changes saved', isNew ? 'New participant registered in the system' : `${participant?.first_name}'s profile updated`);
+    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
+      toast('error', 'Missing fields', 'First name, last name and email are required');
+      return;
+    }
+    onSave({ first_name: firstName.trim(), last_name: lastName.trim(), email: email.trim(), phone: phone.trim(), ic_number: icNumber.trim(), country: country.trim() });
+    toast('success', isNew ? 'Participant added!' : 'Changes saved', isNew ? 'New participant registered in the system' : `${firstName}'s profile updated`);
     onClose();
   };
 
@@ -53,9 +58,9 @@ function ParticipantModal({ participant, onClose, onSendInvite }: {
         <div className="modal-body">
           {!isNew && participant && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', padding: '1rem', background: 'var(--surface-700)', borderRadius: 10 }}>
-              <div className="avatar avatar-lg">{participant.first_name[0]}{participant.last_name[0]}</div>
+              <div className="avatar avatar-lg">{firstName[0] || '?'}{lastName[0] || '?'}</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: '1.0625rem', color: 'var(--text-primary)' }}>{participant.first_name} {participant.last_name}</div>
+                <div style={{ fontWeight: 700, fontSize: '1.0625rem', color: 'var(--text-primary)' }}>{firstName} {lastName}</div>
                 <div style={{ fontSize: '0.8125rem', color: 'var(--aig-green-400)', fontFamily: 'monospace' }}>{participant.participant_ref}</div>
                 <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.375rem', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{participant.orders_count} orders</span>
@@ -74,27 +79,27 @@ function ParticipantModal({ participant, onClose, onSendInvite }: {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="settings-grid-2">
             <div className="form-group">
               <label className="form-label">First Name *</label>
-              <input className="form-input" defaultValue={participant?.first_name} />
+              <input className="form-input" value={firstName} onChange={e => setFirstName(e.target.value)} autoFocus />
             </div>
             <div className="form-group">
               <label className="form-label">Last Name *</label>
-              <input className="form-input" defaultValue={participant?.last_name} />
+              <input className="form-input" value={lastName} onChange={e => setLastName(e.target.value)} />
             </div>
             <div className="form-group">
               <label className="form-label">Email Address *</label>
-              <input className="form-input" type="email" defaultValue={participant?.email} />
+              <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} />
             </div>
             <div className="form-group">
               <label className="form-label">Phone</label>
-              <input className="form-input" defaultValue={participant?.phone} />
+              <input className="form-input" value={phone} onChange={e => setPhone(e.target.value)} />
             </div>
             <div className="form-group">
               <label className="form-label">IC / Passport Number</label>
-              <input className="form-input" defaultValue={participant?.ic_number || ''} />
+              <input className="form-input" value={icNumber} onChange={e => setIcNumber(e.target.value)} />
             </div>
             <div className="form-group">
               <label className="form-label">Country</label>
-              <input className="form-input" defaultValue={participant?.country || 'Malaysia'} />
+              <input className="form-input" value={country} onChange={e => setCountry(e.target.value)} />
             </div>
           </div>
 
@@ -161,6 +166,30 @@ export function ParticipantsPage() {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editP, setEditP] = useState<Participant | undefined>();
+  const [nextSeq, setNextSeq] = useState(1);
+
+  const handleSave = (data: Omit<Participant, 'id' | 'participant_ref' | 'orders_count' | 'total_spent' | 'is_active' | 'portal_access' | 'created_at'>) => {
+    if (editP) {
+      // Update existing participant
+      setParticipants(prev => prev.map(p => p.id === editP.id ? { ...p, ...data } : p));
+    } else {
+      // Add new participant
+      const seq = nextSeq;
+      setNextSeq(s => s + 1);
+      const padded = String(seq).padStart(3, '0');
+      const newP: Participant = {
+        id: `pp-${Date.now()}`,
+        participant_ref: `PRT-${new Date().getFullYear()}-${padded}`,
+        ...data,
+        orders_count: 0,
+        total_spent: 0,
+        is_active: true,
+        portal_access: false,
+        created_at: new Date().toISOString(),
+      };
+      setParticipants(prev => [newP, ...prev]);
+    }
+  };
 
   const sendPortalInvite = (id: string) => {
     const p = participants.find(x => x.id === id);
@@ -182,7 +211,8 @@ export function ParticipantsPage() {
       {showModal && (
         <ParticipantModal
           participant={editP}
-          onClose={() => setShowModal(false)}
+          onClose={() => { setShowModal(false); setEditP(undefined); }}
+          onSave={handleSave}
           onSendInvite={sendPortalInvite}
         />
       )}

@@ -52,16 +52,132 @@ type Animal = {
   last_inspection?: string;
 };
 
-const INITIAL_ANIMALS: Animal[] = [
-  { id: 'a1', animal_ref: 'A-2025-001', animal_type: 'cow',   breed: 'Brangus',  gender: 'male', status: 'allocated',          current_weight_kg: 380, min_weight_kg: 350, location: 'Farm Maju, Kelantan',       supplier: 'Ternakan Maju Sdn Bhd',  created_at: '2025-03-10T00:00:00Z', tag_number: 'TG-001' },
-  { id: 'a2', animal_ref: 'A-2025-002', animal_type: 'goat',  breed: 'Boer',     gender: 'male', status: 'growing',             current_weight_kg: 28,  min_weight_kg: 25,  location: 'Farm Maju, Kelantan',       supplier: 'Ternakan Maju Sdn Bhd',  created_at: '2025-03-10T00:00:00Z', tag_number: 'TG-002' },
-  { id: 'a3', animal_ref: 'A-2025-003', animal_type: 'sheep', breed: 'Merino',   gender: 'male', status: 'inspection_pending',  current_weight_kg: 42,  min_weight_kg: 40,  location: 'Serasi Farm, Pahang',       supplier: 'Serasi Livestock',        created_at: '2025-03-15T00:00:00Z', tag_number: 'TG-003' },
-  { id: 'a4', animal_ref: 'A-2025-004', animal_type: 'cow',   breed: 'Brahman',  gender: 'male', status: 'qurban_ready',        current_weight_kg: 420, min_weight_kg: 350, location: 'Somalia Cooperative',       supplier: 'Horn Africa Livestock',   created_at: '2025-02-20T00:00:00Z', tag_number: 'TG-004' },
-  { id: 'a5', animal_ref: 'A-2025-005', animal_type: 'goat',  breed: 'Kacang',   gender: 'male', status: 'available',           current_weight_kg: 31,  min_weight_kg: 25,  location: 'Farm Maju, Kelantan',       supplier: 'Ternakan Maju Sdn Bhd',  created_at: '2025-04-01T00:00:00Z', tag_number: 'TG-005' },
-  { id: 'a6', animal_ref: 'A-2025-006', animal_type: 'cow',   breed: 'Friesian', gender: 'male', status: 'growing',             current_weight_kg: 290, min_weight_kg: 350, location: 'Johor Bahru Livestock',     supplier: 'JB Livestock Hub',        created_at: '2025-04-05T00:00:00Z', tag_number: 'TG-006' },
-  { id: 'a7', animal_ref: 'A-2025-007', animal_type: 'sheep', breed: 'Suffolk',  gender: 'male', status: 'inspection_passed',   current_weight_kg: 48,  min_weight_kg: 40,  location: 'Turkey Partner Farm',       supplier: 'Anatolia Livestock',      created_at: '2025-03-25T00:00:00Z', tag_number: 'TG-007' },
-  { id: 'a8', animal_ref: 'A-2025-008', animal_type: 'cow',   breed: 'Limousin', gender: 'male', status: 'growing',             current_weight_kg: 280, min_weight_kg: 350, location: 'Bangladesh Cooperative',    supplier: 'Dhaka Livestock',         created_at: '2025-04-10T00:00:00Z', tag_number: 'TG-008' },
-];
+const INITIAL_ANIMALS: Animal[] = [];
+
+
+// ── Register Animal Modal ────────────────────────────────────
+const ANIMAL_TYPES: AnimalType[] = ['cow', 'goat', 'sheep', 'lamb', 'camel', 'buffalo'];
+const GENDERS = ['male', 'female'];
+
+function RegisterAnimalModal({ onClose, onRegister, nextSeq }: {
+  onClose: () => void;
+  onRegister: (animal: Animal) => void;
+  nextSeq: number;
+}) {
+  const { toast } = useToast();
+  const year = new Date().getFullYear();
+  const padded = String(nextSeq).padStart(3, '0');
+
+  const [animalType, setAnimalType] = useState<AnimalType>('cow');
+  const [breed,      setBreed]      = useState('');
+  const [gender,     setGender]     = useState('male');
+  const [weight,     setWeight]     = useState('');
+  const [minWeight,  setMinWeight]  = useState('');
+  const [location,   setLocation]   = useState('');
+  const [supplier,   setSupplier]   = useState('');
+  const [tagNumber,  setTagNumber]  = useState('');
+  const [status,     setStatus]     = useState<AnimalStatus>('available');
+
+  const handleSubmit = () => {
+    if (!breed.trim() || !location.trim() || !supplier.trim() || !tagNumber.trim()) {
+      toast('error', 'Missing fields', 'Breed, location, supplier and tag number are required');
+      return;
+    }
+    if (!weight || Number(weight) <= 0) {
+      toast('error', 'Invalid weight', 'Please enter a valid current weight');
+      return;
+    }
+    if (!minWeight || Number(minWeight) <= 0) {
+      toast('error', 'Invalid min weight', 'Please enter a valid minimum weight threshold');
+      return;
+    }
+    const newAnimal: Animal = {
+      id: `a-${Date.now()}`,
+      animal_ref: `A-${year}-${padded}`,
+      animal_type: animalType,
+      breed: breed.trim(),
+      gender,
+      status,
+      current_weight_kg: Number(weight),
+      min_weight_kg: Number(minWeight),
+      location: location.trim(),
+      supplier: supplier.trim(),
+      tag_number: tagNumber.trim(),
+      created_at: new Date().toISOString(),
+    };
+    onRegister(newAnimal);
+    toast('success', 'Animal registered! 🐄', `${newAnimal.animal_ref} — ${breed} added to the system`);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <div className="heading-md">Register Animal</div>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: 2 }}>Ref will be: <strong style={{ color: 'var(--aig-green-300)', fontFamily: 'monospace' }}>A-{year}-{padded}</strong></div>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="modal-body">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="settings-grid-2">
+            <div className="form-group">
+              <label className="form-label">Animal Type *</label>
+              <select className="form-input form-select" value={animalType} onChange={e => setAnimalType(e.target.value as AnimalType)}>
+                {ANIMAL_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Breed *</label>
+              <input className="form-input" placeholder="e.g. Brahman, Boer, Merino" value={breed} onChange={e => setBreed(e.target.value)} autoFocus />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Gender *</label>
+              <select className="form-input form-select" value={gender} onChange={e => setGender(e.target.value)}>
+                {GENDERS.map(g => <option key={g} value={g}>{g.charAt(0).toUpperCase() + g.slice(1)}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Tag Number *</label>
+              <input className="form-input" placeholder="e.g. TG-001" value={tagNumber} onChange={e => setTagNumber(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Current Weight (kg) *</label>
+              <input className="form-input" type="number" min="0" step="0.1" placeholder="e.g. 350" value={weight} onChange={e => setWeight(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Min Weight Threshold (kg) *</label>
+              <input className="form-input" type="number" min="0" step="0.1" placeholder="e.g. 350" value={minWeight} onChange={e => setMinWeight(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Location *</label>
+              <input className="form-input" placeholder="e.g. Farm Maju, Kelantan" value={location} onChange={e => setLocation(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Supplier *</label>
+              <input className="form-input" placeholder="e.g. Ternakan Maju Sdn Bhd" value={supplier} onChange={e => setSupplier(e.target.value)} />
+            </div>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label className="form-label">Initial Status</label>
+              <select className="form-input form-select" value={status} onChange={e => setStatus(e.target.value as AnimalStatus)}>
+                {(Object.keys(ANIMAL_STATUS_LABEL) as AnimalStatus[]).map(s => (
+                  <option key={s} value={s}>{ANIMAL_STATUS_LABEL[s]}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSubmit}>
+            <Plus size={14} /> Register Animal
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Log Weight Modal ──────────────────────────────────────────
 function LogWeightModal({ animal, onClose, onUpdate }: {
@@ -364,6 +480,13 @@ export function AnimalsPage() {
   const [weightAnimal, setWeightAnimal] = useState<Animal | null>(null);
   const [inspectionAnimal, setInspectionAnimal] = useState<Animal | null>(null);
   const [statusAnimal, setStatusAnimal] = useState<Animal | null>(null);
+  const [showRegister, setShowRegister] = useState(false);
+  const [animalSeq, setAnimalSeq] = useState(1);
+
+  const registerAnimal = useCallback((animal: Animal) => {
+    setAnimals(prev => [animal, ...prev]);
+    setAnimalSeq(s => s + 1);
+  }, []);
 
   const updateAnimal = useCallback((id: string, patch: Partial<Animal>) => {
     setAnimals(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a));
@@ -393,6 +516,13 @@ export function AnimalsPage() {
   return (
     <div className="page-content animate-fadeInUp">
       {/* Modals */}
+      {showRegister && (
+        <RegisterAnimalModal
+          onClose={() => setShowRegister(false)}
+          onRegister={registerAnimal}
+          nextSeq={animalSeq}
+        />
+      )}
       {selected && (
         <AnimalDetailModal
           animal={selected}
@@ -430,7 +560,7 @@ export function AnimalsPage() {
           <h1 className="page-title">Animals</h1>
           <p className="page-subtitle">Track livestock status, weights, and inspections</p>
         </div>
-        <button className="btn btn-primary" onClick={() => toast('info', 'Register Animal', 'Connect to Supabase to enable registration')}>
+        <button className="btn btn-primary" onClick={() => setShowRegister(true)}>
           <Plus size={16} /> Register Animal
         </button>
       </div>

@@ -15,44 +15,34 @@ import { useToast } from '@/contexts/ToastContext';
 
 // ── Mock data ────────────────────────────────────────────────
 const REVENUE_DATA = [
-  { month: 'May', revenue: 48000 },
-  { month: 'Jun', revenue: 52000 },
-  { month: 'Jul', revenue: 61000 },
-  { month: 'Aug', revenue: 75000 },
-  { month: 'Sep', revenue: 68000 },
-  { month: 'Oct', revenue: 91000 },
+  { month: 'May', revenue: 0 },
+  { month: 'Jun', revenue: 0 },
+  { month: 'Jul', revenue: 0 },
+  { month: 'Aug', revenue: 0 },
+  { month: 'Sep', revenue: 0 },
+  { month: 'Oct', revenue: 0 },
 ];
 
 const ORDER_DIST = [
-  { name: 'Confirmed', value: 42, color: '#3b82f6' },
-  { name: 'In Progress', value: 28, color: '#a855f7' },
-  { name: 'Completed', value: 67, color: '#22c55e' },
-  { name: 'Pending', value: 19, color: '#eab308' },
+  { name: 'Confirmed',   value: 0, color: '#3b82f6' },
+  { name: 'In Progress', value: 0, color: '#a855f7' },
+  { name: 'Completed',   value: 0, color: '#22c55e' },
+  { name: 'Pending',     value: 0, color: '#eab308' },
 ];
 
 const DAILY_ORDERS = [
-  { day: 'Mon', orders: 12 },
-  { day: 'Tue', orders: 19 },
-  { day: 'Wed', orders: 8 },
-  { day: 'Thu', orders: 25 },
-  { day: 'Fri', orders: 31 },
-  { day: 'Sat', orders: 17 },
-  { day: 'Sun', orders: 6 },
+  { day: 'Mon', orders: 0 },
+  { day: 'Tue', orders: 0 },
+  { day: 'Wed', orders: 0 },
+  { day: 'Thu', orders: 0 },
+  { day: 'Fri', orders: 0 },
+  { day: 'Sat', orders: 0 },
+  { day: 'Sun', orders: 0 },
 ];
 
-const RECENT_ORDERS = [
-  { ref: 'AIG-2025-000158', participant: 'Ahmad Rizal bin Yusof', programme: 'Cow Share — Somalia', amount: 'SGD 850', status: 'payment_verified' },
-  { ref: 'AIG-2025-000157', participant: 'Nurul Ain binti Hassan', programme: 'Goat — Malaysia', amount: 'SGD 420', status: 'payment_submitted' },
-  { ref: 'AIG-2025-000156', participant: 'Mohamad Faiz bin Ali', programme: 'Cow Share — Palestine', amount: 'SGD 950', status: 'animal_allocated' },
-  { ref: 'AIG-2025-000155', participant: 'Siti Norzahra binti Md Zain', programme: 'Sheep — Turkey', amount: 'SGD 380', status: 'delivered' },
-  { ref: 'AIG-2025-000154', participant: 'Zulkifli bin Othman', programme: 'Goat — Bangladesh', amount: 'SGD 390', status: 'completed' },
-];
+const RECENT_ORDERS: { ref: string; participant: string; programme: string; amount: string; status: string }[] = [];
 
-const EXCEPTIONS = [
-  { severity: 'critical', title: 'Animal weight below minimum threshold', ref: 'A-2025-008', time: '18 min ago' },
-  { severity: 'high', title: 'Payment bank slip unreadable', ref: 'PAY-2025-142', time: '1h ago' },
-  { severity: 'medium', title: 'Delivery failed — recipient not home', ref: 'DEL-2025-039', time: '3h ago' },
-];
+const EXCEPTIONS: { severity: string; title: string; ref: string; time: string }[] = [];
 
 const SEVERITY_COLORS: Record<string, string> = {
   critical: 'var(--danger)',
@@ -238,47 +228,37 @@ export function DashboardPage() {
           icon={ShoppingCart}
           iconBg="linear-gradient(135deg, #155f41, #1f8561)"
           label="Total Orders"
-          value="156"
-          delta="+12% this week"
-          deltaPositive
+          value="0"
         />
         <StatCard
           icon={CreditCard}
           iconBg="linear-gradient(135deg, #1e3a5f, #3b82f6)"
           label="Revenue Collected"
-          value="SGD 91K"
-          delta="+8.4% vs last month"
-          deltaPositive
+          value="SGD 0"
         />
         <StatCard
           icon={Dog}
           iconBg="linear-gradient(135deg, #3b1f5f, #a855f7)"
           label="Animals Allocated"
-          value="98"
-          subtitle="42 pending inspection"
+          value="0"
         />
         <StatCard
           icon={Truck}
           iconBg="linear-gradient(135deg, #1a4a3a, #14b8a6)"
           label="Deliveries"
-          value="67"
-          delta="12 scheduled today"
-          deltaPositive
+          value="0"
         />
         <StatCard
           icon={Award}
           iconBg="linear-gradient(135deg, #3d2800, #d4a832)"
           label="Certificates"
-          value="43"
-          subtitle="14 pending generation"
+          value="0"
         />
         <StatCard
           icon={AlertTriangle}
           iconBg="linear-gradient(135deg, #2d0d0d, #ef4444)"
           label="Open Exceptions"
-          value="3"
-          delta="1 critical"
-          deltaPositive={false}
+          value="0"
         />
       </div>
 
@@ -369,34 +349,40 @@ export function DashboardPage() {
         <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
             <div className="heading-md">Active Exceptions</div>
-            <span className="badge badge-red">3 open</span>
+            <span className="badge badge-gray">0 open</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {EXCEPTIONS.map((ex, i) => (
-              <div key={i} style={{
-                display: 'flex',
-                gap: '0.75rem',
-                padding: '0.75rem',
-                background: 'var(--surface-700)',
-                borderRadius: 8,
-                border: `1px solid ${SEVERITY_COLORS[ex.severity]}22`,
-              }}>
-                <div style={{
-                  width: 8, height: 8, borderRadius: '50%',
-                  background: SEVERITY_COLORS[ex.severity],
-                  flexShrink: 0, marginTop: 5,
-                }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.15rem' }}>
-                    {ex.title}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {ex.ref} · {ex.time}
+          {EXCEPTIONS.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+              No active exceptions
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {EXCEPTIONS.map((ex, i) => (
+                <div key={i} style={{
+                  display: 'flex',
+                  gap: '0.75rem',
+                  padding: '0.75rem',
+                  background: 'var(--surface-700)',
+                  borderRadius: 8,
+                  border: `1px solid ${SEVERITY_COLORS[ex.severity]}22`,
+                }}>
+                  <div style={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: SEVERITY_COLORS[ex.severity],
+                    flexShrink: 0, marginTop: 5,
+                  }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.15rem' }}>
+                      {ex.title}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      {ex.ref} · {ex.time}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -421,19 +407,27 @@ export function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {RECENT_ORDERS.map((o, i) => (
-                <tr key={i}>
-                  <td>
-                    <span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--aig-green-300)' }}>
-                      {o.ref}
-                    </span>
+              {RECENT_ORDERS.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem', fontSize: '0.875rem' }}>
+                    No orders yet
                   </td>
-                  <td>{o.participant}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{o.programme}</td>
-                  <td style={{ fontWeight: 600 }}>{o.amount}</td>
-                  <td><StatusBadge status={o.status} size="sm" /></td>
                 </tr>
-              ))}
+              ) : (
+                RECENT_ORDERS.map((o, i) => (
+                  <tr key={i}>
+                    <td>
+                      <span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--aig-green-300)' }}>
+                        {o.ref}
+                      </span>
+                    </td>
+                    <td>{o.participant}</td>
+                    <td style={{ color: 'var(--text-muted)' }}>{o.programme}</td>
+                    <td style={{ fontWeight: 600 }}>{o.amount}</td>
+                    <td><StatusBadge status={o.status} size="sm" /></td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
