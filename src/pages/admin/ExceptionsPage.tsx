@@ -33,7 +33,7 @@ const STATUS_LABEL: Record<ExceptionStatus, string> = {
 function ExceptionModal({ exception: ex, onClose, onResolve, onAssign }: {
   exception: ExceptionItem;
   onClose: () => void;
-  onResolve: (id: string) => void;
+  onResolve: (id: string, resolution?: string) => void;
   onAssign: (id: string, person: string) => void;
 }) {
   const { toast } = useToast();
@@ -65,6 +65,7 @@ function ExceptionModal({ exception: ex, onClose, onResolve, onAssign }: {
               ['Related Entity', `${ex.related_entity} · ${ex.related_entity_id}`],
               ['Assigned To', ex.assigned_to || 'Unassigned'],
               ['Reported', formatRelativeTime(ex.created_at)],
+              ...(ex.resolution ? [['Resolution', ex.resolution]] : []),
             ] as [string, string][]).map(([k, v]) => (
               <div key={k} className="detail-row">
                 <div className="detail-key">{k}</div>
@@ -107,7 +108,7 @@ function ExceptionModal({ exception: ex, onClose, onResolve, onAssign }: {
               </button>
               <button className="btn btn-primary" style={{ gap: '0.5rem' }}
                 onClick={() => {
-                  onResolve(ex.id);
+                  onResolve(ex.id, resolutionNotes);
                   toast('success', 'Exception resolved ✓', `${ex.title.slice(0, 40)}... marked as resolved`);
                   onClose();
                 }}>
@@ -129,7 +130,7 @@ export function ExceptionsPage() {
   const [statusFilter, setStatusFilter] = useState('open');
   const [selected, setSelected] = useState<ExceptionItem | null>(null);
 
-  const resolveException = (id: string) => { ctxResolve(id); };
+  const resolveException = (id: string, resolution?: string) => { ctxResolve(id, resolution); };
   const assignException = (id: string, person: string) => { ctxAssign(id, person); };
 
   const filtered = exceptions.filter(e => {

@@ -26,53 +26,15 @@ const STATUS_LABEL: Record<PaymentStatus, string> = {
   cancelled:    'Cancelled',
 };
 
-// ── Proof helpers ─────────────────────────────────────────────
-const escapeXml = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-/** Builds a sample bank-slip SVG for mock data (until real proofs come from storage). */
-function buildSampleSlipSvg(p: Payment): string {
-  const rows: [string, string][] = [
-    ['Reference', p.payment_ref],
-    ['Order', p.order_ref],
-    ['Sender', p.participant],
-    ['Bank', p.bank || '—'],
-    ['Amount', formatCurrency(p.amount, p.currency)],
-    ['Date', p.submitted_at ? formatDateTime(p.submitted_at) : '—'],
-    ['Status', 'SUCCESSFUL'],
-  ];
-  const body = rows.map(([k, v], i) =>
-    `<text x="40" y="${190 + i * 44}" font-size="16" fill="#6b7280">${escapeXml(k)}</text>` +
-    `<text x="560" y="${190 + i * 44}" font-size="18" font-weight="600" fill="#111827" text-anchor="end">${escapeXml(v)}</text>` +
-    `<line x1="40" y1="${202 + i * 44}" x2="560" y2="${202 + i * 44}" stroke="#e5e7eb"/>`
-  ).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="560" viewBox="0 0 600 560" font-family="Arial, Helvetica, sans-serif">` +
-    `<rect width="600" height="560" fill="#ffffff"/>` +
-    `<rect width="600" height="110" fill="#0f6b4d"/>` +
-    `<text x="40" y="58" font-size="26" font-weight="700" fill="#ffffff">${escapeXml(p.bank || 'Bank')} — Transfer Receipt</text>` +
-    `<text x="40" y="88" font-size="14" fill="#bbf7d0">Sample proof of payment</text>` +
-    body +
-    `<text x="300" y="530" font-size="13" fill="#9ca3af" text-anchor="middle">This is a system-generated sample slip</text>` +
-    `</svg>`;
-}
+// ── Proof viewer ─────────────────────────────────────────────
 
 function ProofViewer({ payment, onClose }: { payment: Payment; onClose: () => void }) {
   const [zoom, setZoom] = useState(1);
   const [failed, setFailed] = useState(false);
-  const hasProof = !!payment.proof_url || !!payment.submitted_at;
-
-  // Resolve the proof URL (blob URL for generated sample slips so it can be opened/downloaded)
-  const [sampleUrl, setSampleUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (payment.proof_url || !payment.submitted_at) { setSampleUrl(null); return; }
-    const objectUrl = URL.createObjectURL(new Blob([buildSampleSlipSvg(payment)], { type: 'image/svg+xml' }));
-    setSampleUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [payment]);
-
-  const url = payment.proof_url ?? sampleUrl;
+  const url = payment.proof_url ?? null;
+  const hasProof = !!url;
   const isPdf = !!url && /\.pdf($|\?)/i.test(url);
-  const fileName = `${payment.payment_ref}-proof.${isPdf ? 'pdf' : payment.proof_url ? (payment.proof_url.split('?')[0].split('.').pop() || 'png') : 'svg'}`;
+  const fileName = `${payment.payment_ref}-proof.${isPdf ? 'pdf' : (url?.split('?')[0].split('.').pop() || 'png')}`;
 
   // Esc closes only the viewer (not the parent modal)
   useEffect(() => {
@@ -143,7 +105,7 @@ function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
   payment: Payment;
   onClose: () => void;
   onVerify: (id: string) => void;
-  onReject: (id: string) => void;
+  onReject: (id: string, reason?: string) => void;
 }) {
   const { toast } = useToast();
   const [rejectReason, setRejectReason] = useState('');
@@ -186,6 +148,7 @@ function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
                   ['Submitted', payment.submitted_at ? formatDateTime(payment.submitted_at) : '—'],
                   ['Verified', payment.verified_at ? formatDateTime(payment.verified_at) : '—'],
                   ['Notes', payment.notes || '—'],
+                  ...(payment.rejection_reason ? [['Rejection Reason', payment.rejection_reason]] : []),
                 ].map(([k, v]) => (
                   <div key={k} className="detail-row">
                     <div className="detail-key">{k}</div>
@@ -211,7 +174,7 @@ function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
             </div>
           </div>
 
-          {payment.status === 'submitted' || payment.status === 'under_review' ? (
+          {['pending', 'submitted', 'under_review', 'rejected'].includes(payment.status) ? (
             <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'var(--surface-700)', borderRadius: 8 }}>
               <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', fontWeight: 600 }}>Review Action</div>
               <div className="form-group" style={{ marginBottom: '0.75rem' }}>
@@ -233,12 +196,18 @@ function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
                 >
                   <CheckCircle2 size={15} /> Verify Payment
                 </button>
-                <button
-                  className="btn btn-danger"
-                  onClick={() => { onReject(payment.id); onClose(); toast('error', 'Payment rejected', rejectReason || `${payment.payment_ref} has been rejected.`); }}
-                >
-                  <XCircle size={15} /> Reject
-                </button>
+                {payment.status !== 'rejected' && (
+                  <button
+                    className="btn btn-danger"
+                    onClick={() => {
+                      if (!rejectReason.trim()) { toast('warning', 'Reason required', 'Please state a reason for rejection'); return; }
+                      onReject(payment.id, rejectReason); onClose();
+                      toast('error', 'Payment rejected', `${payment.payment_ref}: ${rejectReason}`);
+                    }}
+                  >
+                    <XCircle size={15} /> Reject
+                  </button>
+                )}
               </div>
             </div>
           ) : null}

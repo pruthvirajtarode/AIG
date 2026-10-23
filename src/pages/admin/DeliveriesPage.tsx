@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { Search, MapPin, Truck, CheckCircle2, Clock, X, Calendar } from 'lucide-react';
+import { Search, MapPin, Truck, CheckCircle2, X, XCircle, Calendar } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import type { DeliveryStatus } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
@@ -27,57 +27,114 @@ const DELIVERY_STATUS_LABEL: Record<DeliveryStatus, string> = {
 };
 
 
-function DeliveryModal({ delivery, onClose, onUpdateStatus }: {
+function DeliveryModal({ delivery, onClose, onUpdateStatus, onUpdate }: {
   delivery: Delivery;
   onClose: () => void;
   onUpdateStatus: (id: string, status: DeliveryStatus) => void;
+  onUpdate: (id: string, patch: Partial<Delivery>) => void;
 }) {
   const { toast } = useToast();
+  const editable = !['delivered', 'cancelled'].includes(delivery.status);
+  const [scheduledDate, setScheduledDate] = useState(delivery.scheduled_date ?? '');
+  const [slot, setSlot] = useState(delivery.delivery_slot ?? '');
+  const [driver, setDriver] = useState(delivery.driver ?? '');
+  const [phone, setPhone] = useState(delivery.contact_phone ?? '');
+  const [address, setAddress] = useState(delivery.address.startsWith('Address not provided') ? '' : delivery.address);
+
+  const saveDetails = (thenSchedule: boolean) => {
+    if (thenSchedule && (!scheduledDate || !address.trim())) {
+      toast('error', 'Missing details', 'Scheduled date and delivery address are required');
+      return;
+    }
+    onUpdate(delivery.id, {
+      scheduled_date: scheduledDate || null,
+      delivery_slot: slot.trim() || null,
+      driver: driver.trim() || null,
+      contact_phone: phone.trim(),
+      address: address.trim() || delivery.address,
+    });
+    if (thenSchedule && delivery.status !== 'scheduled') {
+      onUpdateStatus(delivery.id, 'scheduled');
+      toast('success', 'Delivery scheduled', `${delivery.delivery_ref} scheduled for ${formatDate(scheduledDate)}`);
+    } else {
+      toast('success', 'Delivery updated', `${delivery.delivery_ref} details saved`);
+    }
+    onClose();
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div>
             <div className="heading-md">Delivery Details</div>
-            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.125rem' }}>{delivery.delivery_ref}</div>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.125rem' }}>{delivery.delivery_ref} · Order {delivery.order_ref}</div>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span className={`badge ${DELIVERY_STATUS_BADGE[delivery.status]}`}>{DELIVERY_STATUS_LABEL[delivery.status]}</span>
+            <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
+          </div>
         </div>
         <div className="modal-body">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }} className="settings-grid-2">
-            <div className="detail-list">
-              {([
-                ['Delivery Ref', delivery.delivery_ref],
-                ['Order', delivery.order_ref],
-                ['Recipient', delivery.participant],
-                ['Phone', delivery.contact_phone],
-                ['Driver', delivery.driver || '—'],
-                ['Slot', delivery.delivery_slot || '—'],
-                ['Scheduled', delivery.scheduled_date ? formatDate(delivery.scheduled_date) : '—'],
-                ['Delivered', delivery.delivered_at ? formatDate(delivery.delivered_at) : '—'],
-              ] as [string, string][]).map(([k, v]) => (
-                <div key={k} className="detail-row">
-                  <div className="detail-key">{k}</div>
-                  <div className="detail-val">{v}</div>
-                </div>
-              ))}
-            </div>
-            <div>
-              <div style={{ marginBottom: '1rem' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600 }}>Status</div>
-                <span className={`badge ${DELIVERY_STATUS_BADGE[delivery.status]}`}>{DELIVERY_STATUS_LABEL[delivery.status]}</span>
+          {editable ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="settings-grid-2">
+              <div className="form-group">
+                <label className="form-label" htmlFor="delivery-date">Scheduled Date *</label>
+                <input id="delivery-date" className="form-input" type="date" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} />
               </div>
-              <div style={{ padding: '0.875rem', background: 'var(--surface-700)', borderRadius: 8, fontSize: '0.8125rem' }}>
+              <div className="form-group">
+                <label className="form-label" htmlFor="delivery-slot">Time Slot</label>
+                <input id="delivery-slot" className="form-input" placeholder="e.g. 9am – 12pm" value={slot} onChange={e => setSlot(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="delivery-driver">Driver</label>
+                <input id="delivery-driver" className="form-input" placeholder="Driver name" value={driver} onChange={e => setDriver(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="delivery-phone">Recipient Phone</label>
+                <input id="delivery-phone" className="form-input" placeholder="+65 …" value={phone} onChange={e => setPhone(e.target.value)} />
+              </div>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label className="form-label" htmlFor="delivery-address">Delivery Address *</label>
+                <textarea id="delivery-address" className="form-input" rows={2} style={{ resize: 'vertical' }} placeholder="Full delivery address" value={address} onChange={e => setAddress(e.target.value)} />
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }} className="settings-grid-2">
+              <div className="detail-list">
+                {([
+                  ['Recipient', delivery.participant],
+                  ['Phone', delivery.contact_phone || '—'],
+                  ['Driver', delivery.driver || '—'],
+                  ['Slot', delivery.delivery_slot || '—'],
+                  ['Scheduled', delivery.scheduled_date ? formatDate(delivery.scheduled_date) : '—'],
+                  ['Delivered', delivery.delivered_at ? formatDate(delivery.delivered_at) : '—'],
+                ] as [string, string][]).map(([k, v]) => (
+                  <div key={k} className="detail-row">
+                    <div className="detail-key">{k}</div>
+                    <div className="detail-val">{v}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding: '0.875rem', background: 'var(--surface-700)', borderRadius: 8, fontSize: '0.8125rem', alignSelf: 'start' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
                   <MapPin size={14} color="var(--aig-green-400)" style={{ flexShrink: 0, marginTop: 2 }} />
                   <div style={{ color: 'var(--text-secondary)' }}>{delivery.address}</div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
-        <div className="modal-footer">
+        <div className="modal-footer" style={{ flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" onClick={onClose}>Close</button>
+          {editable && (
+            <button className="btn btn-secondary" onClick={() => saveDetails(false)}>Save Details</button>
+          )}
+          {(delivery.status === 'pending' || delivery.status === 'failed' || delivery.status === 'returned') && (
+            <button className="btn btn-primary" style={{ gap: '0.5rem' }} onClick={() => saveDetails(true)}>
+              <Calendar size={15} /> {delivery.status === 'pending' ? 'Schedule Delivery' : 'Reschedule Delivery'}
+            </button>
+          )}
           {delivery.status === 'scheduled' && (
             <button className="btn btn-secondary" style={{ gap: '0.5rem', color: 'var(--aig-green-300)', borderColor: 'var(--aig-green-700)' }}
               onClick={() => { onUpdateStatus(delivery.id, 'out_for_delivery'); toast('info', 'Out for Delivery', `${delivery.delivery_ref} is now out for delivery`); onClose(); }}>
@@ -85,16 +142,16 @@ function DeliveryModal({ delivery, onClose, onUpdateStatus }: {
             </button>
           )}
           {delivery.status === 'out_for_delivery' && (
-            <button className="btn btn-primary" style={{ gap: '0.5rem' }}
-              onClick={() => { onUpdateStatus(delivery.id, 'delivered'); toast('success', 'Delivery Confirmed! ✓', `${delivery.delivery_ref} marked as delivered`); onClose(); }}>
-              <CheckCircle2 size={15} /> Confirm Delivered
-            </button>
-          )}
-          {delivery.status === 'failed' && (
-            <button className="btn btn-secondary" style={{ gap: '0.5rem' }}
-              onClick={() => { onUpdateStatus(delivery.id, 'scheduled'); toast('info', 'Rescheduled', `${delivery.delivery_ref} rescheduled for re-delivery`); onClose(); }}>
-              <Calendar size={15} /> Reschedule Delivery
-            </button>
+            <>
+              <button className="btn btn-danger" style={{ gap: '0.5rem' }}
+                onClick={() => { onUpdateStatus(delivery.id, 'failed'); toast('warning', 'Delivery failed', `${delivery.delivery_ref} marked as failed — exception raised`); onClose(); }}>
+                <XCircle size={15} /> Mark Failed
+              </button>
+              <button className="btn btn-primary" style={{ gap: '0.5rem' }}
+                onClick={() => { onUpdateStatus(delivery.id, 'delivered'); toast('success', 'Delivery Confirmed! ✓', `${delivery.delivery_ref} marked as delivered`); onClose(); }}>
+                <CheckCircle2 size={15} /> Confirm Delivered
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -105,7 +162,7 @@ function DeliveryModal({ delivery, onClose, onUpdateStatus }: {
 export function DeliveriesPage() {
   usePageTitle('Deliveries');
   const { toast } = useToast();
-  const { deliveries, updateDeliveryStatus: ctxUpdateStatus } = useAppData();
+  const { deliveries, updateDeliveryStatus: ctxUpdateStatus, updateDelivery } = useAppData();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<Delivery | null>(null);
@@ -129,6 +186,7 @@ export function DeliveriesPage() {
           delivery={selected}
           onClose={() => setSelected(null)}
           onUpdateStatus={updateStatus}
+          onUpdate={updateDelivery}
         />
       )}
 
@@ -139,7 +197,11 @@ export function DeliveriesPage() {
         </div>
         <div className="page-header-actions" style={{ display: 'flex', gap: '0.75rem' }}>
           <button className="btn btn-secondary btn-sm"
-            onClick={() => toast('info', 'Schedule Delivery', 'Open a pending order and use the scheduling form to assign a driver and time slot')}>
+            onClick={() => {
+              setStatusFilter('pending');
+              const n = deliveries.filter(d => d.status === 'pending').length;
+              toast('info', 'Schedule Delivery', n ? `${n} deliver${n === 1 ? 'y needs' : 'ies need'} scheduling — click one to set date, driver and address` : 'No pending deliveries. Deliveries are created automatically when an order reaches "Delivery Scheduled".');
+            }}>
             <Calendar size={14} />
             Schedule Delivery
           </button>

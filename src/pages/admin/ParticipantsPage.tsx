@@ -3,14 +3,15 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, Plus, Eye, X, Send, ShieldCheck } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { useToast } from '@/contexts/ToastContext';
-import { useAppData, type AppParticipant as Participant } from '@/contexts/AppDataContext';
+import { useAppData, nextRef, uid, type AppParticipant as Participant } from '@/contexts/AppDataContext';
 
 
-function ParticipantModal({ participant, onClose, onSave, onSendInvite }: {
+function ParticipantModal({ participant, onClose, onSave, onSendInvite, emailTaken }: {
   participant?: Participant;
   onClose: () => void;
   onSave: (data: Omit<Participant, 'id' | 'participant_ref' | 'orders_count' | 'total_spent' | 'is_active' | 'portal_access' | 'created_at'>) => void;
   onSendInvite?: (id: string) => void;
+  emailTaken?: (email: string) => boolean;
 }) {
   const { toast } = useToast();
   const isNew = !participant;
@@ -25,6 +26,10 @@ function ParticipantModal({ participant, onClose, onSave, onSendInvite }: {
   const handleSave = () => {
     if (!firstName.trim() || !lastName.trim() || !email.trim()) {
       toast('error', 'Missing fields', 'First name, last name and email are required');
+      return;
+    }
+    if (emailTaken?.(email)) {
+      toast('error', 'Duplicate email', 'Another participant already uses this email address');
       return;
     }
     onSave({ first_name: firstName.trim(), last_name: lastName.trim(), email: email.trim(), phone: phone.trim(), ic_number: icNumber.trim(), country: country.trim() });
@@ -146,20 +151,18 @@ function ParticipantModal({ participant, onClose, onSave, onSendInvite }: {
 export function ParticipantsPage() {
   usePageTitle('Participants');
   const { toast } = useToast();
-  const { participants, addParticipant } = useAppData();
+  const { participants, addParticipant, updateParticipant } = useAppData();
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editP, setEditP] = useState<Participant | undefined>();
 
   const handleSave = (data: Omit<Participant, 'id' | 'participant_ref' | 'orders_count' | 'total_spent' | 'is_active' | 'portal_access' | 'created_at'>) => {
     if (editP) {
-      // Local edit only (no global update fn needed for now)
+      updateParticipant(editP.id, data);
     } else {
-      const seq = participants.length + 1;
-      const padded = String(seq).padStart(3, '0');
       const newP: Participant = {
-        id: `pp-${Date.now()}`,
-        participant_ref: `PRT-${new Date().getFullYear()}-${padded}`,
+        id: uid(),
+        participant_ref: nextRef('PRT', participants.map(p => p.participant_ref), 3),
         ...data,
         orders_count: 0,
         total_spent: 0,
@@ -171,10 +174,16 @@ export function ParticipantsPage() {
     }
   };
 
+  const emailTaken = (email: string) =>
+    participants.some(p => p.id !== editP?.id && p.email.trim().toLowerCase() === email.trim().toLowerCase());
+
   const sendPortalInvite = (id: string) => {
     const p = participants.find(x => x.id === id);
-    toast('success', 'Portal invite sent! 📧',
-      `Login credentials sent to ${p?.email}. They can now access aigsuite.com/login?mode=participant`
+    if (!p) return;
+    if (!p.email) { toast('error', 'No email', 'Add an email address before sending an invite'); return; }
+    updateParticipant(id, { portal_access: true });
+    toast('success', 'Portal access granted 📧',
+      `${p.first_name} can now sign in at aigsuite.com/login?mode=participant using ${p.email}`
     );
   };
 
@@ -193,6 +202,7 @@ export function ParticipantsPage() {
           onClose={() => { setShowModal(false); setEditP(undefined); }}
           onSave={handleSave}
           onSendInvite={sendPortalInvite}
+          emailTaken={emailTaken}
         />
       )}
 

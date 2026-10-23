@@ -5,7 +5,7 @@ import { formatDate } from '@/lib/utils';
 import type { AnimalStatus, AnimalType } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
 import { ANIMAL_IMAGES } from '@/lib/animalImages';
-import { useAppData, type AppAnimal as Animal } from '@/contexts/AppDataContext';
+import { useAppData, nextRef, uid, type AppAnimal as Animal } from '@/contexts/AppDataContext';
 
 // ── Real photorealistic animal images (shared map in lib/animalImages) ──
 
@@ -42,14 +42,13 @@ const ANIMAL_STATUS_LABEL: Record<AnimalStatus, string> = {
 const ANIMAL_TYPES: AnimalType[] = ['cow', 'goat', 'sheep', 'lamb', 'camel', 'buffalo'];
 const GENDERS = ['male', 'female'];
 
-function RegisterAnimalModal({ onClose, onRegister, nextSeq }: {
+function RegisterAnimalModal({ onClose, onRegister, nextAnimalRef }: {
   onClose: () => void;
   onRegister: (animal: Animal) => void;
-  nextSeq: number;
+  nextAnimalRef: string;
 }) {
   const { toast } = useToast();
-  const year = new Date().getFullYear();
-  const padded = String(nextSeq).padStart(3, '0');
+  const { suppliers } = useAppData();
 
   const [animalType, setAnimalType] = useState<AnimalType>('cow');
   const [breed,      setBreed]      = useState('');
@@ -75,8 +74,8 @@ function RegisterAnimalModal({ onClose, onRegister, nextSeq }: {
       return;
     }
     const newAnimal: Animal = {
-      id: `a-${Date.now()}`,
-      animal_ref: `A-${year}-${padded}`,
+      id: uid(),
+      animal_ref: nextAnimalRef,
       animal_type: animalType,
       breed: breed.trim(),
       gender,
@@ -99,7 +98,7 @@ function RegisterAnimalModal({ onClose, onRegister, nextSeq }: {
         <div className="modal-header">
           <div>
             <div className="heading-md">Register Animal</div>
-            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: 2 }}>Ref will be: <strong style={{ color: 'var(--aig-green-300)', fontFamily: 'monospace' }}>A-{year}-{padded}</strong></div>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: 2 }}>Ref will be: <strong style={{ color: 'var(--aig-green-300)', fontFamily: 'monospace' }}>{nextAnimalRef}</strong></div>
           </div>
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
         </div>
@@ -139,7 +138,10 @@ function RegisterAnimalModal({ onClose, onRegister, nextSeq }: {
             </div>
             <div className="form-group">
               <label className="form-label">Supplier *</label>
-              <input className="form-input" placeholder="e.g. Ternakan Maju Sdn Bhd" value={supplier} onChange={e => setSupplier(e.target.value)} />
+              <input className="form-input" placeholder="e.g. Ternakan Maju Sdn Bhd" list="animal-supplier-list" value={supplier} onChange={e => setSupplier(e.target.value)} />
+              <datalist id="animal-supplier-list">
+                {suppliers.map(s => <option key={s.id} value={s.name} />)}
+              </datalist>
             </div>
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Initial Status</label>
@@ -156,6 +158,91 @@ function RegisterAnimalModal({ onClose, onRegister, nextSeq }: {
           <button className="btn btn-primary" onClick={handleSubmit}>
             <Plus size={14} /> Register Animal
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Edit Animal Details Modal ─────────────────────────────────
+function EditAnimalModal({ animal, onClose, onSave }: {
+  animal: Animal;
+  onClose: () => void;
+  onSave: (id: string, patch: Partial<Animal>) => void;
+}) {
+  const { toast } = useToast();
+  const { suppliers } = useAppData();
+  const clean = (v: string) => (v === 'To be assigned' || v === 'Pending' ? '' : v);
+  const [animalType, setAnimalType] = useState<AnimalType>(animal.animal_type);
+  const [breed, setBreed] = useState(clean(animal.breed));
+  const [gender, setGender] = useState(animal.gender || 'male');
+  const [tagNumber, setTagNumber] = useState(clean(animal.tag_number));
+  const [minWeight, setMinWeight] = useState(String(animal.min_weight_kg || ''));
+  const [location, setLocation] = useState(animal.location);
+  const [supplier, setSupplier] = useState(clean(animal.supplier));
+
+  const handleSave = () => {
+    if (!breed.trim() || !tagNumber.trim() || !supplier.trim() || !location.trim()) {
+      toast('error', 'Missing fields', 'Breed, tag number, location and supplier are required');
+      return;
+    }
+    onSave(animal.id, {
+      animal_type: animalType, breed: breed.trim(), gender, tag_number: tagNumber.trim(),
+      min_weight_kg: Number(minWeight) || 0, location: location.trim(), supplier: supplier.trim(),
+    });
+    toast('success', 'Animal updated', `${animal.animal_ref} details saved`);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="heading-md">Edit {animal.animal_ref}</div>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="modal-body">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="settings-grid-2">
+            <div className="form-group">
+              <label className="form-label">Animal Type *</label>
+              <select className="form-input form-select" value={animalType} onChange={e => setAnimalType(e.target.value as AnimalType)}>
+                {ANIMAL_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Breed *</label>
+              <input className="form-input" value={breed} onChange={e => setBreed(e.target.value)} autoFocus />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Gender</label>
+              <select className="form-input form-select" value={gender} onChange={e => setGender(e.target.value)}>
+                {GENDERS.map(g => <option key={g} value={g}>{g.charAt(0).toUpperCase() + g.slice(1)}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Tag Number *</label>
+              <input className="form-input" value={tagNumber} onChange={e => setTagNumber(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Min Weight Threshold (kg)</label>
+              <input className="form-input" type="number" min="0" step="0.1" value={minWeight} onChange={e => setMinWeight(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Location *</label>
+              <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} />
+            </div>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label className="form-label">Supplier *</label>
+              <input className="form-input" list="edit-animal-supplier-list" value={supplier} onChange={e => setSupplier(e.target.value)} />
+              <datalist id="edit-animal-supplier-list">
+                {suppliers.map(s => <option key={s.id} value={s.name} />)}
+              </datalist>
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSave}>Save Changes</button>
         </div>
       </div>
     </div>
@@ -338,14 +425,15 @@ function UpdateAnimalStatusModal({ animal, onClose, onUpdate }: {
 }
 
 // ── Animal Detail Modal ───────────────────────────────────────
-function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatusUpdate }: {
+function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatusUpdate, onEdit }: {
   animal: Animal;
   onClose: () => void;
   onWeightLog: (a: Animal) => void;
   onInspection: (a: Animal) => void;
   onStatusUpdate: (a: Animal) => void;
+  onEdit: (a: Animal) => void;
 }) {
-  const weightPct = Math.min(100, Math.round((animal.current_weight_kg / animal.min_weight_kg) * 100));
+  const weightPct = animal.min_weight_kg > 0 ? Math.min(100, Math.round((animal.current_weight_kg / animal.min_weight_kg) * 100)) : 100;
   const belowMin = animal.current_weight_kg < animal.min_weight_kg;
 
   return (
@@ -384,6 +472,7 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
                 ['Location',   animal.location],
                 ['Supplier',   animal.supplier],
                 ['Registered', formatDate(animal.created_at)],
+                ['Linked Order', animal.order_ref || '—'],
               ].map(([k, v]) => (
                 <div key={k} className="detail-row">
                   <div className="detail-key">{k}</div>
@@ -435,7 +524,10 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
         </div>
 
         {/* Footer — all 3 buttons fully working */}
-        <div className="modal-footer">
+        <div className="modal-footer" style={{ flexWrap: 'wrap' }}>
+          <button className="btn btn-secondary" onClick={() => onEdit(animal)} style={{ gap: '0.5rem' }}>
+            Edit Details
+          </button>
           <button className="btn btn-secondary" onClick={() => onWeightLog(animal)} style={{ gap: '0.5rem' }}>
             <Weight size={14} /> Log Weight Update
           </button>
@@ -455,7 +547,7 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
 export function AnimalsPage() {
   usePageTitle('Animals');
   const { toast } = useToast();
-  const { animals, addAnimal, updateAnimalStatus } = useAppData();
+  const { animals, addAnimal, updateAnimal: ctxUpdateAnimal } = useAppData();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -463,19 +555,19 @@ export function AnimalsPage() {
   const [weightAnimal, setWeightAnimal] = useState<Animal | null>(null);
   const [inspectionAnimal, setInspectionAnimal] = useState<Animal | null>(null);
   const [statusAnimal, setStatusAnimal] = useState<Animal | null>(null);
+  const [editAnimal, setEditAnimal] = useState<Animal | null>(null);
   const [showRegister, setShowRegister] = useState(false);
 
-  // next seq = animals.length + 1 (always correct)
-  const animalSeq = animals.length + 1;
+  const nextAnimalRef = nextRef('A', animals.map(a => a.animal_ref), 3);
 
   const registerAnimal = useCallback((animal: Animal) => {
     addAnimal(animal);
   }, [addAnimal]);
 
   const updateAnimal = useCallback((id: string, patch: Partial<Animal>) => {
-    if (patch.status) updateAnimalStatus(id, patch.status);
+    ctxUpdateAnimal(id, patch);
     setSelected(prev => prev?.id === id ? { ...prev, ...patch } : prev);
-  }, [updateAnimalStatus]);
+  }, [ctxUpdateAnimal]);
 
 
   const handleWeightUpdate = useCallback((id: string, weight: number) => {
@@ -489,6 +581,7 @@ export function AnimalsPage() {
   const openWeight = (a: Animal) => { setSelected(null); setWeightAnimal(a); };
   const openInspection = (a: Animal) => { setSelected(null); setInspectionAnimal(a); };
   const openStatus = (a: Animal) => { setSelected(null); setStatusAnimal(a); };
+  const openEdit = (a: Animal) => { setSelected(null); setEditAnimal(a); };
 
   const filtered = animals.filter(a => {
     const q = search.toLowerCase();
@@ -505,7 +598,7 @@ export function AnimalsPage() {
         <RegisterAnimalModal
           onClose={() => setShowRegister(false)}
           onRegister={registerAnimal}
-          nextSeq={animalSeq}
+          nextAnimalRef={nextAnimalRef}
         />
       )}
       {selected && (
@@ -515,6 +608,14 @@ export function AnimalsPage() {
           onWeightLog={openWeight}
           onInspection={openInspection}
           onStatusUpdate={openStatus}
+          onEdit={openEdit}
+        />
+      )}
+      {editAnimal && (
+        <EditAnimalModal
+          animal={editAnimal}
+          onClose={() => setEditAnimal(null)}
+          onSave={updateAnimal}
         />
       )}
       {weightAnimal && (
@@ -594,7 +695,7 @@ export function AnimalsPage() {
       {/* Animal Grid — real photorealistic images */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
         {filtered.map(a => {
-          const weightPct = Math.min(100, Math.round((a.current_weight_kg / a.min_weight_kg) * 100));
+          const weightPct = a.min_weight_kg > 0 ? Math.min(100, Math.round((a.current_weight_kg / a.min_weight_kg) * 100)) : 100;
           const belowMin = a.current_weight_kg < a.min_weight_kg;
           return (
             <div

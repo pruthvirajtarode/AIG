@@ -4,31 +4,70 @@ import { Search, Plus, X, ChevronDown, ChevronUp, CheckCircle2, XCircle, Refresh
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import type { OrderStatus } from '@/lib/database.types';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { getStatusLabel } from '@/lib/statusEngine';
 import { useToast } from '@/contexts/ToastContext';
-import { useAppData, type AppOrder as Order } from '@/contexts/AppDataContext';
+import { useAppData, orderRank, type AppOrder as Order, type NewOrderInput } from '@/contexts/AppDataContext';
 
+/** Used only until real programmes are created on the Programmes page. */
+const FALLBACK_PROGRAMMES = [
+  'Cow Share — Somalia', 'Goat — Malaysia', 'Sheep — Turkey',
+  'Cow Share — Palestine', 'Goat — Bangladesh', 'Sheep — Australia',
+];
 
 const NEXT_STATUSES: Partial<Record<OrderStatus, OrderStatus>> = {
-  draft:             'pending_payment',
-  pending_payment:   'payment_submitted',
-  payment_submitted: 'payment_verified',
-  payment_verified:  'confirmed',
-  confirmed:         'animal_allocated',
-  animal_allocated:  'delivered',
-  delivered:         'completed',
-  completed:         'certificate_generated',
+  draft:                 'pending_payment',
+  pending_payment:       'payment_submitted',
+  payment_submitted:     'payment_verified',
+  payment_under_review:  'payment_verified',
+  payment_rejected:      'pending_payment',
+  payment_verified:      'confirmed',
+  confirmed:             'animal_allocated',
+  animal_allocated:      'qurban_complete',
+  animal_growing:        'final_inspection',
+  final_inspection:      'qurban_complete',
+  qurban_complete:       'delivery_scheduled',
+  processing:            'shipped',
+  shipped:               'arrived',
+  arrived:               'delivery_scheduled',
+  delivery_scheduled:    'out_for_delivery',
+  out_for_delivery:      'delivered',
+  delivered:             'certificate_generated',
+  certificate_generated: 'completed',
 };
+
+/** Statuses offered in the "Update Status" picker, in lifecycle order. */
+const PICKER_STATUSES: OrderStatus[] = [
+  'draft', 'pending_payment', 'payment_submitted', 'payment_verified', 'payment_rejected',
+  'confirmed', 'animal_allocated', 'animal_growing', 'final_inspection', 'qurban_complete',
+  'delivery_scheduled', 'out_for_delivery', 'delivered', 'certificate_generated', 'completed', 'cancelled',
+];
 
 const STATUS_FILTERS = [
   { label: 'All',              value: '' },
   { label: 'Draft',            value: 'draft' },
   { label: 'Pending Payment',  value: 'pending_payment' },
   { label: 'Submitted',        value: 'payment_submitted' },
+  { label: 'Verified',         value: 'payment_verified' },
   { label: 'Confirmed',        value: 'confirmed' },
   { label: 'Allocated',        value: 'animal_allocated' },
   { label: 'Delivered',        value: 'delivered' },
   { label: 'Completed',        value: 'completed' },
+  { label: 'Cancelled',        value: 'cancelled' },
 ];
+
+const label = (s: OrderStatus) => getStatusLabel(s);
+
+/** Short human summary of which linked records a status change touches. */
+function syncSummary(status: OrderStatus): string {
+  if (status === 'cancelled') return 'Linked payment, animal and delivery were cancelled/released.';
+  const parts: string[] = [];
+  const r = orderRank(status);
+  if (r >= orderRank('pending_payment')) parts.push('Payments');
+  if (r >= orderRank('animal_allocated')) parts.push('Animals');
+  if (r >= orderRank('delivery_scheduled')) parts.push('Deliveries');
+  if (r >= orderRank('qurban_complete')) parts.push('Certificates');
+  return parts.length ? `Synced to ${parts.join(', ')}.` : '';
+}
 
 const PAGE_SIZE = 10;
 
@@ -62,9 +101,10 @@ function OrderDetailModal({ order, onClose, onStatusChange, onCancel }: {
               ['Programme',    order.programme],
               ['Quantity',     String(order.quantity)],
               ['Total Amount', formatCurrency(order.total_amount, order.currency)],
-              ['Unit Price',   formatCurrency(order.total_amount / order.quantity, order.currency)],
+              ['Unit Price',   formatCurrency(order.total_amount / (order.quantity || 1), order.currency)],
               ['Date Placed',  formatDate(order.created_at)],
-              ['Status',       order.status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())],
+              ['Status',       label(order.status)],
+              ['Notes',        order.notes || '—'],
             ].map(([k, v]) => (
               <div key={k} className="detail-row">
                 <div className="detail-key">{k}</div>
@@ -84,7 +124,7 @@ function OrderDetailModal({ order, onClose, onStatusChange, onCancel }: {
               color: 'var(--text-secondary)',
             }}>
               <strong style={{ color: 'var(--aig-green-300)' }}>Next step:</strong>{' '}
-              Advance to <strong>{nextStatus.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</strong>
+              Advance to <strong>{label(nextStatus)}</strong>
             </div>
           )}
         </div>
@@ -97,7 +137,7 @@ function OrderDetailModal({ order, onClose, onStatusChange, onCancel }: {
               style={{ gap: '0.5rem' }}
             >
               <RefreshCw size={14} />
-              Advance to {nextStatus.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+              Advance to {label(nextStatus)}
             </button>
           )}
           {isCancellable && (
@@ -117,29 +157,49 @@ function OrderDetailModal({ order, onClose, onStatusChange, onCancel }: {
 }
 
 // ── Create Order Modal ────────────────────────────────────────
-function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate: (o: Order) => void }) {
+function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate: (o: NewOrderInput) => Order }) {
+  const { programmes, participants } = useAppData();
   const [participant, setParticipant] = useState('');
   const [programme, setProgramme] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [price, setPrice] = useState('');
+  const [notes, setNotes] = useState('');
+  const [initialStatus, setInitialStatus] = useState<OrderStatus>('draft');
   const { toast } = useToast();
 
+  const activeProgrammes = programmes.filter(p => p.is_active);
+  const programmeOptions = activeProgrammes.length ? activeProgrammes.map(p => p.name) : FALLBACK_PROGRAMMES;
+
+  const onProgrammeChange = (name: string) => {
+    setProgramme(name);
+    const prog = programmes.find(p => p.name === name);
+    if (prog) {
+      setPrice(String(prog.price_per_share));
+      if (quantity < prog.min_quantity) setQuantity(prog.min_quantity);
+    }
+  };
+
   const handleSubmit = () => {
-    if (!participant || !programme || !price) {
+    if (!participant.trim() || !programme || !price) {
       toast('error', 'Missing fields', 'Please fill in all required fields');
       return;
     }
-    const newOrder: Order = {
-      id: String(Date.now()),
-      order_ref: `AIG-2025-${String(Math.floor(Math.random() * 900) + 100).padStart(6, '0')}`,
+    if (!Number.isFinite(quantity) || quantity < 1) {
+      toast('error', 'Invalid quantity', 'Quantity must be at least 1');
+      return;
+    }
+    if (!(Number(price) > 0)) {
+      toast('error', 'Invalid price', 'Unit price must be greater than 0');
+      return;
+    }
+    const created = onCreate({
       participant, programme, quantity,
       total_amount: Number(price) * quantity,
-      currency: 'SGD',
-      status: 'draft',
-      created_at: new Date().toISOString(),
-    };
-    onCreate(newOrder);
-    toast('success', 'Order created!', `${newOrder.order_ref} created successfully`);
+      currency: programmes.find(p => p.name === programme)?.currency ?? 'SGD',
+      notes,
+      status: initialStatus,
+    });
+    toast('success', 'Order created!', `${created.order_ref} created — ${label(initialStatus)}. ${syncSummary(initialStatus)}`);
     onClose();
   };
 
@@ -153,40 +213,54 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
         <div className="modal-body">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div className="form-group">
-              <label className="form-label">Participant *</label>
-              <input className="form-input" placeholder="Participant name" value={participant} onChange={e => setParticipant(e.target.value)} />
+              <label className="form-label" htmlFor="order-participant">Participant *</label>
+              <input id="order-participant" className="form-input" placeholder="Participant name" list="order-participant-list"
+                value={participant} onChange={e => setParticipant(e.target.value)} autoFocus />
+              <datalist id="order-participant-list">
+                {participants.map(p => <option key={p.id} value={`${p.first_name} ${p.last_name}`.trim()}>{p.email}</option>)}
+              </datalist>
             </div>
             <div className="form-group">
-              <label className="form-label">Programme *</label>
-              <select className="form-input form-select" value={programme} onChange={e => setProgramme(e.target.value)}>
+              <label className="form-label" htmlFor="order-programme">Programme *</label>
+              <select id="order-programme" className="form-input form-select" value={programme} onChange={e => onProgrammeChange(e.target.value)}>
                 <option value="">Select programme</option>
-                <option>Cow Share — Somalia</option>
-                <option>Goat — Malaysia</option>
-                <option>Sheep — Turkey</option>
-                <option>Cow Share — Palestine</option>
-                <option>Goat — Bangladesh</option>
-                <option>Sheep — Australia</option>
+                {programmeOptions.map(name => <option key={name} value={name}>{name}</option>)}
               </select>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div className="form-group">
-                <label className="form-label">Quantity</label>
-                <input className="form-input" type="number" min="1" value={quantity} onChange={e => setQuantity(Number(e.target.value))} />
+                <label className="form-label" htmlFor="order-quantity">Quantity</label>
+                <input id="order-quantity" className="form-input" type="number" min="1" value={quantity} onChange={e => setQuantity(Math.max(1, Math.floor(Number(e.target.value) || 1)))} />
               </div>
               <div className="form-group">
-                <label className="form-label">Unit Price (SGD) *</label>
-                <input className="form-input" type="number" placeholder="0.00" value={price} onChange={e => setPrice(e.target.value)} />
+                <label className="form-label" htmlFor="order-price">Unit Price (SGD) *</label>
+                <input id="order-price" className="form-input" type="number" min="0" step="0.01" placeholder="0.00" value={price} onChange={e => setPrice(e.target.value)} />
               </div>
             </div>
             <div className="form-group">
-              <label className="form-label">Special Requests</label>
-              <textarea className="form-input" rows={3} placeholder="Any special instructions..." style={{ resize: 'vertical' }} />
+              <label className="form-label" htmlFor="order-initial-status">Initial Status</label>
+              <select id="order-initial-status" className="form-input form-select" value={initialStatus} onChange={e => setInitialStatus(e.target.value as OrderStatus)}>
+                <option value="draft">Draft</option>
+                <option value="pending_payment">Pending Payment (creates a payment record)</option>
+                <option value="payment_submitted">Payment Submitted (awaiting verification)</option>
+                <option value="payment_verified">Payment Verified</option>
+              </select>
             </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="order-notes">Special Requests</label>
+              <textarea id="order-notes" className="form-input" rows={3} placeholder="Any special instructions..." style={{ resize: 'vertical' }}
+                value={notes} onChange={e => setNotes(e.target.value)} />
+            </div>
+            {price && quantity > 0 && (
+              <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
+                Total: <strong style={{ color: 'var(--aig-green-300)' }}>{formatCurrency(Number(price) * quantity, 'SGD')}</strong>
+              </div>
+            )}
           </div>
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSubmit}>Create Order</button>
+          <button id="order-create-submit" className="btn btn-primary" onClick={handleSubmit}>Create Order</button>
         </div>
       </div>
     </div>
@@ -199,50 +273,52 @@ function UpdateStatusModal({ order, onClose, onUpdate }: {
   onClose: () => void;
   onUpdate: (id: string, status: OrderStatus) => void;
 }) {
-  const ALL_STATUSES: OrderStatus[] = [
-    'draft', 'pending_payment', 'payment_submitted', 'payment_verified',
-    'confirmed', 'animal_allocated', 'delivered', 'completed', 'cancelled',
-  ];
   const [selected, setSelected] = useState<OrderStatus>(order.status);
   const { toast } = useToast();
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
         <div className="modal-header">
           <div className="heading-md">Update Order Status</div>
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
         </div>
-        <div className="modal-body">
+        <div className="modal-body" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
           <div style={{ marginBottom: '0.75rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
             Order: <strong style={{ color: 'var(--text-primary)' }}>{order.order_ref}</strong>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {ALL_STATUSES.map(s => (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+            {PICKER_STATUSES.map(s => (
               <button
                 key={s}
+                type="button"
                 onClick={() => setSelected(s)}
                 style={{
-                  padding: '0.625rem 0.875rem',
+                  padding: '0.575rem 0.75rem',
                   borderRadius: 8,
                   border: selected === s ? '1px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
                   background: selected === s ? 'rgba(47,168,118,0.12)' : 'var(--surface-800)',
-                  color: selected === s ? 'var(--aig-green-200)' : 'var(--text-secondary)',
-                  cursor: 'pointer', textAlign: 'left', fontSize: '0.875rem',
-                  display: 'flex', alignItems: 'center', gap: '0.5rem',
+                  color: selected === s ? 'var(--aig-green-200)' : s === 'cancelled' ? '#f87171' : 'var(--text-secondary)',
+                  cursor: 'pointer', textAlign: 'left', fontSize: '0.8125rem',
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
                 }}
               >
-                {selected === s && <CheckCircle2 size={14} />}
-                {s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                {selected === s && <CheckCircle2 size={13} />}
+                {label(s)}
               </button>
             ))}
           </div>
+          {selected !== order.status && syncSummary(selected) && (
+            <div style={{ marginTop: '0.875rem', fontSize: '0.8125rem', color: 'var(--text-muted)', padding: '0.625rem 0.75rem', background: 'var(--surface-900)', borderRadius: 8 }}>
+              {syncSummary(selected)}
+            </div>
+          )}
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => {
+          <button className="btn btn-primary" disabled={selected === order.status} onClick={() => {
             onUpdate(order.id, selected);
-            toast('success', 'Status updated!', `${order.order_ref} → ${selected.replace(/_/g, ' ')}`);
+            toast('success', 'Status updated!', `${order.order_ref} → ${label(selected)}. ${syncSummary(selected)}`);
             onClose();
           }}>
             Apply Status
@@ -321,8 +397,8 @@ export function OrdersPage() {
       <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
           { label: 'Total Orders',    value: String(orders.length),                                         color: 'var(--aig-green-400)' },
-          { label: 'Pending Payment', value: String(orders.filter(o => o.status === 'pending_payment').length), color: 'var(--warning)' },
-          { label: 'In Progress',     value: String(orders.filter(o => ['confirmed','animal_allocated','delivered'].includes(o.status)).length), color: 'var(--info)' },
+          { label: 'Pending Payment', value: String(orders.filter(o => ['pending_payment', 'payment_submitted', 'payment_under_review', 'payment_rejected'].includes(o.status)).length), color: 'var(--warning)' },
+          { label: 'In Progress',     value: String(orders.filter(o => orderRank(o.status) >= orderRank('payment_verified') && orderRank(o.status) < orderRank('completed')).length), color: 'var(--info)' },
           { label: 'Completed',       value: String(orders.filter(o => o.status === 'completed').length),       color: 'var(--success)' },
         ].map(s => (
           <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
@@ -411,7 +487,7 @@ export function OrdersPage() {
                           <div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Quantity × Unit Price</div>
                             <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                              {o.quantity} × {formatCurrency(o.total_amount / o.quantity, o.currency)}
+                              {o.quantity} × {formatCurrency(o.total_amount / (o.quantity || 1), o.currency)}
                             </div>
                           </div>
                           <div>

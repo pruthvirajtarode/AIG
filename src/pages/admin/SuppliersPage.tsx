@@ -2,20 +2,56 @@ import React, { useState } from 'react';
 import { Search, Plus, MapPin, Phone, Mail, Package, X } from 'lucide-react';
 import type { AnimalType } from '@/lib/database.types';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
-import { useAppData, type AppSupplier } from '@/contexts/AppDataContext';
+import { usePageTitle } from '@/hooks/usePageTitle';
+import { useToast } from '@/contexts/ToastContext';
+import { useAppData, nextRef, uid, type AppSupplier } from '@/contexts/AppDataContext';
 
 const TYPE_EMOJI: Record<AnimalType, string> = {
   cow: '🐄', goat: '🐐', sheep: '🐑', lamb: '🐑', camel: '🐪', buffalo: '🐃',
 };
 
-const MOCK_SUPPLIERS: {
-  id: string; supplier_ref: string; name: string; contact_name: string;
-  email: string; phone: string; country: string; region: string | null;
-  animal_types: AnimalType[]; is_active: boolean; animals_count: number;
-}[] = [];
-
-function SupplierModal({ supplier, onClose }: { supplier?: typeof MOCK_SUPPLIERS[0]; onClose: () => void }) {
+function SupplierModal({ supplier, onClose }: { supplier?: AppSupplier; onClose: () => void }) {
   const isNew = !supplier;
+  const { toast } = useToast();
+  const { suppliers, addSupplier, updateSupplier } = useAppData();
+  const [name, setName] = useState(supplier?.name ?? '');
+  const [contactName, setContactName] = useState(supplier?.contact_name ?? '');
+  const [phone, setPhone] = useState(supplier?.phone ?? '');
+  const [email, setEmail] = useState(supplier?.email ?? '');
+  const [country, setCountry] = useState(supplier?.country ?? '');
+  const [region, setRegion] = useState(supplier?.region ?? '');
+  const [types, setTypes] = useState<AnimalType[]>(supplier?.animal_types ?? []);
+  const [isActive, setIsActive] = useState(supplier?.is_active ?? true);
+
+  const toggleType = (t: AnimalType) => setTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+
+  const handleSave = () => {
+    if (!name.trim() || !country.trim()) {
+      toast('error', 'Missing fields', 'Supplier name and country are required');
+      return;
+    }
+    if (suppliers.some(s => s.id !== supplier?.id && s.name.trim().toLowerCase() === name.trim().toLowerCase())) {
+      toast('error', 'Duplicate supplier', 'A supplier with this name already exists');
+      return;
+    }
+    const data: AppSupplier = {
+      id: supplier?.id ?? uid(),
+      supplier_ref: supplier?.supplier_ref ?? nextRef('SUP', suppliers.map(s => s.supplier_ref), 3),
+      name: name.trim(),
+      contact_name: contactName.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      country: country.trim(),
+      region: region.trim() || null,
+      animal_types: types,
+      is_active: isActive,
+      animals_count: supplier?.animals_count ?? 0,
+    };
+    if (isNew) addSupplier(data); else updateSupplier(data);
+    toast('success', isNew ? 'Supplier added' : 'Supplier updated', data.name);
+    onClose();
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
@@ -27,30 +63,30 @@ function SupplierModal({ supplier, onClose }: { supplier?: typeof MOCK_SUPPLIERS
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div className="form-group">
               <label className="form-label">Supplier Name *</label>
-              <input className="form-input" defaultValue={supplier?.name} placeholder="Full company name" />
+              <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="Full company name" autoFocus />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div className="form-group">
                 <label className="form-label">Contact Name</label>
-                <input className="form-input" defaultValue={supplier?.contact_name || ''} />
+                <input className="form-input" value={contactName} onChange={e => setContactName(e.target.value)} />
               </div>
               <div className="form-group">
                 <label className="form-label">Phone</label>
-                <input className="form-input" defaultValue={supplier?.phone || ''} />
+                <input className="form-input" value={phone} onChange={e => setPhone(e.target.value)} />
               </div>
             </div>
             <div className="form-group">
               <label className="form-label">Email</label>
-              <input className="form-input" type="email" defaultValue={supplier?.email || ''} />
+              <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div className="form-group">
                 <label className="form-label">Country *</label>
-                <input className="form-input" defaultValue={supplier?.country} placeholder="e.g. Malaysia" />
+                <input className="form-input" value={country} onChange={e => setCountry(e.target.value)} placeholder="e.g. Malaysia" />
               </div>
               <div className="form-group">
                 <label className="form-label">Region / State</label>
-                <input className="form-input" defaultValue={supplier?.region || ''} placeholder="e.g. Kelantan" />
+                <input className="form-input" value={region} onChange={e => setRegion(e.target.value)} placeholder="e.g. Kelantan" />
               </div>
             </div>
             <div className="form-group">
@@ -58,17 +94,21 @@ function SupplierModal({ supplier, onClose }: { supplier?: typeof MOCK_SUPPLIERS
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
                 {(['cow', 'goat', 'sheep', 'lamb', 'camel', 'buffalo'] as AnimalType[]).map(t => (
                   <label key={t} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.875rem', cursor: 'pointer' }}>
-                    <input type="checkbox" defaultChecked={supplier?.animal_types.includes(t)} />
+                    <input type="checkbox" checked={types.includes(t)} onChange={() => toggleType(t)} />
                     {TYPE_EMOJI[t]} {t.charAt(0).toUpperCase() + t.slice(1)}
                   </label>
                 ))}
               </div>
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)} />
+              Active supplier
+            </label>
           </div>
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary">{isNew ? 'Add Supplier' : 'Save Changes'}</button>
+          <button className="btn btn-primary" onClick={handleSave}>{isNew ? 'Add Supplier' : 'Save Changes'}</button>
         </div>
       </div>
     </div>
@@ -76,6 +116,7 @@ function SupplierModal({ supplier, onClose }: { supplier?: typeof MOCK_SUPPLIERS
 }
 
 export function SuppliersPage() {
+  usePageTitle('Suppliers');
   const { suppliers } = useAppData();
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -168,6 +209,12 @@ export function SuppliersPage() {
           </div>
         ))}
       </div>
+      {filtered.length === 0 && (
+        <div className="empty-state" style={{ padding: '3rem 2rem', textAlign: 'center' }}>
+          <h3>{suppliers.length ? 'No suppliers match your search' : 'No suppliers yet'}</h3>
+          <p>{suppliers.length ? 'Try a different search term' : 'Click "Add Supplier" to register your first livestock supplier'}</p>
+        </div>
+      )}
     </div>
   );
 }

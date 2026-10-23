@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { Search, Plus, BookOpen, Globe, Eye, X } from 'lucide-react';
+import { Search, Plus, Globe, X } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { AnimalType, DistributionMethod } from '@/lib/database.types';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
-import { useAppData, type AppProgramme } from '@/contexts/AppDataContext';
+import { useToast } from '@/contexts/ToastContext';
+import { useAppData, uid, type AppProgramme } from '@/contexts/AppDataContext';
 
 const DISTRIBUTION_LABEL: Record<DistributionMethod, string> = {
   local_distribution: 'Local Distribution',
@@ -16,15 +17,53 @@ const DISTRIBUTION_LABEL: Record<DistributionMethod, string> = {
 
 const ANIMAL_EMOJI: Record<AnimalType, string> = { cow: '🐄', goat: '🐐', sheep: '🐑', lamb: '🐑', camel: '🐪', buffalo: '🐃' };
 
-const MOCK_PROGRAMMES: {
-  id: string; name: string; slug: string; country: string; animal_type: AnimalType;
-  animals_per_share: number; price_per_share: number; currency: string;
-  shares_available: number; min_quantity: number; distribution_method: DistributionMethod;
-  is_active: boolean; qurban_date: string; orders_count: number;
-}[] = [];
+const slugify = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-function ProgrammeModal({ programme, onClose }: { programme?: typeof MOCK_PROGRAMMES[0]; onClose: () => void }) {
+function ProgrammeModal({ programme, onClose }: { programme?: AppProgramme; onClose: () => void }) {
   const isNew = !programme;
+  const { toast } = useToast();
+  const { programmes, addProgramme, updateProgramme } = useAppData();
+  const [name, setName] = useState(programme?.name ?? '');
+  const [country, setCountry] = useState(programme?.country ?? '');
+  const [animalType, setAnimalType] = useState<AnimalType>(programme?.animal_type ?? 'cow');
+  const [price, setPrice] = useState(programme ? String(programme.price_per_share) : '');
+  const [shares, setShares] = useState(programme?.shares_available ? String(programme.shares_available) : '');
+  const [perShare, setPerShare] = useState(String(programme?.animals_per_share ?? 1));
+  const [minQty, setMinQty] = useState(String(programme?.min_quantity ?? 1));
+  const [qurbanDate, setQurbanDate] = useState(programme?.qurban_date ?? '');
+  const [distribution, setDistribution] = useState<DistributionMethod>(programme?.distribution_method ?? 'local_distribution');
+  const [isActive, setIsActive] = useState(programme?.is_active ?? true);
+
+  const handleSave = () => {
+    if (!name.trim() || !country.trim() || !(Number(price) > 0)) {
+      toast('error', 'Missing fields', 'Name, country and a price greater than 0 are required');
+      return;
+    }
+    if (programmes.some(p => p.id !== programme?.id && p.name.trim().toLowerCase() === name.trim().toLowerCase())) {
+      toast('error', 'Duplicate programme', 'A programme with this name already exists');
+      return;
+    }
+    const data: AppProgramme = {
+      id: programme?.id ?? uid(),
+      name: name.trim(),
+      slug: slugify(name),
+      country: country.trim(),
+      animal_type: animalType,
+      animals_per_share: Math.max(1, Number(perShare) || 1),
+      price_per_share: Number(price),
+      currency: programme?.currency ?? 'SGD',
+      shares_available: Math.max(0, Math.floor(Number(shares) || 0)),
+      min_quantity: Math.max(1, Math.floor(Number(minQty) || 1)),
+      distribution_method: distribution,
+      is_active: isActive,
+      qurban_date: qurbanDate,
+      orders_count: programme?.orders_count ?? 0,
+    };
+    if (isNew) addProgramme(data); else updateProgramme(data);
+    toast('success', isNew ? 'Programme created' : 'Programme updated', data.name);
+    onClose();
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
@@ -36,51 +75,59 @@ function ProgrammeModal({ programme, onClose }: { programme?: typeof MOCK_PROGRA
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div className="form-group">
               <label className="form-label">Programme Name *</label>
-              <input className="form-input" defaultValue={programme?.name} placeholder="e.g. Cow Share — Somalia 2025" />
+              <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Cow Share — Somalia" autoFocus />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="settings-grid-2">
               <div className="form-group">
                 <label className="form-label">Country *</label>
-                <input className="form-input" defaultValue={programme?.country} />
+                <input className="form-input" value={country} onChange={e => setCountry(e.target.value)} />
               </div>
               <div className="form-group">
                 <label className="form-label">Animal Type *</label>
-                <select className="form-input form-select" defaultValue={programme?.animal_type}>
+                <select className="form-input form-select" value={animalType} onChange={e => setAnimalType(e.target.value as AnimalType)}>
                   {(['cow', 'goat', 'sheep', 'lamb', 'camel', 'buffalo'] as AnimalType[]).map(t => (
                     <option key={t} value={t}>{ANIMAL_EMOJI[t]} {t.charAt(0).toUpperCase() + t.slice(1)}</option>
                   ))}
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">Price per Share (SGD)</label>
-                <input className="form-input" type="number" defaultValue={programme?.price_per_share} />
+                <label className="form-label">Price per Share (SGD) *</label>
+                <input className="form-input" type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} />
               </div>
               <div className="form-group">
-                <label className="form-label">Shares Available</label>
-                <input className="form-input" type="number" defaultValue={programme?.shares_available ?? ''} placeholder="Leave blank for unlimited" />
+                <label className="form-label">Total Shares Available</label>
+                <input className="form-input" type="number" min="0" value={shares} onChange={e => setShares(e.target.value)} placeholder="Leave blank for unlimited" />
               </div>
               <div className="form-group">
                 <label className="form-label">Animals per Share</label>
-                <input className="form-input" type="number" defaultValue={programme?.animals_per_share} min="1" />
+                <input className="form-input" type="number" min="1" value={perShare} onChange={e => setPerShare(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Minimum Quantity</label>
+                <input className="form-input" type="number" min="1" value={minQty} onChange={e => setMinQty(e.target.value)} />
               </div>
               <div className="form-group">
                 <label className="form-label">Qurban Date</label>
-                <input className="form-input" type="date" defaultValue={programme?.qurban_date || ''} />
+                <input className="form-input" type="date" value={qurbanDate} onChange={e => setQurbanDate(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Distribution Method</label>
+                <select className="form-input form-select" value={distribution} onChange={e => setDistribution(e.target.value as DistributionMethod)}>
+                  {(Object.keys(DISTRIBUTION_LABEL) as DistributionMethod[]).map(m => (
+                    <option key={m} value={m}>{DISTRIBUTION_LABEL[m]}</option>
+                  ))}
+                </select>
               </div>
             </div>
-            <div className="form-group">
-              <label className="form-label">Distribution Method</label>
-              <select className="form-input form-select" defaultValue={programme?.distribution_method}>
-                {(Object.keys(DISTRIBUTION_LABEL) as DistributionMethod[]).map(m => (
-                  <option key={m} value={m}>{DISTRIBUTION_LABEL[m]}</option>
-                ))}
-              </select>
-            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)} />
+              Active (available for new orders)
+            </label>
           </div>
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary">{isNew ? 'Create Programme' : 'Save Changes'}</button>
+          <button className="btn btn-primary" onClick={handleSave}>{isNew ? 'Create Programme' : 'Save Changes'}</button>
         </div>
       </div>
     </div>
@@ -117,10 +164,10 @@ export function ProgrammesPage() {
       {/* Stats */}
       <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
-          { label: 'Total Programmes', value: String(MOCK_PROGRAMMES.length), color: 'var(--aig-green-400)' },
-          { label: 'Active', value: String(MOCK_PROGRAMMES.filter(p => p.is_active).length), color: 'var(--success)' },
-          { label: 'Countries', value: String(new Set(MOCK_PROGRAMMES.map(p => p.country)).size), color: 'var(--info)' },
-          { label: 'Total Orders', value: String(MOCK_PROGRAMMES.reduce((a, p) => a + p.orders_count, 0)), color: 'var(--purple)' },
+          { label: 'Total Programmes', value: String(programmes.length), color: 'var(--aig-green-400)' },
+          { label: 'Active', value: String(programmes.filter(p => p.is_active).length), color: 'var(--success)' },
+          { label: 'Countries', value: String(new Set(programmes.map(p => p.country)).size), color: 'var(--info)' },
+          { label: 'Shares Ordered', value: String(programmes.reduce((a, p) => a + p.orders_count, 0)), color: 'var(--purple)' },
         ].map(s => (
           <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
             <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
@@ -138,7 +185,7 @@ export function ProgrammesPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
         {filtered.map(p => {
-          const capacityUsed = p.shares_available ? Math.round((p.orders_count / (p.orders_count + p.shares_available)) * 100) : 100;
+          const capacityUsed = p.shares_available ? Math.min(100, Math.round((p.orders_count / p.shares_available) * 100)) : 0;
           return (
             <div key={p.id} className="card card-hover" style={{ cursor: 'pointer' }} onClick={() => { setEditProgramme(p); setShowModal(true); }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.875rem' }}>
@@ -175,21 +222,29 @@ export function ProgrammesPage() {
                 </div>
               </div>
 
-              {p.shares_available !== null && (
+              {p.shares_available > 0 ? (
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.375rem' }}>
                     <span>Capacity</span>
-                    <span>{p.orders_count} / {p.orders_count + p.shares_available} shares</span>
+                    <span>{p.orders_count} / {p.shares_available} shares</span>
                   </div>
                   <div className="progress-bar">
                     <div className="progress-fill" style={{ width: `${capacityUsed}%` }} />
                   </div>
                 </div>
+              ) : (
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Unlimited capacity</div>
               )}
             </div>
           );
         })}
       </div>
+      {filtered.length === 0 && (
+        <div className="empty-state" style={{ padding: '3rem 2rem', textAlign: 'center' }}>
+          <h3>{programmes.length ? 'No programmes match your search' : 'No programmes yet'}</h3>
+          <p>{programmes.length ? 'Try a different search term' : 'Create a programme so it can be selected (with its price) when creating orders'}</p>
+        </div>
+      )}
     </div>
   );
 }
