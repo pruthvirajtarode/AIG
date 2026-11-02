@@ -746,7 +746,7 @@ export function OrdersPage() {
                   {expandedId === o.id && (
                     <tr>
                       <td colSpan={10} style={{ background: 'var(--surface-900)', padding: '1rem 1.5rem', borderTop: '1px solid var(--border-subtle)' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem', marginBottom: '1rem' }}>
+                        <div className="settings-grid-2" style={{ gap: '1rem', marginBottom: '1rem' }}>
                           <div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Programme</div>
                             <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>{o.programme}</div>

@@ -151,7 +151,7 @@ export function PortalDashboardPage() {
       </div>
 
       {/* ── Two-column layout ───────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '1.25rem' }} className="settings-grid-2">
+      <div className="settings-grid-2" style={{ gap: '1.25rem' }}>
 
         {/* Left: Recent Orders */}
         <div>

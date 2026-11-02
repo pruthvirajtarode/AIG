@@ -989,6 +989,7 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   justify-content: flex-end;
   gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 @keyframes fadeIn {
@@ -1430,6 +1431,13 @@ h1, h2, h3, h4, h5, h6 {
 .hidden { display: none; }
 .col-span-2 { grid-column: span 2; }
 
+/* ── settings-grid-2 — desktop two-column, stacks on mobile ── */
+.settings-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.875rem;
+}
+
 /* ── Responsive ────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .sidebar {
@@ -1522,7 +1530,7 @@ h1, h2, h3, h4, h5, h6 {
 
   /* Make all fixed-column stat grids responsive on mobile */
   .stats-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
   /* Prevent small stat cards from being super tiny */
@@ -1602,11 +1610,21 @@ h1, h2, h3, h4, h5, h6 {
   .settings-grid-2 {
     grid-template-columns: 1fr !important;
   }
+
+  /* Detail key: narrower min-width on mobile */
+  .detail-key {
+    min-width: 100px;
+  }
+
+  /* Hide topbar username on mobile to save space */
+  .topbar-username {
+    display: none;
+  }
 }
 
 @media (max-width: 480px) {
   .stats-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
   .filter-bar > div:last-child {

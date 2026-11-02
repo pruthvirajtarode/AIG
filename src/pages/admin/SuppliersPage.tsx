@@ -65,7 +65,7 @@ function SupplierModal({ supplier, onClose }: { supplier?: AppSupplier; onClose:
               <label className="form-label">Supplier Name *</label>
               <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="Full company name" autoFocus />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="settings-grid-2" style={{ gap: '1rem' }}>
               <div className="form-group">
                 <label className="form-label">Contact Name</label>
                 <input className="form-input" value={contactName} onChange={e => setContactName(e.target.value)} />
@@ -79,7 +79,7 @@ function SupplierModal({ supplier, onClose }: { supplier?: AppSupplier; onClose:
               <label className="form-label">Email</label>
               <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="settings-grid-2" style={{ gap: '1rem' }}>
               <div className="form-group">
                 <label className="form-label">Country *</label>
                 <input className="form-input" value={country} onChange={e => setCountry(e.target.value)} placeholder="e.g. Malaysia" />
@@ -147,7 +147,7 @@ export function SuppliersPage() {
       </div>
 
       {/* Stats */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '1.25rem' }}>
+      <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
           { label: 'Active Suppliers', value: String(suppliers.filter(s => s.is_active).length), color: 'var(--aig-green-400)' },
           { label: 'Countries', value: String(new Set(suppliers.map(s => s.country)).size), color: 'var(--info)' },
