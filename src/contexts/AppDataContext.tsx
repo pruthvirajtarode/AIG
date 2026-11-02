@@ -20,6 +20,7 @@ import type {
 } from '@/lib/database.types';
 import { getStatusLabel } from '@/lib/statusEngine';
 import { useAuth } from '@/contexts/AuthContext';
+import { LIVE_PROGRAMMES, LIVE_PROGRAMMES_VERSION } from '@/data/liveProgrammes';
 
 // ─────────────────────────────────────────────────────────────
 // Local flat types used by the admin pages
@@ -244,8 +245,26 @@ const MAX_AUDIT_LOGS = 2000;
 
 const EMPTY: AppData = {
   orders: [], animals: [], payments: [], deliveries: [], certificates: [],
-  participants: [], suppliers: [], programmes: [], exceptions: [], auditLogs: [],
+  participants: [], suppliers: [], programmes: LIVE_PROGRAMMES, exceptions: [], auditLogs: [],
 };
+
+const PROGRAMMES_VERSION_KEY = 'aigms-programmes-version';
+
+/** One-time sync of the website's live programme list into existing data. */
+function syncLiveProgrammes(d: AppData): AppData {
+  try {
+    if (localStorage.getItem(PROGRAMMES_VERSION_KEY) === LIVE_PROGRAMMES_VERSION) return d;
+    localStorage.setItem(PROGRAMMES_VERSION_KEY, LIVE_PROGRAMMES_VERSION);
+  } catch { return d; }
+  const liveIds = new Set(LIVE_PROGRAMMES.map(p => p.id));
+  const liveNames = new Set(LIVE_PROGRAMMES.map(p => p.name.trim().toLowerCase()));
+  const legacy = d.programmes
+    .filter(p => !liveIds.has(p.id) && !liveNames.has(p.name.trim().toLowerCase()))
+    .map(p => ({ ...p, is_active: false }));
+  const kept = d.programmes.filter(p => liveIds.has(p.id) || liveNames.has(p.name.trim().toLowerCase()));
+  const missing = LIVE_PROGRAMMES.filter(lp => !kept.some(p => p.id === lp.id || p.name.trim().toLowerCase() === lp.name.toLowerCase()));
+  return { ...d, programmes: [...LIVE_PROGRAMMES.map(lp => kept.find(p => p.id === lp.id || p.name.trim().toLowerCase() === lp.name.toLowerCase()) ?? lp).filter(p => kept.includes(p) || missing.includes(p)), ...legacy] };
+}
 
 export const uid = (): string =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -590,9 +609,9 @@ const SYSTEM_ACTOR: Actor = { email: 'system', role: 'super_admin' };
 function loadData(): AppData {
   try {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
-    if (!raw) return EMPTY;
+    if (!raw) { syncLiveProgrammes(EMPTY); return EMPTY; }
     const parsed = JSON.parse(raw) as Partial<AppData>;
-    const base: AppData = { ...EMPTY, ...parsed };
+    const base: AppData = syncLiveProgrammes({ ...EMPTY, ...parsed });
     // Repair any orders whose related records are missing (idempotent)
     return base.orders.reduce((acc, o) => syncRelated(acc, o, SYSTEM_ACTOR), base);
   } catch {
@@ -708,7 +727,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     const country = (input.programme_country || programmeCountry(d0, input.programme)).toLowerCase();
     const progLower = input.programme.toLowerCase();
     const isIndonesia = country === 'indonesia' || progLower.includes('indonesia');
-    const isAustralia = country === 'australia' || progLower.includes('australia');
+    const isAustralia = country === 'australia' || /australia\s*(to|→|-)?\s*singapore/i.test(input.programme);
     if (input.payment_method === 'installment' && !isIndonesia) {
       throw new Error('Installment is only available for Indonesia programmes.');
     }

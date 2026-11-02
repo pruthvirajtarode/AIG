@@ -234,7 +234,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
 
   const selectedProg = activeProgrammes.find(p => p.id === programmeId);
   const isIndonesia  = selectedProg?.country?.toLowerCase() === 'indonesia' || selectedProg?.name?.toLowerCase().includes('indonesia');
-  const isAustralia  = selectedProg?.country?.toLowerCase() === 'australia' || selectedProg?.name?.toLowerCase().includes('australia');
+  const isAustralia  = selectedProg?.country?.toLowerCase() === 'australia' || /australia\s*(to|→|-)?\s*singapore/i.test(selectedProg?.name ?? '');
   const supportsPortions = isAustralia;
 
   // Keep qurban entries in sync with numQurbans

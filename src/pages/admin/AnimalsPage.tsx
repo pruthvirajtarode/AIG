@@ -48,8 +48,10 @@ function RegisterAnimalModal({ onClose, onRegister, nextAnimalRef }: {
   nextAnimalRef: string;
 }) {
   const { toast } = useToast();
-  const { suppliers } = useAppData();
+  const { suppliers, programmes } = useAppData();
+  const activeProgrammes = programmes.filter(p => p.is_active);
 
+  const [programmeName, setProgrammeName] = useState('');
   const [animalType, setAnimalType] = useState<AnimalType>('cow');
   const [breed,      setBreed]      = useState('');
   const [gender,     setGender]     = useState('male');
@@ -59,6 +61,15 @@ function RegisterAnimalModal({ onClose, onRegister, nextAnimalRef }: {
   const [supplier,   setSupplier]   = useState('');
   const [tagNumber,  setTagNumber]  = useState('');
   const [status,     setStatus]     = useState<AnimalStatus>('available');
+
+  const handleProgramme = (name: string) => {
+    setProgrammeName(name);
+    const prog = activeProgrammes.find(p => p.name === name);
+    if (prog) {
+      setAnimalType(prog.animal_type);
+      if (!location.trim()) setLocation(prog.country);
+    }
+  };
 
   const handleSubmit = () => {
     if (!breed.trim() || !location.trim() || !supplier.trim() || !tagNumber.trim()) {
@@ -86,6 +97,7 @@ function RegisterAnimalModal({ onClose, onRegister, nextAnimalRef }: {
       supplier: supplier.trim(),
       tag_number: tagNumber.trim(),
       created_at: new Date().toISOString(),
+      ...(programmeName ? { programme: programmeName } : {}),
     };
     onRegister(newAnimal);
     toast('success', 'Animal registered! 🐄', `${newAnimal.animal_ref} — ${breed} added to the system`);
@@ -104,6 +116,13 @@ function RegisterAnimalModal({ onClose, onRegister, nextAnimalRef }: {
         </div>
         <div className="modal-body">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="settings-grid-2">
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label className="form-label">Programme</label>
+              <select id="animal-programme" className="form-input form-select" value={programmeName} onChange={e => handleProgramme(e.target.value)}>
+                <option value="">General stock (no programme)</option>
+                {activeProgrammes.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+              </select>
+            </div>
             <div className="form-group">
               <label className="form-label">Animal Type *</label>
               <select className="form-input form-select" value={animalType} onChange={e => setAnimalType(e.target.value as AnimalType)}>
@@ -550,9 +569,10 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
 export function AnimalsPage() {
   usePageTitle('Animals');
   const { toast } = useToast();
-  const { animals, addAnimal, updateAnimal: ctxUpdateAnimal } = useAppData();
+  const { animals, programmes, addAnimal, updateAnimal: ctxUpdateAnimal } = useAppData();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [programmeFilter, setProgrammeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<Animal | null>(null);
   const [weightAnimal, setWeightAnimal] = useState<Animal | null>(null);
@@ -591,8 +611,9 @@ export function AnimalsPage() {
     const matchSearch = a.animal_ref.toLowerCase().includes(q) || a.breed.toLowerCase().includes(q) || a.location.toLowerCase().includes(q)
       || (a.order_ref ?? '').toLowerCase().includes(q) || (a.qurban_name_holder ?? '').toLowerCase().includes(q);
     const matchType = !typeFilter || a.animal_type === typeFilter;
+    const matchProgramme = !programmeFilter || (programmeFilter === '__none' ? !a.programme : a.programme === programmeFilter);
     const matchStatus = !statusFilter || a.status === statusFilter;
-    return matchSearch && matchType && matchStatus;
+    return matchSearch && matchType && matchProgramme && matchStatus;
   });
 
   return (
@@ -687,6 +708,11 @@ export function AnimalsPage() {
           {(['cow', 'goat', 'sheep', 'lamb', 'camel', 'buffalo'] as AnimalType[]).map(t => (
             <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
           ))}
+        </select>
+        <select id="animals-programme-filter" className="form-input form-select" style={{ width: 'auto', height: 38, fontSize: '0.875rem' }} value={programmeFilter} onChange={e => setProgrammeFilter(e.target.value)}>
+          <option value="">All Programmes</option>
+          {programmes.filter(p => p.is_active).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+          <option value="__none">General stock (no programme)</option>
         </select>
         <select className="form-input form-select" style={{ width: 'auto', height: 38, fontSize: '0.875rem' }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           <option value="">All Statuses</option>
