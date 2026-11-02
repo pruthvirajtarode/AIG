@@ -21,6 +21,7 @@ import type {
 import { getStatusLabel } from '@/lib/statusEngine';
 import { useAuth } from '@/contexts/AuthContext';
 import { LIVE_PROGRAMMES, LIVE_PROGRAMMES_VERSION } from '@/data/liveProgrammes';
+import { loadFromSupabase, syncToSupabase } from '@/services/supabaseSync';
 
 // ─────────────────────────────────────────────────────────────
 // Local flat types used by the admin pages
@@ -673,12 +674,47 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const { user, profile } = useAuth();
   const [data, setData] = useState<AppData>(loadData);
   const dataRef = useRef(data);
+  // Keep a snapshot of what is persisted to Supabase so we only sync diffs
+  const supabaseSnapshotRef = useRef<AppData | null>(null);
+  const supabaseSyncing = useRef(false);
 
   const actorRef = useRef<Actor>(SYSTEM_ACTOR);
   actorRef.current = {
     email: profile?.email ?? user?.email ?? 'admin',
     role: profile?.role ?? 'super_admin',
   };
+
+  // ── On mount: try to load from Supabase ──────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    loadFromSupabase().then(remote => {
+      if (cancelled || !remote) return;
+      // Merge: remote takes priority if it has any rows, else keep local
+      const hasRemoteData = Object.values(remote).some((arr) => (arr as unknown[]).length > 0);
+      if (!hasRemoteData) {
+        // No remote data yet — push local data up to Supabase
+        const local = dataRef.current;
+        supabaseSnapshotRef.current = local;
+        syncToSupabase(
+          { orders: [], animals: [], payments: [], deliveries: [], certificates: [], participants: [], suppliers: [], programmes: [], exceptions: [], auditLogs: [] },
+          local,
+        ).catch(console.error);
+        return;
+      }
+      const merged: AppData = syncLiveProgrammes({
+        ...EMPTY,
+        ...remote,
+        // Always use live programmes list for dropdown but keep remote orders/animals
+        programmes: remote.programmes.length > 0 ? remote.programmes : EMPTY.programmes,
+      });
+      supabaseSnapshotRef.current = merged;
+      dataRef.current = merged;
+      setData(merged);
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* noop */ }
+    }).catch(console.error);
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Apply a pure transformation to the latest state. */
   const commit = useCallback((fn: (d: AppData, actor: Actor) => AppData) => {
@@ -689,9 +725,24 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     setData(next);
   }, []);
 
-  // Persist
+  // Persist to localStorage
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* storage full / unavailable */ }
+  }, [data]);
+
+  // Sync to Supabase on every data change (debounced, background)
+  useEffect(() => {
+    if (supabaseSyncing.current) return;
+    const snap = supabaseSnapshotRef.current;
+    if (!snap) return; // Not yet initialised from Supabase
+    const prev = snap;
+    const next = data;
+    if (prev === next) return;
+    supabaseSyncing.current = true;
+    supabaseSnapshotRef.current = next;
+    syncToSupabase(prev, next)
+      .catch(console.error)
+      .finally(() => { supabaseSyncing.current = false; });
   }, [data]);
 
   // Keep multiple open tabs in sync
