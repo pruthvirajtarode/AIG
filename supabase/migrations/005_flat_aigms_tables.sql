@@ -210,9 +210,13 @@ BEGIN
     'aigms_animals','aigms_payments','aigms_deliveries','aigms_certificates',
     'aigms_exceptions','aigms_audit_logs'
   ] LOOP
-    EXECUTE format(
-      'CREATE POLICY IF NOT EXISTS "authenticated_all_%s" ON %I FOR ALL TO authenticated USING (true) WITH CHECK (true)',
-      tbl, tbl
-    );
+    BEGIN
+      EXECUTE format(
+        'CREATE POLICY "authenticated_all_%s" ON %I FOR ALL TO authenticated USING (true) WITH CHECK (true)',
+        tbl, tbl
+      );
+    EXCEPTION WHEN duplicate_object THEN
+      NULL; -- Policy already exists, skip
+    END;
   END LOOP;
 END $$;
