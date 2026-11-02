@@ -472,7 +472,10 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
                 ['Location',   animal.location],
                 ['Supplier',   animal.supplier],
                 ['Registered', formatDate(animal.created_at)],
-                ['Linked Order', animal.order_ref || '—'],
+                ['Order Reference', animal.order_ref || '—'],
+                ['Qurban Name Holder', animal.qurban_name_holder || '—'],
+                ['Programme', animal.programme || '—'],
+                ['Service Type', animal.service_type ? animal.service_type.charAt(0).toUpperCase() + animal.service_type.slice(1) : '—'],
               ].map(([k, v]) => (
                 <div key={k} className="detail-row">
                   <div className="detail-key">{k}</div>
@@ -585,7 +588,8 @@ export function AnimalsPage() {
 
   const filtered = animals.filter(a => {
     const q = search.toLowerCase();
-    const matchSearch = a.animal_ref.toLowerCase().includes(q) || a.breed.toLowerCase().includes(q) || a.location.toLowerCase().includes(q);
+    const matchSearch = a.animal_ref.toLowerCase().includes(q) || a.breed.toLowerCase().includes(q) || a.location.toLowerCase().includes(q)
+      || (a.order_ref ?? '').toLowerCase().includes(q) || (a.qurban_name_holder ?? '').toLowerCase().includes(q);
     const matchType = !typeFilter || a.animal_type === typeFilter;
     const matchStatus = !statusFilter || a.status === statusFilter;
     return matchSearch && matchType && matchStatus;

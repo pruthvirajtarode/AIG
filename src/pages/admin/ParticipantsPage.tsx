@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { Search, Plus, Eye, X, Send, ShieldCheck } from 'lucide-react';
-import { formatDate } from '@/lib/utils';
+import { Search, Plus, Eye, X, Send, ShieldCheck, ShoppingCart } from 'lucide-react';
+import { formatDate, formatCurrency } from '@/lib/utils';
 import { useToast } from '@/contexts/ToastContext';
-import { useAppData, nextRef, uid, type AppParticipant as Participant } from '@/contexts/AppDataContext';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useAppData, nextRef, uid, type AppParticipant as Participant, type AppOrder } from '@/contexts/AppDataContext';
 
 
-function ParticipantModal({ participant, onClose, onSave, onSendInvite, emailTaken }: {
+function ParticipantModal({ participant, orders, onClose, onSave, onSendInvite, emailTaken }: {
   participant?: Participant;
+  orders?: AppOrder[];
   onClose: () => void;
   onSave: (data: Omit<Participant, 'id' | 'participant_ref' | 'orders_count' | 'total_spent' | 'is_active' | 'portal_access' | 'created_at'>) => void;
   onSendInvite?: (id: string) => void;
@@ -92,6 +94,25 @@ function ParticipantModal({ participant, onClose, onSave, onSendInvite, emailTak
             </div>
           </div>
 
+          {/* Linked Orders */}
+          {!isNew && orders && orders.length > 0 && (
+            <div style={{ marginTop: '1.5rem' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--aig-green-400)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.625rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <ShoppingCart size={11} /> Linked Orders — {orders.length}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: 220, overflowY: 'auto' }}>
+                {orders.map(o => (
+                  <div key={o.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '0.625rem', padding: '0.625rem 0.875rem', background: 'var(--surface-900)', borderRadius: 8, border: '1px solid var(--border-subtle)', alignItems: 'center', fontSize: '0.8125rem' }}>
+                    <span style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)', fontWeight: 700 }}>{o.order_ref}</span>
+                    <span style={{ color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.programme}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{formatCurrency(o.total_amount, o.currency)}</span>
+                    <StatusBadge status={o.status} size="sm" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Portal Access Info */}
           {!isNew && participant && !participant.portal_access && (
             <div style={{
@@ -151,10 +172,19 @@ function ParticipantModal({ participant, onClose, onSave, onSendInvite, emailTak
 export function ParticipantsPage() {
   usePageTitle('Participants');
   const { toast } = useToast();
-  const { participants, addParticipant, updateParticipant } = useAppData();
+  const { participants, orders, addParticipant, updateParticipant } = useAppData();
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editP, setEditP] = useState<Participant | undefined>();
+
+  /** Get orders linked to a participant by participant_id (preferred) or name match. */
+  const getParticipantOrders = (p: Participant): AppOrder[] => {
+    const pName = `${p.first_name} ${p.last_name}`.trim().toLowerCase();
+    return orders.filter(o =>
+      (o.participant_id && o.participant_id === p.id) ||
+      (!o.participant_id && o.participant.toLowerCase() === pName)
+    );
+  };
 
   const handleSave = (data: Omit<Participant, 'id' | 'participant_ref' | 'orders_count' | 'total_spent' | 'is_active' | 'portal_access' | 'created_at'>) => {
     if (editP) {
@@ -199,6 +229,7 @@ export function ParticipantsPage() {
       {showModal && (
         <ParticipantModal
           participant={editP}
+          orders={editP ? getParticipantOrders(editP) : undefined}
           onClose={() => { setShowModal(false); setEditP(undefined); }}
           onSave={handleSave}
           onSendInvite={sendPortalInvite}

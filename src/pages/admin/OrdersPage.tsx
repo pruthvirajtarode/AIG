@@ -1,18 +1,13 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { Search, Plus, X, ChevronDown, ChevronUp, CheckCircle2, XCircle, RefreshCw, Eye } from 'lucide-react';
+import { Search, Plus, X, ChevronDown, ChevronUp, CheckCircle2, XCircle, RefreshCw, Eye, Users, Package } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import type { OrderStatus } from '@/lib/database.types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { getStatusLabel } from '@/lib/statusEngine';
 import { useToast } from '@/contexts/ToastContext';
-import { useAppData, orderRank, type AppOrder as Order, type NewOrderInput } from '@/contexts/AppDataContext';
+import { useAppData, orderRank, type AppOrder as Order, type NewOrderInput, type QurbanEntry } from '@/contexts/AppDataContext';
 
-/** Used only until real programmes are created on the Programmes page. */
-const FALLBACK_PROGRAMMES = [
-  'Cow Share — Somalia', 'Goat — Malaysia', 'Sheep — Turkey',
-  'Cow Share — Palestine', 'Goat — Bangladesh', 'Sheep — Australia',
-];
 
 const NEXT_STATUSES: Partial<Record<OrderStatus, OrderStatus>> = {
   draft:                 'pending_payment',
@@ -78,8 +73,10 @@ function OrderDetailModal({ order, onClose, onStatusChange, onCancel }: {
   onStatusChange: (id: string, next: OrderStatus) => void;
   onCancel: (id: string) => void;
 }) {
+  const { animals } = useAppData();
   const nextStatus = NEXT_STATUSES[order.status];
   const isCancellable = !['completed', 'cancelled', 'certificate_generated', 'delivered'].includes(order.status);
+  const orderAnimals = animals.filter(a => a.order_ref === order.order_ref);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -94,24 +91,57 @@ function OrderDetailModal({ order, onClose, onStatusChange, onCancel }: {
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="modal-body">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }} className="settings-grid-2">
-            {[
-              ['Order Ref',    order.order_ref],
-              ['Participant',  order.participant],
-              ['Programme',    order.programme],
-              ['Quantity',     String(order.quantity)],
-              ['Total Amount', formatCurrency(order.total_amount, order.currency)],
-              ['Unit Price',   formatCurrency(order.total_amount / (order.quantity || 1), order.currency)],
-              ['Date Placed',  formatDate(order.created_at)],
-              ['Status',       label(order.status)],
-              ['Notes',        order.notes || '—'],
-            ].map(([k, v]) => (
-              <div key={k} className="detail-row">
-                <div className="detail-key">{k}</div>
-                <div className="detail-val">{v}</div>
-              </div>
-            ))}
+          {/* ORDER INFORMATION */}
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--aig-green-400)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.625rem' }}>Order Information</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }} className="settings-grid-2">
+              {[
+                ['Order Reference', order.order_ref],
+                ['Participant',     order.participant],
+                ['Contact Number',  order.contact_number || '—'],
+                ['Email',          order.email || '—'],
+                ['Programme',      order.programme],
+                ['Service Type',   order.service_type ? order.service_type.charAt(0).toUpperCase() + order.service_type.slice(1) : '—'],
+                ['No. of Qurbans', String(order.quantity)],
+                ['Payment Method', order.payment_method ? order.payment_method.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) : '—'],
+                ['Total Amount',   formatCurrency(order.total_amount, order.currency)],
+                ['Date Placed',    formatDate(order.created_at)],
+                ['Status',         label(order.status)],
+                ...(order.delivery_portion ? [['Delivery Portion', order.delivery_portion.replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())]] : []),
+                ...(order.notes ? [['Notes', order.notes]] : []),
+              ].map(([k, v]) => (
+                <div key={k} className="detail-row">
+                  <div className="detail-key">{k}</div>
+                  <div className="detail-val">{v}</div>
+                </div>
+              ))}
+            </div>
           </div>
+
+          {/* QURBAN / ANIMAL INFORMATION */}
+          {orderAnimals.length > 0 && (
+            <div>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--aig-green-400)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.625rem' }}>
+                Qurban / Animal Records — {orderAnimals.length} animal(s)
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {orderAnimals.map((a, i) => (
+                  <div key={a.id} style={{ padding: '0.75rem 1rem', background: 'var(--surface-900)', borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
+                      <span style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)', fontWeight: 700, fontSize: '0.875rem' }}>{a.animal_ref}</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Qurban {i + 1}</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.375rem', fontSize: '0.8125rem' }}>
+                      <div><span style={{ color: 'var(--text-muted)' }}>Qurban Name Holder: </span><span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{a.qurban_name_holder || '—'}</span></div>
+                      <div><span style={{ color: 'var(--text-muted)' }}>Animal Type: </span><span style={{ color: 'var(--text-secondary)' }}>{a.animal_type}</span></div>
+                      <div><span style={{ color: 'var(--text-muted)' }}>Status: </span><span style={{ color: 'var(--text-secondary)' }}>{a.status.replace(/_/g, ' ')}</span></div>
+                      <div><span style={{ color: 'var(--text-muted)' }}>Location: </span><span style={{ color: 'var(--text-secondary)' }}>{a.location}</span></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {nextStatus && (
             <div style={{
@@ -157,103 +187,331 @@ function OrderDetailModal({ order, onClose, onStatusChange, onCancel }: {
 }
 
 // ── Create Order Modal ────────────────────────────────────────
+const SERVICE_TYPES = [
+  { label: 'Qurban',  value: 'qurban'  },
+  { label: 'Aqiqah', value: 'aqiqah'  },
+  { label: 'Nazar',  value: 'nazar'   },
+] as const;
+
+const PAYMENT_METHODS = [
+  { label: 'PayNow',      value: 'paynow',       indonesiaOnly: false },
+  { label: 'Cash',        value: 'cash',         indonesiaOnly: false },
+  { label: 'Installment', value: 'installment',  indonesiaOnly: true  },
+  { label: 'Bank Transfer', value: 'bank_transfer', indonesiaOnly: false },
+] as const;
+
+const DELIVERY_PORTIONS = [
+  { label: 'Full',  value: 'full'       },
+  { label: '1/3',   value: 'one_third'  },
+  { label: '2/3',   value: 'two_thirds' },
+  { label: 'NIL',   value: 'nil'        },
+] as const;
+
 function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate: (o: NewOrderInput) => Order }) {
-  const { programmes, participants } = useAppData();
-  const [participant, setParticipant] = useState('');
-  const [programme, setProgramme] = useState('');
-  const [quantity, setQuantity] = useState(1);
-  const [price, setPrice] = useState('');
-  const [notes, setNotes] = useState('');
-  const [initialStatus, setInitialStatus] = useState<OrderStatus>('draft');
+  const { programmes } = useAppData();
   const { toast } = useToast();
 
   const activeProgrammes = programmes.filter(p => p.is_active);
-  const programmeOptions = activeProgrammes.length ? activeProgrammes.map(p => p.name) : FALLBACK_PROGRAMMES;
 
-  const onProgrammeChange = (name: string) => {
-    setProgramme(name);
-    const prog = programmes.find(p => p.name === name);
+  // ── Participant fields ────────────────────────────────────
+  const [fullName,       setFullName]       = useState('');
+  const [email,          setEmail]          = useState('');
+  const [contactNumber,  setContactNumber]  = useState('');
+
+  // ── Order fields ─────────────────────────────────────────
+  const [programmeId,    setProgrammeId]    = useState('');
+  const [serviceType,    setServiceType]    = useState<'qurban' | 'aqiqah' | 'nazar'>('qurban');
+  const [paymentMethod,  setPaymentMethod]  = useState<'paynow' | 'cash' | 'installment' | 'bank_transfer'>('paynow');
+  const [numQurbans,     setNumQurbans]     = useState(1);
+  const [price,          setPrice]          = useState('');
+  const [notes,          setNotes]          = useState('');
+  const [deliveryPortion, setDeliveryPortion] = useState<string>('');
+  const [initialStatus,  setInitialStatus]  = useState<OrderStatus>('pending_payment');
+
+  // ── Dynamic qurban entries ───────────────────────────────
+  const [qurbanEntries, setQurbanEntries] = useState<QurbanEntry[]>([{ qurban_name_holder: '' }]);
+  const submittingRef = useRef(false);
+
+  const selectedProg = activeProgrammes.find(p => p.id === programmeId);
+  const isIndonesia  = selectedProg?.country?.toLowerCase() === 'indonesia' || selectedProg?.name?.toLowerCase().includes('indonesia');
+  const isAustralia  = selectedProg?.country?.toLowerCase() === 'australia' || selectedProg?.name?.toLowerCase().includes('australia');
+  const supportsPortions = isAustralia;
+
+  // Keep qurban entries in sync with numQurbans
+  const handleNumQurbans = (n: number) => {
+    const count = Math.min(20, Math.max(1, Math.floor(n)));
+    setNumQurbans(count);
+    setQurbanEntries(prev => {
+      if (count > prev.length) {
+        return [...prev, ...Array(count - prev.length).fill({ qurban_name_holder: '' })];
+      }
+      return prev.slice(0, count);
+    });
+  };
+
+  const updateQurbanEntry = (idx: number, name: string) => {
+    setQurbanEntries(prev => prev.map((e, i) => i === idx ? { qurban_name_holder: name } : e));
+  };
+
+  const handleProgrammeChange = (id: string) => {
+    setProgrammeId(id);
+    const prog = activeProgrammes.find(p => p.id === id);
     if (prog) {
       setPrice(String(prog.price_per_share));
-      if (quantity < prog.min_quantity) setQuantity(prog.min_quantity);
+    }
+    // Reset installment if switching to non-Indonesia
+    const newIsIndonesia = prog?.country?.toLowerCase() === 'indonesia' || prog?.name?.toLowerCase().includes('indonesia');
+    if (!newIsIndonesia && paymentMethod === 'installment') {
+      setPaymentMethod('paynow');
+    }
+    // Portion only applies to Australia → Singapore; clear it on any programme change
+    setDeliveryPortion('');
+  };
+
+  const availablePaymentMethods = PAYMENT_METHODS.filter(m => !m.indonesiaOnly || isIndonesia);
+
+  const handleSubmit = () => {
+    if (submittingRef.current) return; // prevent double-click duplicates
+    // Validation
+    if (!fullName.trim())        { toast('error', 'Validation', 'Full Name is required');           return; }
+    if (!email.trim())           { toast('error', 'Validation', 'Email Address is required');        return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { toast('error', 'Validation', 'Please enter a valid email address'); return; }
+    if (!contactNumber.trim())   { toast('error', 'Validation', 'Contact Number is required');      return; }
+    if (!programmeId)            { toast('error', 'Validation', 'Programme is required');            return; }
+    if (!serviceType)            { toast('error', 'Validation', 'Type of Service is required');     return; }
+    if (!paymentMethod)          { toast('error', 'Validation', 'Payment Method is required');      return; }
+    if (!(Number(price) > 0))    { toast('error', 'Validation', 'Unit Price must be greater than 0'); return; }
+    if (paymentMethod === 'installment' && !isIndonesia) {
+      toast('error', 'Validation', 'Installment is only available for Indonesia programmes');
+      return;
+    }
+    if (supportsPortions && !deliveryPortion) {
+      toast('error', 'Validation', 'Delivery Portion is required for Australia programmes');
+      return;
+    }
+    // Validate all qurban entries
+    for (let i = 0; i < qurbanEntries.length; i++) {
+      if (!qurbanEntries[i].qurban_name_holder.trim()) {
+        toast('error', 'Validation', `Qurban Name Holder is required for Qurban ${i + 1}`);
+        return;
+      }
+    }
+
+    const prog = activeProgrammes.find(p => p.id === programmeId);
+    submittingRef.current = true;
+    try {
+      const created = onCreate({
+        full_name: fullName.trim(),
+        email: email.trim(),
+        contact_number: contactNumber.trim(),
+        programme: prog?.name ?? '',
+        programme_id: programmeId,
+        programme_country: prog?.country ?? '',
+        service_type: serviceType,
+        payment_method: paymentMethod,
+        delivery_portion: supportsPortions ? (deliveryPortion as 'full' | 'one_third' | 'two_thirds' | 'nil') : null,
+        quantity: numQurbans,
+        total_amount: Number(price) * numQurbans,
+        currency: prog?.currency ?? 'SGD',
+        notes,
+        status: initialStatus,
+        qurban_entries: qurbanEntries.map(q => ({ qurban_name_holder: q.qurban_name_holder.trim() })),
+      });
+      toast('success', 'Order created!', `${created.order_ref} — ${numQurbans} Qurban(s) for ${fullName.trim()}. ${syncSummary(initialStatus)}`);
+      onClose();
+    } catch (err) {
+      submittingRef.current = false;
+      toast('error', 'Could not create order', err instanceof Error ? err.message : 'Unexpected error');
     }
   };
 
-  const handleSubmit = () => {
-    if (!participant.trim() || !programme || !price) {
-      toast('error', 'Missing fields', 'Please fill in all required fields');
-      return;
-    }
-    if (!Number.isFinite(quantity) || quantity < 1) {
-      toast('error', 'Invalid quantity', 'Quantity must be at least 1');
-      return;
-    }
-    if (!(Number(price) > 0)) {
-      toast('error', 'Invalid price', 'Unit price must be greater than 0');
-      return;
-    }
-    const created = onCreate({
-      participant, programme, quantity,
-      total_amount: Number(price) * quantity,
-      currency: programmes.find(p => p.name === programme)?.currency ?? 'SGD',
-      notes,
-      status: initialStatus,
-    });
-    toast('success', 'Order created!', `${created.order_ref} created — ${label(initialStatus)}. ${syncSummary(initialStatus)}`);
-    onClose();
-  };
+  const total = Number(price) * numQurbans;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+      <div className="modal modal-lg" onClick={e => e.stopPropagation()} style={{ maxWidth: 680 }}>
         <div className="modal-header">
-          <div className="heading-md">New Order</div>
+          <div>
+            <div className="heading-md">New Order</div>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Fill in all required fields to create the order and animal records</div>
+          </div>
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
         </div>
-        <div className="modal-body">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div className="form-group">
-              <label className="form-label" htmlFor="order-participant">Participant *</label>
-              <input id="order-participant" className="form-input" placeholder="Participant name" list="order-participant-list"
-                value={participant} onChange={e => setParticipant(e.target.value)} autoFocus />
-              <datalist id="order-participant-list">
-                {participants.map(p => <option key={p.id} value={`${p.first_name} ${p.last_name}`.trim()}>{p.email}</option>)}
-              </datalist>
-            </div>
-            <div className="form-group">
-              <label className="form-label" htmlFor="order-programme">Programme *</label>
-              <select id="order-programme" className="form-input form-select" value={programme} onChange={e => onProgrammeChange(e.target.value)}>
-                <option value="">Select programme</option>
-                {programmeOptions.map(name => <option key={name} value={name}>{name}</option>)}
-              </select>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div className="form-group">
-                <label className="form-label" htmlFor="order-quantity">Quantity</label>
-                <input id="order-quantity" className="form-input" type="number" min="1" value={quantity} onChange={e => setQuantity(Math.max(1, Math.floor(Number(e.target.value) || 1)))} />
+        <div className="modal-body" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+            {/* ── Participant Section ── */}
+            <div style={{ padding: '1rem', background: 'rgba(47,168,118,0.05)', border: '1px solid rgba(47,168,118,0.15)', borderRadius: 10 }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--aig-green-400)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Users size={12} /> Participant / Customer
               </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="order-price">Unit Price (SGD) *</label>
-                <input id="order-price" className="form-input" type="number" min="0" step="0.01" placeholder="0.00" value={price} onChange={e => setPrice(e.target.value)} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }} className="settings-grid-2">
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label" htmlFor="order-full-name">Full Name *</label>
+                  <input id="order-full-name" className="form-input" placeholder="e.g. Ahmad bin Abdullah" value={fullName} onChange={e => setFullName(e.target.value)} autoFocus />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="order-email">Email Address *</label>
+                  <input id="order-email" className="form-input" type="email" placeholder="email@example.com" value={email} onChange={e => setEmail(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="order-contact">Contact Number *</label>
+                  <input id="order-contact" className="form-input" placeholder="e.g. +65 9123 4567" value={contactNumber} onChange={e => setContactNumber(e.target.value)} />
+                </div>
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                ⚙ If this participant (same name + email + phone) already exists, their existing record will be reused — no duplicate will be created.
               </div>
             </div>
-            <div className="form-group">
-              <label className="form-label" htmlFor="order-initial-status">Initial Status</label>
-              <select id="order-initial-status" className="form-input form-select" value={initialStatus} onChange={e => setInitialStatus(e.target.value as OrderStatus)}>
-                <option value="draft">Draft</option>
-                <option value="pending_payment">Pending Payment (creates a payment record)</option>
-                <option value="payment_submitted">Payment Submitted (awaiting verification)</option>
-                <option value="payment_verified">Payment Verified</option>
-              </select>
+
+            {/* ── Order Details Section ── */}
+            <div style={{ padding: '1rem', background: 'var(--surface-800)', border: '1px solid var(--border-subtle)', borderRadius: 10 }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--aig-green-400)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Package size={12} /> Order Details
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }} className="settings-grid-2">
+
+                {/* Programme */}
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label" htmlFor="order-programme">Programme *</label>
+                  <select id="order-programme" className="form-input form-select" value={programmeId} onChange={e => handleProgrammeChange(e.target.value)}>
+                    <option value="">Select programme...</option>
+                    {activeProgrammes.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  {activeProgrammes.length === 0 && (
+                    <div style={{ fontSize: '0.75rem', color: '#fbbf24', marginTop: '0.375rem' }}>
+                      No active programmes found. Create or activate one on the Programmes page first.
+                    </div>
+                  )}
+                  {selectedProg && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.375rem' }}>
+                      {selectedProg.country} · {selectedProg.currency} {selectedProg.price_per_share} per share · {selectedProg.animal_type}
+                    </div>
+                  )}
+                </div>
+
+                {/* Type of Service */}
+                <div className="form-group">
+                  <label className="form-label">Type of Service *</label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {SERVICE_TYPES.map(s => (
+                      <button key={s.value} type="button"
+                        onClick={() => setServiceType(s.value)}
+                        style={{
+                          flex: 1, padding: '0.5rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.8125rem',
+                          border: serviceType === s.value ? '1px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+                          background: serviceType === s.value ? 'rgba(47,168,118,0.15)' : 'var(--surface-900)',
+                          color: serviceType === s.value ? 'var(--aig-green-200)' : 'var(--text-muted)',
+                          fontWeight: serviceType === s.value ? 600 : 400,
+                        }}
+                      >{s.label}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Payment Method */}
+                <div className="form-group">
+                  <label className="form-label" htmlFor="order-payment-method">Payment Method *</label>
+                  <select id="order-payment-method" className="form-input form-select" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as typeof paymentMethod)}>
+                    {availablePaymentMethods.map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                  {!isIndonesia && (
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Installment only available for Indonesia programmes</div>
+                  )}
+                </div>
+
+                {/* Number of Qurbans */}
+                <div className="form-group">
+                  <label className="form-label" htmlFor="order-num-qurbans">Number of Qurbans *</label>
+                  <input id="order-num-qurbans" className="form-input" type="number" min="1" max="20"
+                    value={numQurbans}
+                    onChange={e => handleNumQurbans(Math.max(1, parseInt(e.target.value) || 1))}
+                  />
+                </div>
+
+                {/* Unit Price */}
+                <div className="form-group">
+                  <label className="form-label" htmlFor="order-price">Unit Price ({selectedProg?.currency ?? 'SGD'}) *</label>
+                  <input id="order-price" className="form-input" type="number" min="0" step="0.01" placeholder="0.00"
+                    value={price} onChange={e => setPrice(e.target.value)} />
+                </div>
+
+                {/* Australia Portion */}
+                {supportsPortions && (
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label className="form-label">Portion to be Delivered * <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Australia → Singapore)</span></label>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {DELIVERY_PORTIONS.map(dp => (
+                        <button key={dp.value} type="button"
+                          onClick={() => setDeliveryPortion(dp.value)}
+                          style={{
+                            flex: 1, padding: '0.5rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.8125rem',
+                            border: deliveryPortion === dp.value ? '1px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+                            background: deliveryPortion === dp.value ? 'rgba(47,168,118,0.15)' : 'var(--surface-900)',
+                            color: deliveryPortion === dp.value ? 'var(--aig-green-200)' : 'var(--text-muted)',
+                            fontWeight: deliveryPortion === dp.value ? 600 : 400,
+                          }}
+                        >{dp.label}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Initial Status */}
+                <div className="form-group">
+                  <label className="form-label" htmlFor="order-initial-status">Initial Status</label>
+                  <select id="order-initial-status" className="form-input form-select" value={initialStatus} onChange={e => setInitialStatus(e.target.value as OrderStatus)}>
+                    <option value="draft">Draft</option>
+                    <option value="pending_payment">Pending Payment</option>
+                    <option value="payment_submitted">Payment Submitted</option>
+                    <option value="payment_verified">Payment Verified</option>
+                  </select>
+                </div>
+
+                {/* Notes */}
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label" htmlFor="order-notes">Special Requests / Notes</label>
+                  <textarea id="order-notes" className="form-input" rows={2} style={{ resize: 'vertical' }}
+                    placeholder="Any special instructions..."
+                    value={notes} onChange={e => setNotes(e.target.value)} />
+                </div>
+              </div>
             </div>
-            <div className="form-group">
-              <label className="form-label" htmlFor="order-notes">Special Requests</label>
-              <textarea id="order-notes" className="form-input" rows={3} placeholder="Any special instructions..." style={{ resize: 'vertical' }}
-                value={notes} onChange={e => setNotes(e.target.value)} />
+
+            {/* ── Dynamic Qurban Entries ── */}
+            <div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--aig-green-400)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>
+                Qurban Details — {numQurbans} Qurban(s)
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                {qurbanEntries.map((entry, i) => (
+                  <div key={i} style={{ padding: '0.875rem', background: 'var(--surface-800)', border: '1px solid var(--border-subtle)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--aig-green-300)', minWidth: 70, fontFamily: 'monospace' }}>
+                      Qurban {i + 1}
+                    </div>
+                    <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                      <input
+                        className="form-input"
+                        placeholder={`Qurban Name Holder ${i + 1} *`}
+                        value={entry.qurban_name_holder}
+                        onChange={e => updateQurbanEntry(i, e.target.value)}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            {price && quantity > 0 && (
-              <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
-                Total: <strong style={{ color: 'var(--aig-green-300)' }}>{formatCurrency(Number(price) * quantity, 'SGD')}</strong>
+
+            {/* Total */}
+            {price && numQurbans > 0 && (
+              <div style={{ textAlign: 'right', fontSize: '0.875rem', color: 'var(--text-secondary)', paddingRight: '0.25rem' }}>
+                Total: <strong style={{ color: 'var(--aig-green-300)', fontSize: '1rem' }}>
+                  {selectedProg?.currency ?? 'SGD'} {total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </strong>
               </div>
             )}
           </div>
@@ -333,7 +591,7 @@ function UpdateStatusModal({ order, onClose, onUpdate }: {
 export function OrdersPage() {
   usePageTitle('Orders');
   const { toast } = useToast();
-  const { orders, addOrder, updateOrderStatus, cancelOrder: ctxCancelOrder } = useAppData();
+  const { orders, animals, addOrder, updateOrderStatus, cancelOrder: ctxCancelOrder } = useAppData();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -355,7 +613,9 @@ export function OrdersPage() {
 
   const filtered = orders.filter(o => {
     const q = search.toLowerCase();
-    const matchSearch = o.order_ref.toLowerCase().includes(q) || o.participant.toLowerCase().includes(q) || o.programme.toLowerCase().includes(q);
+    const holders = animals.filter(a => a.order_ref === o.order_ref).map(a => a.qurban_name_holder ?? '').join(' ').toLowerCase();
+    const matchSearch = o.order_ref.toLowerCase().includes(q) || o.participant.toLowerCase().includes(q) || o.programme.toLowerCase().includes(q)
+      || (o.email ?? '').toLowerCase().includes(q) || (o.contact_number ?? '').toLowerCase().includes(q) || holders.includes(q);
     const matchStatus = !statusFilter || o.status === statusFilter;
     return matchSearch && matchStatus;
   });
@@ -438,7 +698,9 @@ export function OrdersPage() {
                 <th>Order Ref</th>
                 <th>Participant</th>
                 <th>Programme</th>
-                <th>Qty</th>
+                <th>Service</th>
+                <th>Payment</th>
+                <th>Qurbans</th>
                 <th>Total</th>
                 <th>Status</th>
                 <th>Date</th>
@@ -447,7 +709,7 @@ export function OrdersPage() {
             </thead>
             <tbody>
               {paginated.length === 0 ? (
-                <tr><td colSpan={8}>
+                <tr><td colSpan={10}>
                   <div className="empty-state" style={{ padding: '3rem 2rem' }}>
                     <div className="empty-icon"><Search size={24} color="var(--text-muted)" /></div>
                     <h3>No orders found</h3>
@@ -458,9 +720,14 @@ export function OrdersPage() {
                 <React.Fragment key={o.id}>
                   <tr style={{ opacity: o.status === 'cancelled' ? 0.5 : 1 }}>
                     <td><span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--aig-green-300)' }}>{o.order_ref}</span></td>
-                    <td style={{ fontWeight: 500 }}>{o.participant}</td>
+                    <td>
+                      <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>{o.participant}</div>
+                      {o.contact_number && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{o.contact_number}</div>}
+                    </td>
                     <td style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>{o.programme}</td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{o.quantity}</td>
+                    <td><span className="badge badge-teal" style={{ fontSize: '0.65rem' }}>{o.service_type ?? 'qurban'}</span></td>
+                    <td style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>{o.payment_method ? o.payment_method.replace('_', ' ') : '—'}</td>
+                    <td style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>{o.quantity}</td>
                     <td style={{ fontWeight: 600 }}>{formatCurrency(o.total_amount, o.currency)}</td>
                     <td><StatusBadge status={o.status} size="sm" /></td>
                     <td style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>{formatDate(o.created_at)}</td>
@@ -478,17 +745,19 @@ export function OrdersPage() {
                   {/* ── Expanded inline row ── */}
                   {expandedId === o.id && (
                     <tr>
-                      <td colSpan={8} style={{ background: 'var(--surface-900)', padding: '1rem 1.5rem', borderTop: '1px solid var(--border-subtle)' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1rem', marginBottom: '1rem' }}>
+                      <td colSpan={10} style={{ background: 'var(--surface-900)', padding: '1rem 1.5rem', borderTop: '1px solid var(--border-subtle)' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem', marginBottom: '1rem' }}>
                           <div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Programme</div>
                             <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>{o.programme}</div>
                           </div>
                           <div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Quantity × Unit Price</div>
-                            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                              {o.quantity} × {formatCurrency(o.total_amount / (o.quantity || 1), o.currency)}
-                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Service Type</div>
+                            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{o.service_type ?? 'qurban'}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Payment</div>
+                            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>{o.payment_method ? o.payment_method.replace(/_/g, ' ') : '—'}</div>
                           </div>
                           <div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Current Status</div>

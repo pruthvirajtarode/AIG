@@ -171,16 +171,16 @@ export function DashboardPage() {
       [],
       ['SUMMARY'],
       ['Metric', 'Value'],
-      ['Total Orders', 156],
-      ['Revenue Collected (SGD)', 91000],
-      ['Animals Allocated', 98],
-      ['Deliveries', 67],
-      ['Certificates', 43],
-      ['Open Exceptions', 3],
+      ['Total Orders', totalOrders],
+      ['Revenue Collected (SGD)', totalRevenue],
+      ['Animals Allocated', allocatedAnimals],
+      ['Deliveries', totalDeliveries],
+      ['Certificates', totalCertificates],
+      ['Open Exceptions', openExceptions],
       [],
       ['MONTHLY REVENUE'],
       ['Month', 'Revenue (SGD)'],
-      ...REVENUE_DATA.map(r => [r.month, r.revenue]),
+      ...revenueData.map(r => [r.month, r.revenue]),
       [],
       ['ORDER DISTRIBUTION'],
       ['Status', 'Count'],
@@ -194,7 +194,7 @@ export function DashboardPage() {
       ['Severity', 'Title', 'Reference', 'Time'],
       ...EXCEPTIONS.map(e => [e.severity, e.title, e.ref, e.time]),
     ];
-    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -205,7 +205,7 @@ export function DashboardPage() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast('success', 'Report exported!', 'Dashboard report downloaded as CSV file');
-  }, [toast]);
+  }, [toast, totalOrders, totalRevenue, allocatedAnimals, totalDeliveries, totalCertificates, openExceptions, revenueData, ORDER_DIST, RECENT_ORDERS, EXCEPTIONS]);
 
   return (
     <div className="page-content animate-fadeInUp">
@@ -378,7 +378,7 @@ export function DashboardPage() {
         <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
             <div className="heading-md">Active Exceptions</div>
-            <span className="badge badge-gray">0 open</span>
+            <span className={`badge ${openExceptions > 0 ? 'badge-red' : 'badge-gray'}`}>{openExceptions} open</span>
           </div>
           {EXCEPTIONS.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>

@@ -29,7 +29,15 @@ export type AppOrder = {
   id: string;
   order_ref: string;
   participant: string;
+  participant_id?: string;
+  contact_number?: string;
+  email?: string;
   programme: string;
+  programme_id?: string;
+  programme_country?: string;
+  service_type?: 'qurban' | 'aqiqah' | 'nazar';
+  payment_method?: 'paynow' | 'cash' | 'installment' | 'bank_transfer';
+  delivery_portion?: 'full' | 'one_third' | 'two_thirds' | 'nil' | null;
   quantity: number;
   total_amount: number;
   currency: string;
@@ -42,6 +50,7 @@ export type AppOrder = {
 export type AppAnimal = {
   id: string;
   animal_ref: string;
+  animal_code?: string;   // e.g. ANM-10025-01
   animal_type: AnimalType;
   breed: string;
   gender: string;
@@ -53,7 +62,10 @@ export type AppAnimal = {
   created_at: string;
   tag_number: string;
   last_inspection?: string;
-  order_ref?: string; // linked order when allocated
+  order_ref?: string;     // linked order ref when allocated
+  qurban_name_holder?: string; // name the qurban is performed for
+  programme?: string;
+  service_type?: 'qurban' | 'aqiqah' | 'nazar';
 };
 
 export type AppPayment = {
@@ -178,14 +190,34 @@ export type AppAuditLog = {
   created_at: string;
 };
 
+export type QurbanEntry = {
+  qurban_name_holder: string;
+};
+
 export type NewOrderInput = {
-  participant: string;
+  // Participant fields
+  full_name: string;         // used for dedup + participant.first_name+last_name
+  email: string;
+  contact_number: string;
+
+  // Order fields
   programme: string;
-  quantity: number;
+  programme_id?: string;
+  programme_country?: string;
+  service_type: 'qurban' | 'aqiqah' | 'nazar';
+  payment_method: 'paynow' | 'cash' | 'installment' | 'bank_transfer';
+  delivery_portion?: 'full' | 'one_third' | 'two_thirds' | 'nil' | null;
+  quantity: number;           // number of qurbans
   total_amount: number;
   currency?: string;
   notes?: string;
   status?: OrderStatus;
+
+  // Per-qurban entries
+  qurban_entries: QurbanEntry[];
+
+  // Legacy compat
+  participant?: string;
 };
 
 type AppData = {
@@ -233,6 +265,34 @@ export function nextRef(prefix: string, existing: string[], pad: number): string
     if (m) max = Math.max(max, Number(m[1]));
   }
   return `${prefix}-${y}-${String(max + 1).padStart(pad, '0')}`;
+}
+
+/**
+ * Generate an ORD-style order ref: ORD-NNNNN
+ * where NNNNN is a 5-digit sequential number.
+ */
+export function nextOrderRef(existing: string[]): string {
+  const re = /^ORD-(\d+)$/;
+  let max = 10000;
+  for (const r of existing) {
+    const m = re.exec(r);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return `ORD-${max + 1}`;
+}
+
+/**
+ * Generate an animal code tied to an order ref.
+ * e.g. ORD-10025 + index 0 → ANM-10025-01
+ */
+export function animalCodeForOrder(orderRef: string, index: number): string {
+  const num = orderRef.replace('ORD-', '');
+  return `ANM-${num}-${String(index + 1).padStart(2, '0')}`;
+}
+
+/** Normalise a string for comparison: trim, lowercase, remove extra spaces. */
+export function normaliseForMatch(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 /** Main order lifecycle, in order. Off-flow states (rejected/cancelled/refunded) are handled separately. */
@@ -365,7 +425,7 @@ function syncRelated(input: AppData, o: AppOrder, actor: Actor): AppData {
       participant: o.participant,
       amount: o.total_amount,
       currency: o.currency,
-      method: 'bank_transfer',
+      method: o.payment_method ?? 'bank_transfer',
       status: wantPay,
       submitted_at: submittedLike ? nowIso() : null,
       verified_at: wantPay === 'verified' ? nowIso() : null,
@@ -379,15 +439,21 @@ function syncRelated(input: AppData, o: AppOrder, actor: Actor): AppData {
   }
 
   // ── Animal ───────────────────────────────────────────────
-  const linked = d.animals.find(a => a.order_ref === o.order_ref);
+  const linkedAll = d.animals.filter(a => a.order_ref === o.order_ref);
   if (isCancelled) {
-    if (linked && !['slaughtered', 'processed', 'completed'].includes(linked.status)) {
-      d = { ...d, animals: d.animals.map(a => a.id === linked.id ? { ...a, status: 'available' as AnimalStatus, order_ref: undefined } : a) };
+    for (const linked of linkedAll) {
+      if (['slaughtered', 'processed', 'completed'].includes(linked.status)) continue;
+      d = {
+        ...d,
+        animals: d.animals.map(a => a.id === linked.id
+          ? { ...a, status: 'available' as AnimalStatus, order_ref: undefined, qurban_name_holder: undefined }
+          : a),
+      };
       d = withLog(d, actor, 'animal.released', 'animal', linked.animal_ref, `Animal ${linked.animal_ref} released from cancelled order ${o.order_ref}`);
     }
   } else if (r >= R('animal_allocated')) {
     const want = animalStatusFor(o.status) ?? 'allocated';
-    if (!linked) {
+    if (linkedAll.length === 0) {
       const type = inferAnimalType(d, o.programme);
       // Prefer allocating a real, unassigned animal of the right type
       const free = d.animals.find(a =>
@@ -417,9 +483,12 @@ function syncRelated(input: AppData, o: AppOrder, actor: Actor): AppData {
         d = { ...d, animals: [placeholder, ...d.animals] };
         d = withLog(d, actor, 'animal.allocated', 'animal', ref, `Animal ${ref} created and allocated to order ${o.order_ref} — please update its details`);
       }
-    } else if (linked.status !== 'rejected' && animalRank(want) > animalRank(linked.status)) {
-      d = { ...d, animals: d.animals.map(a => a.id === linked.id ? { ...a, status: want } : a) };
-      d = withLog(d, actor, 'animal.status_changed', 'animal', linked.animal_ref, `Animal ${linked.animal_ref} → ${want.replace(/_/g, ' ')}`);
+    } else {
+      for (const linked of linkedAll) {
+        if (linked.status === 'rejected' || animalRank(want) <= animalRank(linked.status)) continue;
+        d = { ...d, animals: d.animals.map(a => a.id === linked.id ? { ...a, status: want } : a) };
+        d = withLog(d, actor, 'animal.status_changed', 'animal', linked.animal_ref, `Animal ${linked.animal_ref} → ${want.replace(/_/g, ' ')}`);
+      }
     }
   }
 
@@ -441,7 +510,7 @@ function syncRelated(input: AppData, o: AppOrder, actor: Actor): AppData {
           delivery_ref: ref,
           order_ref: o.order_ref,
           participant: o.recipient || o.participant,
-          contact_phone: participant?.phone ?? '',
+          contact_phone: o.contact_number || participant?.phone || '',
           status: want,
           scheduled_date: today(),
           delivered_at: want === 'delivered' ? nowIso() : null,
@@ -622,11 +691,92 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   // ── Orders ────────────────────────────────────────────────
   const addOrder = useCallback((input: NewOrderInput): AppOrder => {
+    const d0 = dataRef.current;
+
+    // ── Data-layer validation (mirrors the UI; never trust the form alone) ──
+    if (!input.full_name?.trim() || !input.email?.trim() || !input.contact_number?.trim()) {
+      throw new Error('Full Name, Email Address and Contact Number are required.');
+    }
+    if (!input.programme?.trim()) throw new Error('Programme is required.');
+    if (!(input.quantity >= 1)) throw new Error('Number of Qurbans must be at least 1.');
+    if (!input.qurban_entries || input.qurban_entries.length !== input.quantity) {
+      throw new Error('Each qurban must have exactly one Qurban Name Holder.');
+    }
+    if (input.qurban_entries.some(q => !q.qurban_name_holder?.trim())) {
+      throw new Error('Qurban Name Holder is required for every qurban.');
+    }
+    const country = (input.programme_country || programmeCountry(d0, input.programme)).toLowerCase();
+    const progLower = input.programme.toLowerCase();
+    const isIndonesia = country === 'indonesia' || progLower.includes('indonesia');
+    const isAustralia = country === 'australia' || progLower.includes('australia');
+    if (input.payment_method === 'installment' && !isIndonesia) {
+      throw new Error('Installment is only available for Indonesia programmes.');
+    }
+    if (isAustralia && !input.delivery_portion) {
+      throw new Error('Portion to be Delivered is required for Australia → Singapore orders.');
+    }
+    if (!isAustralia) input = { ...input, delivery_portion: null };
+
+    // ── Participant dedup: match by full_name + email + contact_number ──
+    const normName  = normaliseForMatch(input.full_name);
+    const normEmail = normaliseForMatch(input.email);
+    const normPhone = normaliseForMatch(input.contact_number);
+
+    let existingParticipant = d0.participants.find(p => {
+      const pName  = normaliseForMatch(`${p.first_name} ${p.last_name}`);
+      const pEmail = normaliseForMatch(p.email);
+      const pPhone = normaliseForMatch(p.phone);
+      return pName === normName && pEmail === normEmail && pPhone === normPhone;
+    });
+
+    let participantId: string;
+    let participantName: string;
+
+    if (existingParticipant) {
+      // Reuse existing
+      participantId   = existingParticipant.id;
+      participantName = `${existingParticipant.first_name} ${existingParticipant.last_name}`.trim();
+    } else {
+      // Create new participant
+      const nameParts = input.full_name.trim().split(/\s+/);
+      const firstName = nameParts.slice(0, -1).join(' ') || nameParts[0];
+      const lastName  = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+      existingParticipant = {
+        id: uid(),
+        participant_ref: nextRef('PRT', d0.participants.map(p => p.participant_ref), 3),
+        first_name: firstName,
+        last_name: lastName,
+        email: input.email.trim(),
+        phone: input.contact_number.trim(),
+        ic_number: '',
+        country: 'Singapore',
+        orders_count: 0,
+        total_spent: 0,
+        is_active: true,
+        portal_access: false,
+        created_at: nowIso(),
+      };
+      participantId   = existingParticipant.id;
+      participantName = input.full_name.trim();
+    }
+    const newParticipant = existingParticipant;
+
+    // ── Generate ORD-style order ref ──────────────────────────
+    const orderRef = nextOrderRef(d0.orders.map(o => o.order_ref));
+
     const order: AppOrder = {
       id: uid(),
-      order_ref: nextRef('AIG', dataRef.current.orders.map(o => o.order_ref), 6),
-      participant: input.participant.trim(),
+      order_ref: orderRef,
+      participant: participantName,
+      participant_id: participantId,
+      contact_number: input.contact_number.trim(),
+      email: input.email.trim(),
       programme: input.programme,
+      programme_id: input.programme_id,
+      programme_country: input.programme_country,
+      service_type: input.service_type,
+      payment_method: input.payment_method,
+      delivery_portion: input.delivery_portion ?? null,
       quantity: input.quantity,
       total_amount: input.total_amount,
       currency: input.currency ?? 'SGD',
@@ -634,9 +784,58 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       created_at: nowIso(),
       notes: input.notes?.trim() || undefined,
     };
+
+    // ── Create one animal per qurban entry ────────────────────
+    const newAnimals: AppAnimal[] = input.qurban_entries.map((entry, i) => {
+      const animalCode = animalCodeForOrder(orderRef, i);
+      const type = inferAnimalType(d0, input.programme);
+      return {
+        id: uid(),
+        animal_ref: animalCode,   // use animal code as the ref so it shows in stock
+        animal_code: animalCode,
+        animal_type: type,
+        breed: 'To be assigned',
+        gender: 'male',
+        status: 'reserved' as AnimalStatus,
+        current_weight_kg: 0,
+        min_weight_kg: type === 'cow' || type === 'buffalo' ? 350 : type === 'camel' ? 300 : 25,
+        location: input.programme_country || programmeCountry(d0, input.programme) || 'TBD',
+        supplier: 'To be assigned',
+        created_at: nowIso(),
+        tag_number: 'Pending',
+        order_ref: orderRef,
+        qurban_name_holder: entry.qurban_name_holder.trim(),
+        programme: input.programme,
+        service_type: input.service_type,
+      } as AppAnimal;
+    });
+
     commit((d, actor) => {
-      let next: AppData = { ...d, orders: [order, ...d.orders] };
-      next = withLog(next, actor, 'order.created', 'order', order.order_ref, `Order ${order.order_ref} created for ${order.participant}`);
+      let next: AppData = { ...d };
+
+      // Add participant only if new
+      const alreadyExists = d.participants.some(p => p.id === participantId);
+      if (!alreadyExists) {
+        next = { ...next, participants: [newParticipant, ...next.participants] };
+        next = withLog(next, actor, 'participant.created', 'participant', newParticipant.participant_ref,
+          `Participant ${participantName} auto-created during order ${orderRef}`);
+      }
+
+      // Add order
+      next = { ...next, orders: [order, ...next.orders] };
+      next = withLog(next, actor, 'order.created', 'order', order.order_ref,
+        `Order ${order.order_ref} created for ${participantName} (${input.quantity} Qurban, ${input.programme})`);
+
+      // Add animals (idempotent: check animal_code not already in list)
+      for (const animal of newAnimals) {
+        const dup = next.animals.some(a => a.animal_code === animal.animal_code || a.animal_ref === animal.animal_ref);
+        if (!dup) {
+          next = { ...next, animals: [animal, ...next.animals] };
+          next = withLog(next, actor, 'animal.registered', 'animal', animal.animal_ref,
+            `Animal ${animal.animal_ref} created for order ${orderRef} — Qurban: ${animal.qurban_name_holder}`);
+        }
+      }
+
       if (input.status && input.status !== 'draft') next = applyOrderStatus(next, order.id, input.status, actor);
       return next;
     });
@@ -834,7 +1033,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         const match = (s: string) => norm(s) === norm(oldName);
         next = {
           ...next,
-          orders: next.orders.map(o => match(o.participant) ? { ...o, participant: newName } : o),
+          orders: next.orders.map(o => (o.participant_id ? o.participant_id === id : match(o.participant)) ? { ...o, participant: newName } : o),
           payments: next.payments.map(x => match(x.participant) ? { ...x, participant: newName } : x),
           deliveries: next.deliveries.map(x => match(x.participant) ? { ...x, participant: newName } : x),
           certificates: next.certificates.map(x => match(x.participant_name) ? { ...x, participant_name: newName } : x),
@@ -907,7 +1106,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   // ── Derived values (counts always reflect real data) ──────
   const participants = useMemo(() => data.participants.map(p => {
     const name = norm(fullName(p));
-    const mine = data.orders.filter(o => norm(o.participant) === name && o.status !== 'cancelled');
+    const mine = data.orders.filter(o =>
+      (o.participant_id ? o.participant_id === p.id : norm(o.participant) === name) && o.status !== 'cancelled');
     const paidRefs = new Set(data.payments.filter(x => x.status === 'verified').map(x => x.order_ref));
     return {
       ...p,
