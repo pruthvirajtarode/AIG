@@ -178,7 +178,7 @@ export function ExceptionsPage() {
           <Search className="search-icon" size={15} />
           <input id="exceptions-search" type="search" className="form-input" placeholder="Search exceptions..." value={search} onChange={e => setSearch(e.target.value)} style={{ height: 38 }} />
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           {(['', 'open', 'in_progress', 'resolved', 'escalated'] as const).map(s => (
             <button key={s} className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setStatusFilter(s)}>
               {s === '' ? 'All' : STATUS_LABEL[s as ExceptionStatus]}

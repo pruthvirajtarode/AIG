@@ -115,14 +115,18 @@ function ParticipantModal({ participant, orders, onClose, onSave, onSendInvite, 
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: 220, overflowY: 'auto' }}>
                 {orders.map(o => (
-                  <div key={o.id} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto auto', gap: '0.625rem', padding: '0.625rem 0.875rem', background: 'var(--surface-900)', borderRadius: 8, border: '1px solid var(--border-subtle)', alignItems: 'center', fontSize: '0.8125rem' }}>
-                    <span style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)', fontWeight: 700 }}>{o.order_ref}</span>
-                    <span style={{ color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.programme}</span>
-                    <span className="badge badge-teal" style={{ fontSize: '0.62rem' }}>
-                      {formatServiceType(o.service_type ?? 'qurban')} · {o.quantity}
-                    </span>
-                    <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{formatCurrency(o.total_amount, o.currency)}</span>
-                    <StatusBadge status={o.status} size="sm" />
+                  <div key={o.id} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 0.75rem', padding: '0.625rem 0.875rem', background: 'var(--surface-900)', borderRadius: 8, border: '1px solid var(--border-subtle)', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', minWidth: 0, flex: '1 1 180px' }}>
+                      <span style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)', fontWeight: 700, flexShrink: 0 }}>{o.order_ref}</span>
+                      <span style={{ color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.programme}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span className="badge badge-teal" style={{ fontSize: '0.62rem' }}>
+                        {formatServiceType(o.service_type ?? 'qurban')} · {o.quantity}
+                      </span>
+                      <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{formatCurrency(o.total_amount, o.currency)}</span>
+                      <StatusBadge status={o.status} size="sm" />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -312,7 +316,17 @@ export function ParticipantsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(p => (
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={8}>
+                    <div className="empty-state" style={{ padding: '3rem 2rem' }}>
+                      <div className="empty-icon"><Search size={22} color="var(--text-muted)" /></div>
+                      <h3>{participants.length ? 'No participants match your search' : 'No participants yet'}</h3>
+                      <p>{participants.length ? 'Try adjusting your search query.' : 'Participants are added automatically during Order Creation or via "Add Participant".'}</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : filtered.map(p => (
                 <tr key={p.id}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>

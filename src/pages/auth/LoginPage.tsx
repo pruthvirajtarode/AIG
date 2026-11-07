@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, LogIn, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
+import { usePageTitle } from '@/hooks/usePageTitle';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export function LoginPage() {
   const { signIn } = useAuth();
@@ -10,10 +12,20 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isParticipantMode = searchParams.get('mode') === 'participant';
+
+  usePageTitle(
+    isParticipantMode ? 'Participant Sign In' : 'Sign In',
+    isParticipantMode
+      ? 'Sign in to the Al Ihsan Group Participant Portal to track your Qurban and Aqiqah orders, view progress, and download PDF certificates.'
+      : 'Sign in to Al Ihsan Group (AIGMS) to manage Qurban and Aqiqah registrations, livestock stock, payments, deliveries, and digital certificates.',
+  );
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const emailInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +41,29 @@ export function LoginPage() {
       //  - Participant sign-in page  -> always the participant portal
       //  - Admin sign-in page        -> staff go to /admin, participants to /portal
       navigate(isParticipantMode || !staffUser ? '/portal' : '/admin', { replace: true });
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    const trimmed = email.trim();
+    if (!trimmed) {
+      emailInputRef.current?.focus();
+      toast('info', 'Enter your email first', 'Type your registered email address above, then click Forgot password.');
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      toast('info', 'Password reset', `Please contact Al Ihsan Group admin to reset credentials for ${trimmed}.`);
+      return;
+    }
+    setResetting(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
+      redirectTo: `${window.location.origin}/login`,
+    });
+    setResetting(false);
+    if (error) {
+      toast('error', 'Could not send reset link', error.message);
+    } else {
+      toast('success', 'Reset link sent', `If ${trimmed} is registered, a password reset link has been emailed.`);
     }
   };
 
@@ -74,7 +109,7 @@ export function LoginPage() {
             marginBottom: '1.5rem',
             letterSpacing: '0.02em',
           }}>
-            Your Pathway to Knowledge & Piety
+            Your Pathway to Knowledge &amp; Piety
           </div>
 
           <div style={{
@@ -83,7 +118,7 @@ export function LoginPage() {
             margin: '0 auto 1.5rem',
           }} />
 
-          <p style={{ fontSize: '1rem', color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: '2.5rem', maxWidth: 400, margin: '0 auto 2.5rem' }}>
+          <p style={{ fontSize: '1rem', color: 'var(--text-secondary)', lineHeight: 1.8, maxWidth: 400, margin: '0 auto 2.5rem' }}>
             A complete platform to manage Qurban registrations,
             animal tracking, payments, deliveries and digital certificates.
           </p>
@@ -106,7 +141,7 @@ export function LoginPage() {
       </div>
 
       {/* Right login form */}
-      <div className="auth-right">
+      <main className="auth-right">
         {/* Logo small in form panel */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: '0.875rem',
@@ -147,6 +182,7 @@ export function LoginPage() {
           <div className="form-group">
             <label className="form-label" htmlFor="login-email">Email address</label>
             <input
+              ref={emailInputRef}
               id="login-email"
               type="email"
               className="form-input"
@@ -174,12 +210,14 @@ export function LoginPage() {
               />
               <button
                 type="button"
+                aria-label={showPass ? 'Hide password' : 'Show password'}
                 onClick={() => setShowPass(s => !s)}
                 style={{
                   position: 'absolute', right: '0.75rem', top: '50%',
                   transform: 'translateY(-50%)',
                   background: 'none', border: 'none',
                   color: 'var(--text-muted)', cursor: 'pointer',
+                  padding: '0.25rem',
                 }}
               >
                 {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -188,9 +226,21 @@ export function LoginPage() {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <a href="#" style={{ fontSize: '0.8125rem', color: 'var(--gold-400)' }}>
-              Forgot password?
-            </a>
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              disabled={resetting}
+              style={{
+                fontSize: '0.8125rem',
+                color: 'var(--gold-400)',
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+              }}
+            >
+              {resetting ? 'Sending reset link…' : 'Forgot password?'}
+            </button>
           </div>
 
           {/* Gold-styled submit button matching client brand */}
@@ -243,7 +293,7 @@ export function LoginPage() {
         <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-disabled)', marginTop: '2rem' }}>
           Built by Daredevil Digital (D3) · AIGMS v1.0
         </p>
-      </div>
+      </main>
     </div>
   );
 }

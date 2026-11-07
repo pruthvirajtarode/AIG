@@ -225,10 +225,10 @@ export function PortalOrdersPage() {
           <div key={order.id} className="card">
             {/* Header */}
             <div
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', cursor: 'pointer' }}
               onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0, flex: '1 1 220px' }}>
                 <AnimalPhoto type={order.animal_type} size={56} radius={12} />
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
@@ -274,7 +274,7 @@ export function PortalOrdersPage() {
                 </div>
 
                 {order.animals.length > 0 && (
-                  <div style={{ marginBottom: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.625rem' }}>
+                  <div style={{ marginBottom: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))', gap: '0.625rem' }}>
                     {order.animals.map((a, idx) => (
                       <div key={a.code} style={{ padding: '0.75rem 0.875rem', background: 'var(--surface-700)', borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>

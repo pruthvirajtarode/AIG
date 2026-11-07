@@ -479,7 +479,7 @@ function UpdateAnimalStatusModal({ animal, onClose, onUpdate }: {
           <div style={{ marginBottom: '0.75rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
             Animal: <strong style={{ color: 'var(--text-primary)' }}>{animal.animal_ref}</strong>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+          <div className="status-picker-grid">
             {ALL_STATUSES.map(s => (
               <button key={s} onClick={() => setSelected(s)} style={{
                 padding: '0.5rem 0.75rem', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
@@ -856,7 +856,7 @@ export function AnimalsPage() {
       </div>
 
       {/* Animal Grid — real photorealistic images */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: '1rem' }}>
         {filtered.map(a => {
           const matchedProg = programmes.find(
             p => (a.programme_id && p.id === a.programme_id) || p.name === a.programme,

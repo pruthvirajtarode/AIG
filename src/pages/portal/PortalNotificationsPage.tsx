@@ -177,7 +177,7 @@ export function PortalNotificationsPage() {
 
   return (
     <div className="page-content animate-fadeInUp">
-      <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Notifications</h1>
           <p className="page-subtitle">

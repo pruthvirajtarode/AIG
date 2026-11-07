@@ -97,14 +97,14 @@ function NotificationSettings() {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {channels.map(c => (
-            <div key={c.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.875rem 1rem', background: 'var(--surface-700)', borderRadius: 8 }}>
-              <div>
+            <div key={c.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', padding: '0.875rem 1rem', background: 'var(--surface-700)', borderRadius: 8 }}>
+              <div style={{ flex: '1 1 220px', minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{c.name}</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   {c.desc}
                 </div>
               </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', flexShrink: 0 }}>
                 <input type="checkbox" defaultChecked={c.enabled} />
                 <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>{c.enabled ? 'On' : 'Off'}</span>
               </label>
@@ -244,7 +244,7 @@ export function SettingsPage() {
 
   return (
     <div className="page-content animate-fadeInUp">
-      <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Settings</h1>
           <p className="page-subtitle">System configuration and preferences</p>

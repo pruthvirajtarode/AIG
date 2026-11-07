@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, ShoppingCart, CreditCard, Dog,
@@ -7,6 +7,7 @@ import {
   Bell, LogOut, X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAppData } from '@/contexts/AppDataContext';
 
 interface NavGroup {
   label?: string;
@@ -23,75 +24,94 @@ interface NavItem {
 interface SidebarProps {
   mobileOpen?: boolean;
   onClose?: () => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
-
-const STAFF_NAV: NavGroup[] = [
-  {
-    items: [
-      { label: 'Dashboard',    icon: LayoutDashboard, path: '/admin' },
-    ],
-  },
-  {
-    label: 'Operations',
-    items: [
-      { label: 'Orders',       icon: ShoppingCart,  path: '/admin/orders' },
-      { label: 'Payments',     icon: CreditCard,    path: '/admin/payments' },
-      { label: 'Animals',      icon: Dog,           path: '/admin/animals' },
-      { label: 'Suppliers',    icon: Package,       path: '/admin/suppliers' },
-    ],
-  },
-  {
-    label: 'Logistics',
-    items: [
-      { label: 'Deliveries',   icon: Truck,         path: '/admin/deliveries' },
-      { label: 'Certificates', icon: Award,         path: '/admin/certificates' },
-    ],
-  },
-  {
-    label: 'Management',
-    items: [
-      { label: 'Participants', icon: UserCheck,     path: '/admin/participants' },
-      { label: 'Programmes',   icon: BookOpen,      path: '/admin/programmes' },
-      { label: 'Exceptions',   icon: AlertTriangle, path: '/admin/exceptions', badge: 3 },
-      { label: 'Audit Log',    icon: FileText,      path: '/admin/audit' },
-    ],
-  },
-  {
-    label: 'System',
-    items: [
-      { label: 'Settings',     icon: Settings,      path: '/admin/settings' },
-    ],
-  },
-];
 
 const PARTICIPANT_NAV: NavGroup[] = [
   {
     items: [
       { label: 'Home',          icon: LayoutDashboard, path: '/portal' },
-      { label: 'My Orders',     icon: ShoppingCart, path: '/portal/orders' },
-      { label: 'Certificates',  icon: Award,        path: '/portal/certificates' },
-      { label: 'Notifications', icon: Bell,         path: '/portal/notifications' },
+      { label: 'My Orders',     icon: ShoppingCart,    path: '/portal/orders' },
+      { label: 'Certificates',  icon: Award,           path: '/portal/certificates' },
+      { label: 'Notifications', icon: Bell,            path: '/portal/notifications' },
     ],
   },
 ];
 
-export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
+export function Sidebar({
+  mobileOpen = false,
+  onClose,
+  collapsed: controlledCollapsed,
+  onToggleCollapse,
+}: SidebarProps) {
   const { profile, isStaff, signOut } = useAuth();
-  const [collapsed, setCollapsed] = useState(false);
+  const { exceptions } = useAppData();
+  const [internalCollapsed, setInternalCollapsed] = useState(false);
   const location = useLocation();
+
+  const collapsed = controlledCollapsed ?? internalCollapsed;
+  const handleToggleCollapse = () => {
+    if (onToggleCollapse) onToggleCollapse();
+    else setInternalCollapsed(c => !c);
+  };
+
+  const activeExceptionCount = useMemo(
+    () => exceptions.filter(e => e.status === 'open' || e.status === 'in_progress' || e.status === 'escalated').length,
+    [exceptions],
+  );
+
+  const staffNav = useMemo<NavGroup[]>(
+    () => [
+      {
+        items: [{ label: 'Dashboard', icon: LayoutDashboard, path: '/admin' }],
+      },
+      {
+        label: 'Operations',
+        items: [
+          { label: 'Orders',    icon: ShoppingCart, path: '/admin/orders' },
+          { label: 'Payments',  icon: CreditCard,   path: '/admin/payments' },
+          { label: 'Animals',   icon: Dog,          path: '/admin/animals' },
+          { label: 'Suppliers', icon: Package,      path: '/admin/suppliers' },
+        ],
+      },
+      {
+        label: 'Logistics',
+        items: [
+          { label: 'Deliveries',   icon: Truck, path: '/admin/deliveries' },
+          { label: 'Certificates', icon: Award, path: '/admin/certificates' },
+        ],
+      },
+      {
+        label: 'Management',
+        items: [
+          { label: 'Participants', icon: UserCheck,     path: '/admin/participants' },
+          { label: 'Programmes',   icon: BookOpen,      path: '/admin/programmes' },
+          { label: 'Exceptions',   icon: AlertTriangle, path: '/admin/exceptions', badge: activeExceptionCount || undefined },
+          { label: 'Audit Log',    icon: FileText,      path: '/admin/audit' },
+        ],
+      },
+      {
+        label: 'System',
+        items: [{ label: 'Settings', icon: Settings, path: '/admin/settings' }],
+      },
+    ],
+    [activeExceptionCount],
+  );
 
   // Menu follows the section being viewed. Staff browsing /portal get the participant menu
   // plus a shortcut back to the admin panel.
   const inPortal = location.pathname.startsWith('/portal');
-  const navGroups: NavGroup[] = inPortal
+  const showPortalNav = inPortal || (!!profile && !isStaff());
+  const navGroups: NavGroup[] = showPortalNav
     ? [
         ...PARTICIPANT_NAV,
         ...(isStaff()
           ? [{ label: 'Staff', items: [{ label: 'Admin Panel', icon: LayoutDashboard, path: '/admin' }] }]
           : []),
       ]
-    : (isStaff() ? STAFF_NAV : PARTICIPANT_NAV);
-  const rootPath = inPortal || !isStaff() ? '/portal' : '/admin';
+    : staffNav;
+  const rootPath = showPortalNav ? '/portal' : '/admin';
   const fullName = `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim();
   const displayName = fullName || (inPortal ? (profile?.email ?? '') : '');
   const initials = fullName
@@ -112,7 +132,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   ].filter(Boolean).join(' ');
 
   return (
-    <aside className={sidebarClass}>
+    <aside className={sidebarClass} aria-label="Sidebar navigation">
 
       {/* ── Header: Logo + Collapse Arrow ─────────────────────── */}
       <div className="sidebar-logo" style={{ position: 'relative' }}>
@@ -134,7 +154,8 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
         {/* Collapse / Expand arrow — desktop only */}
         <button
           id="sidebar-collapse-btn"
-          onClick={() => setCollapsed(c => !c)}
+          type="button"
+          onClick={handleToggleCollapse}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           style={{
@@ -165,6 +186,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
         {/* Mobile close button */}
         {mobileOpen && (
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close sidebar"
             style={{
@@ -184,7 +206,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
       </div>
 
       {/* ── Navigation ─────────────────────────────────────────── */}
-      <nav className="sidebar-nav" style={{ marginTop: '1rem' }}>
+      <nav className="sidebar-nav" style={{ marginTop: '1rem' }} aria-label="Main menu">
         {navGroups.map((group, gi) => (
           <div key={gi}>
             {group.label && !collapsed && (
@@ -250,6 +272,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
         {/* Logout button — prominent red */}
         <button
           id="logout-btn"
+          type="button"
           onClick={handleSignOut}
           title={collapsed ? 'Sign Out' : undefined}
           aria-label="Sign out"

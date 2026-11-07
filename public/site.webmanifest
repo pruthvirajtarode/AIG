@@ -1,0 +1,20 @@
+{
+  "name": "Al Ihsan Group — Qurban & Aqiqah Management System",
+  "short_name": "AIGMS",
+  "description": "Official Al Ihsan Group Singapore platform for Qurban & Aqiqah orders, animal tracking, deliveries, and digital certificates.",
+  "start_url": "/login",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#090e0b",
+  "theme_color": "#0f4c35",
+  "lang": "en-SG",
+  "icons": [
+    {
+      "src": "/logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

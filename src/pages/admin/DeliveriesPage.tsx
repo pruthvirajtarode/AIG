@@ -256,7 +256,17 @@ export function DeliveriesPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(d => (
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7}>
+                    <div className="empty-state" style={{ padding: '3rem 2rem' }}>
+                      <div className="empty-icon"><Truck size={22} color="var(--text-muted)" /></div>
+                      <h3>{deliveries.length ? 'No deliveries match your filter' : 'No deliveries yet'}</h3>
+                      <p>{deliveries.length ? 'Try adjusting your search or status filter.' : 'Deliveries are generated automatically when orders reach Delivery Scheduled.'}</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : filtered.map(d => (
                 <tr key={d.id}>
                   <td><span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--aig-green-300)' }}>{d.delivery_ref}</span></td>
                   <td>

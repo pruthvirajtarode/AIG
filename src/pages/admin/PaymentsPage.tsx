@@ -197,7 +197,7 @@ function PaymentDetailModal({ payment, linkedOrder, onClose, onVerify, onReject 
                   onChange={e => setRejectReason(e.target.value)}
                 />
               </div>
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <button
                   className="btn btn-primary"
                   style={{ gap: '0.5rem' }}
@@ -305,7 +305,7 @@ export function PaymentsPage() {
             style={{ height: 38 }}
           />
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           {(['', 'pending', 'submitted', 'under_review', 'verified', 'rejected'] as const).map(s => (
             <button
               key={s}
@@ -335,7 +335,17 @@ export function PaymentsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(p => (
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={8}>
+                    <div className="empty-state" style={{ padding: '3rem 2rem' }}>
+                      <div className="empty-icon"><Search size={22} color="var(--text-muted)" /></div>
+                      <h3>{payments.length ? 'No payments match your filter' : 'No payments yet'}</h3>
+                      <p>{payments.length ? 'Try selecting a different status or clearing the search.' : 'Payments appear here automatically when orders are created.'}</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : filtered.map(p => (
                 <tr key={p.id}>
                   <td>
                     <span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--aig-green-300)' }}>

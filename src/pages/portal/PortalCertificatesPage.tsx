@@ -54,7 +54,7 @@ function CertViewModal({ cert, onClose }: { cert: Certificate; onClose: () => vo
           <button className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close"><X size={18} /></button>
         </div>
 
-        <div style={{ padding: '1.25rem', background: '#0d0d0d' }}>
+        <div style={{ padding: 'clamp(0.625rem, 2.5vw, 1.25rem)', background: '#0d0d0d' }}>
           <CertificateDesign cert={cert} />
         </div>
 
@@ -128,7 +128,7 @@ export function PortalCertificatesPage() {
           </div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
+        <div className="card-grid-responsive">
           {participantCerts.map(cert => (
             <div key={cert.id} className="card card-hover" style={{ cursor: 'pointer', textAlign: 'center' }} onClick={() => setSelected(cert)}>
               {/* Certificate preview — matches the admin certificate colours (black + gold) */}

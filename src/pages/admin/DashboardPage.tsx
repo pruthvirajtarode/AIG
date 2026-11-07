@@ -296,7 +296,7 @@ export function DashboardPage() {
       </div>
 
       {/* KPI Stats */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+      <div className="stats-grid">
         <StatCard
           icon={ShoppingCart}
           iconBg="linear-gradient(135deg, #155f41, #1f8561)"

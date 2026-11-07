@@ -5,7 +5,7 @@ import { formatDate } from '@/lib/utils';
 import type { CertificateStatus } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
-import { CertificateDesign, type Certificate } from '@/components/ui/CertificateDesign';
+import { CertificateDesign, printCertificate, type Certificate } from '@/components/ui/CertificateDesign';
 import { useAppData } from '@/contexts/AppDataContext';
 import { OFFICIAL_WHATSAPP_DISPLAY } from '@/lib/orderRules';
 
@@ -41,35 +41,11 @@ function CertPreviewModal({
   const [sending, setSending] = useState(false);
 
   const handleDownload = useCallback(() => {
-    // Open a new print window with the certificate
-    const certEl = document.getElementById('certificate-print-area');
-    if (!certEl) return;
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8"/>
-        <title>Qurban Certificate — ${cert.participant_name}</title>
-        <link rel="preconnect" href="https://fonts.googleapis.com"/>
-        <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
-        <style>
-          * { margin:0; padding:0; box-sizing:border-box; }
-          body { background:#0a0a0a; }
-          @page { size: A4 landscape; margin: 0; }
-          @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-        </style>
-      </head>
-      <body>
-        ${certEl.outerHTML}
-        <script>window.onload = function(){ window.print(); window.close(); }</script>
-      </body>
-      </html>`;
-    const w = window.open('', '_blank');
-    if (w) {
-      w.document.write(html);
-      w.document.close();
+    if (printCertificate(cert)) {
+      toast('success', 'Certificate ready to print/save as PDF');
+    } else {
+      toast('error', 'Could not open print window', 'Please allow pop-ups for this site.');
     }
-    toast('success', 'Certificate ready to print/save as PDF');
   }, [cert, toast]);
 
   const handleSend = useCallback(async () => {
@@ -94,25 +70,26 @@ function CertPreviewModal({
       >
         {/* Header */}
         <div className="modal-header" style={{ background: '#0a0a0a', borderBottom: '1px solid rgba(212,168,50,0.15)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             <Award size={18} color="#d4a832" />
             <div className="heading-md" style={{ color: '#fff' }}>Certificate Preview</div>
             <span className={`badge ${CERT_STATUS_BADGE[cert.status]}`}>{CERT_STATUS_LABEL[cert.status]}</span>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
+          <button type="button" className="btn btn-ghost btn-sm" aria-label="Close certificate preview" onClick={onClose}><X size={18} /></button>
         </div>
 
         {/* Certificate design */}
-        <div style={{ padding: '1.25rem', background: '#0d0d0d' }}>
+        <div style={{ padding: 'clamp(0.625rem, 2.5vw, 1.25rem)', background: '#0d0d0d' }}>
           <CertificateDesign cert={cert} />
         </div>
 
         {/* Footer actions */}
         <div className="modal-footer" style={{ background: '#0a0a0a', borderTop: '1px solid rgba(212,168,50,0.15)', justifyContent: 'flex-end' }}>
-          <button className="btn btn-secondary" onClick={onClose}>Close</button>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Close</button>
 
           {/* Download / Print */}
           <button
+            type="button"
             className="btn btn-secondary"
             onClick={handleDownload}
             style={{ gap: '0.5rem' }}
@@ -124,6 +101,7 @@ function CertPreviewModal({
           {/* Send */}
           {cert.status !== 'sent' && (
             <button
+              type="button"
               className="btn"
               onClick={handleSend}
               disabled={sending}
@@ -231,6 +209,7 @@ export function CertificatesPage() {
         </div>
         <div className="page-header-actions" style={{ display: 'flex', gap: '0.75rem' }}>
           <button
+            type="button"
             className="btn btn-secondary btn-sm"
             onClick={handleBulkGenerate}
             disabled={bulkGenerating}
@@ -241,6 +220,7 @@ export function CertificatesPage() {
             Bulk Generate
           </button>
           <button
+            type="button"
             className="btn btn-primary btn-sm"
             onClick={handleBulkSend}
             disabled={bulkSending}
@@ -286,6 +266,7 @@ export function CertificatesPage() {
           {(['', 'not_generated', 'generated', 'sent', 'failed'] as const).map(s => (
             <button
               key={s}
+              type="button"
               className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setStatusFilter(s)}
             >
@@ -311,7 +292,17 @@ export function CertificatesPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(c => (
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7}>
+                    <div className="empty-state" style={{ padding: '3rem 2rem' }}>
+                      <div className="empty-icon"><Award size={22} color="var(--text-muted)" /></div>
+                      <h3>{certs.length ? 'No certificates match your filter' : 'No certificates yet'}</h3>
+                      <p>{certs.length ? 'Try adjusting your search or status filter.' : 'Certificates appear automatically when orders reach Qurban Complete.'}</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : filtered.map(c => (
                 <tr key={c.id}>
                   <td>
                     <span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--gold-400)' }}>
@@ -337,8 +328,8 @@ export function CertificatesPage() {
                   <td>
                     <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }}>
                       {c.status === 'not_generated' ? (
-                        /* GENERATE button */
                         <button
+                          type="button"
                           className="btn btn-primary btn-sm"
                           style={{ gap: '0.375rem' }}
                           disabled={generating === c.id}
@@ -351,36 +342,36 @@ export function CertificatesPage() {
                         </button>
                       ) : (
                         <>
-                          {/* PREVIEW */}
                           <button
+                            type="button"
                             className="btn btn-ghost btn-sm"
                             title="Preview Certificate"
+                            aria-label="Preview Certificate"
                             onClick={() => setSelected(c)}
                           >
                             <Eye size={14} />
                           </button>
 
-                          {/* DOWNLOAD */}
                           <button
+                            type="button"
                             className="btn btn-ghost btn-sm"
                             title="Download / Print Certificate"
+                            aria-label="Download Certificate PDF"
                             onClick={() => {
                               setSelected(c);
                               setTimeout(() => {
-                                const el = document.getElementById('certificate-print-area');
-                                if (!el) return;
-                                const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Qurban Certificate — ${c.participant_name}</title><link rel="preconnect" href="https://fonts.googleapis.com"/><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet"/><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0a0a0a;}@page{size:A4 landscape;margin:0;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body>${el.outerHTML}<script>window.onload=function(){window.print();window.close();}</script></body></html>`;
-                                const w = window.open('', '_blank');
-                                if (w) { w.document.write(html); w.document.close(); }
+                                if (!printCertificate(c)) {
+                                  toast('error', 'Could not open print window', 'Please allow pop-ups for this site.');
+                                }
                               }, 300);
                             }}
                           >
                             <Download size={14} />
                           </button>
 
-                          {/* SEND — only for generated, not yet sent */}
                           {c.status === 'generated' && (
                             <button
+                              type="button"
                               className="btn btn-sm"
                               style={{
                                 gap: '0.375rem',
@@ -396,7 +387,6 @@ export function CertificatesPage() {
                             </button>
                           )}
 
-                          {/* Sent badge indicator */}
                           {c.status === 'sent' && (
                             <span title={`Sent ${c.sent_at ? formatDate(c.sent_at) : ''}`}>
                               <CheckCircle2 size={14} color="var(--success)" />

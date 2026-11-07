@@ -135,7 +135,7 @@ export function SuppliersPage() {
     <div className="page-content animate-fadeInUp">
       {showModal && <SupplierModal supplier={editSupplier} onClose={() => setShowModal(false)} />}
 
-      <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Suppliers</h1>
           <p className="page-subtitle">Manage livestock suppliers and their animal inventory</p>
@@ -167,7 +167,7 @@ export function SuppliersPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1rem' }}>
+      <div className="card-grid-responsive">
         {filtered.map(s => (
           <div key={s.id} className="card card-hover" style={{ cursor: 'pointer' }} onClick={() => openEdit(s)}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.875rem' }}>

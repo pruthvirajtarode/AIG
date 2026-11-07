@@ -896,7 +896,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
                           <label className="form-label" style={{ fontSize: '0.75rem' }}>
                             Portion to be Delivered * <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Australia → Singapore)</span>
                           </label>
-                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <div className="portion-btn-group">
                             {AUSTRALIA_SINGAPORE_PORTION_OPTIONS.map(dp => {
                               const active = entry.delivery_portion === dp.value;
                               return (
@@ -1225,7 +1225,7 @@ function EditOrderModal({ order, onClose, onSave }: {
                           <label className="form-label" style={{ fontSize: '0.75rem' }}>
                             Portion to be Delivered * <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Australia → Singapore)</span>
                           </label>
-                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <div className="portion-btn-group">
                             {AUSTRALIA_SINGAPORE_PORTION_OPTIONS.map(dp => {
                               const active = entry.delivery_portion === dp.value;
                               return (
@@ -1292,7 +1292,7 @@ function UpdateStatusModal({ order, onClose, onUpdate }: {
           <div style={{ marginBottom: '0.75rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
             Order: <strong style={{ color: 'var(--text-primary)' }}>{order.order_ref}</strong>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+          <div className="status-picker-grid">
             {PICKER_STATUSES.map(s => (
               <button
                 key={s}
@@ -1732,6 +1732,7 @@ export function OrdersPage() {
         {/* Pagination */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexWrap: 'wrap', gap: '0.75rem',
           padding: '0.875rem 1.25rem',
           borderTop: '1px solid var(--border-subtle)',
           fontSize: '0.8125rem', color: 'var(--text-muted)',

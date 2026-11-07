@@ -45,8 +45,19 @@ function Lantern({ x, y, scale = 1 }: { x: number; y: number; scale?: number }) 
 // ── Al Ihsan Logo (vector) ─────────────────────────────────────
 function LogoText() {
   return (
-    <div style={{ textAlign: 'center' }}>
-      <img src="/logo.jpg" alt="Al Ihsan Group" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 12, display: 'block', margin: '0 auto' }} />
+    <div style={{ textAlign: 'center', flexShrink: 0 }}>
+      <img
+        src="/logo.jpg"
+        alt="Al Ihsan Group"
+        style={{
+          width: 'clamp(34px, 8vw, 80px)',
+          height: 'clamp(34px, 8vw, 80px)',
+          objectFit: 'cover',
+          borderRadius: 'clamp(6px, 1.2vw, 12px)',
+          display: 'block',
+          margin: '0 auto',
+        }}
+      />
     </div>
   );
 }
@@ -113,31 +124,40 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
         ))}
       </svg>
 
-      {/* ── Certificate body ── */}
-      <div style={{ position: 'relative', zIndex: 2, textAlign: 'center', width: '100%', padding: '80px 60px 20px', boxSizing: 'border-box' }}>
+      {/* ── Certificate body (fluid responsive scaling for phones → A4 print) ── */}
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 2,
+          textAlign: 'center',
+          width: '100%',
+          padding: 'clamp(16px, 8.5%, 80px) clamp(12px, 6%, 60px) clamp(8px, 2.5%, 20px)',
+          boxSizing: 'border-box',
+        }}
+      >
 
         {/* QURBAN CERTIFICATE heading */}
         <div style={{
           fontFamily: "'Cormorant Garamond', 'Georgia', serif",
-          fontSize: 'clamp(20px, 4vw, 42px)',
+          fontSize: 'clamp(14px, 3.8vw, 42px)',
           fontWeight: 700,
           color: '#ffffff',
           letterSpacing: '0.12em',
           lineHeight: 1.1,
           textTransform: 'uppercase',
           textShadow: '0 2px 8px rgba(0,0,0,0.5)',
-          marginBottom: '0.4em',
+          marginBottom: '0.35em',
         }}>
           QURBAN<br />CERTIFICATE
         </div>
 
         {/* Description */}
         <div style={{
-          fontSize: 'clamp(9px, 1.1vw, 13px)',
+          fontSize: 'clamp(7px, 1.1vw, 13px)',
           color: 'rgba(255,255,255,0.85)',
           maxWidth: 480,
-          margin: '0 auto 0.8em',
-          lineHeight: 1.6,
+          margin: '0 auto 0.65em',
+          lineHeight: 1.5,
           fontWeight: 400,
         }}>
           This is to certify that Al Ihsan Group SG has faithfully fulfilled the amanah<br />
@@ -147,12 +167,12 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
         {/* Participant name — gold cursive */}
         <div style={{
           fontFamily: "'Cormorant Garamond', 'Georgia', serif",
-          fontSize: 'clamp(22px, 4.5vw, 52px)',
+          fontSize: 'clamp(16px, 4.4vw, 52px)',
           fontWeight: 600,
           fontStyle: 'italic',
           color: '#d4a832',
           textShadow: '0 2px 12px rgba(212,168,50,0.3)',
-          margin: '0.1em 0 0.3em',
+          margin: '0.08em 0 0.25em',
           lineHeight: 1.2,
           letterSpacing: '-0.01em',
         }}>
@@ -163,12 +183,12 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
         <div style={{
           display: 'flex',
           justifyContent: 'center',
-          gap: 'clamp(16px, 3vw, 40px)',
-          fontSize: 'clamp(9px, 1.1vw, 13px)',
+          gap: 'clamp(8px, 2.8vw, 40px)',
+          fontSize: 'clamp(7px, 1.1vw, 13px)',
           fontWeight: 700,
           color: '#ffffff',
           letterSpacing: '0.08em',
-          marginBottom: '0.5em',
+          marginBottom: '0.45em',
           flexWrap: 'wrap',
         }}>
           <span>LOCATION : {cert.country.toUpperCase()}</span>
@@ -178,11 +198,11 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
 
         {/* Du'a */}
         <div style={{
-          fontSize: 'clamp(8px, 0.95vw, 12px)',
+          fontSize: 'clamp(6.5px, 0.95vw, 12px)',
           color: 'rgba(255,255,255,0.75)',
-          marginBottom: '1em',
+          marginBottom: '0.85em',
           fontStyle: 'italic',
-          lineHeight: 1.7,
+          lineHeight: 1.55,
         }}>
           May Allah swt accept this Ibadah and reward us the best in this life and hereafter.<br />
           Ameen ya Rabb
@@ -195,12 +215,13 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
           justifyContent: 'space-between',
           maxWidth: 620,
           margin: '0 auto',
-          padding: '0 10px',
+          padding: '0 6px',
+          gap: '8px',
         }}>
           {/* Serial */}
           <div style={{ textAlign: 'left' }}>
-            <div style={{ fontSize: 'clamp(7px, 0.85vw, 11px)', color: 'rgba(255,255,255,0.6)', fontWeight: 600, letterSpacing: '0.06em' }}>SERIAL NO:</div>
-            <div style={{ fontSize: 'clamp(8px, 1vw, 13px)', fontWeight: 700, color: '#d4a832', fontFamily: 'monospace', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: 'clamp(6px, 0.85vw, 11px)', color: 'rgba(255,255,255,0.6)', fontWeight: 600, letterSpacing: '0.06em' }}>SERIAL NO:</div>
+            <div style={{ fontSize: 'clamp(7px, 1vw, 13px)', fontWeight: 700, color: '#d4a832', fontFamily: 'monospace', letterSpacing: '0.05em' }}>
               {cert.certificate_ref.replace('CERT-', 'AIG-Q')}
             </div>
           </div>
@@ -211,23 +232,24 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
           {/* Gold seal / signature */}
           <div style={{ textAlign: 'right' }}>
             <div style={{
-              width: 50, height: 50,
+              width: 'clamp(26px, 5vw, 50px)',
+              height: 'clamp(26px, 5vw, 50px)',
               borderRadius: '50%',
               background: 'radial-gradient(circle, #d4a832 0%, #92700e 60%, #6b5010 100%)',
-              margin: '0 auto 4px',
+              margin: '0 auto 3px',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               boxShadow: '0 2px 8px rgba(212,168,50,0.4)',
             }}>
-              <Award size={20} color="#fff" />
+              <Award size={16} color="#fff" />
             </div>
-            <div style={{ fontSize: 'clamp(7px, 0.8vw, 10px)', color: 'rgba(255,255,255,0.7)', fontWeight: 600, letterSpacing: '0.04em' }}>UST KHIDR MUHAMMAD</div>
+            <div style={{ fontSize: 'clamp(6px, 0.8vw, 10px)', color: 'rgba(255,255,255,0.7)', fontWeight: 600, letterSpacing: '0.04em' }}>UST KHIDR MUHAMMAD</div>
           </div>
         </div>
 
         {/* Verification code */}
         <div style={{
-          marginTop: '0.5em',
-          fontSize: 'clamp(7px, 0.8vw, 10px)',
+          marginTop: '0.4em',
+          fontSize: 'clamp(6px, 0.8vw, 10px)',
           color: 'rgba(255,255,255,0.35)',
           fontFamily: 'monospace',
           letterSpacing: '0.08em',
@@ -243,7 +265,7 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
 export function printCertificate(cert: Pick<Certificate, 'participant_name'>): boolean {
   const el = document.getElementById('certificate-print-area');
   if (!el) return false;
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Qurban Certificate - ${cert.participant_name}</title><link rel="preconnect" href="https://fonts.googleapis.com"/><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0a0a0a;}@page{size:A4 landscape;margin:0;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body>${el.outerHTML}<script>window.onload=function(){window.print();window.close();}</script></body></html>`;
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><title>Qurban Certificate - ${cert.participant_name}</title><link rel="preconnect" href="https://fonts.googleapis.com"/><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0a0a0a;}#certificate-print-area{width:297mm!important;height:210mm!important;}@page{size:A4 landscape;margin:0;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body>${el.outerHTML}<script>window.onload=function(){window.print();window.close();}</script></body></html>`;
   const w = window.open('', '_blank');
   if (!w) return false;
   w.document.write(html);

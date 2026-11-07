@@ -170,7 +170,7 @@ export function ProgrammesPage() {
     <div className="page-content animate-fadeInUp">
       {showModal && <ProgrammeModal programme={editProgramme} onClose={() => setShowModal(false)} />}
 
-      <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Programmes</h1>
           <p className="page-subtitle">Manage Qurban programmes across countries</p>
@@ -203,7 +203,7 @@ export function ProgrammesPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
+      <div className="card-grid-responsive">
         {filtered.map(p => {
           const capacityUsed = p.shares_available ? Math.min(100, Math.round((p.orders_count / p.shares_available) * 100)) : 0;
           return (

@@ -156,7 +156,7 @@ export function PortalDashboardPage() {
         background: 'linear-gradient(135deg, #0a1a0e 0%, #12260f 40%, #0a1206 100%)',
         border: '1px solid rgba(212,168,50,0.18)',
         borderRadius: 16,
-        padding: '2rem 2rem 1.75rem',
+        padding: 'clamp(1.25rem, 4vw, 2rem)',
         marginBottom: '1.5rem',
         position: 'relative',
         overflow: 'hidden',
@@ -258,7 +258,7 @@ export function PortalDashboardPage() {
                         </div>
                         <StatusBadge status={order.status} size="sm" />
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem 0.75rem', flexWrap: 'wrap', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                         <span style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)', fontSize: '0.75rem' }}>{order.order_ref}</span>
                         <span>·</span>
                         <span>{COUNTRIES[order.country] ?? ''} {order.country}</span>
