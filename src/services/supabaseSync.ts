@@ -103,10 +103,35 @@ export async function loadFromSupabase(): Promise<SupabaseAppData | null> {
 
 // ─── Upsert helpers ──────────────────────────────────────────────────────────
 
+/**
+ * PostgREST requires every object in a bulk upsert array to have identical keys.
+ * Normalize `undefined` properties to `null` across all keys in the batch.
+ */
+function normaliseBatchRows(rows: unknown[]): Record<string, unknown>[] {
+  const keySet = new Set<string>();
+  for (const r of rows) {
+    if (r && typeof r === 'object') {
+      for (const [k, v] of Object.entries(r as Record<string, unknown>)) {
+        if (v !== undefined) keySet.add(k);
+      }
+    }
+  }
+  const keys = Array.from(keySet);
+  return rows.map(r => {
+    const obj = (r ?? {}) as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const k of keys) {
+      out[k] = obj[k] === undefined ? null : obj[k];
+    }
+    return out;
+  });
+}
+
 async function upsert(tableName: string, rows: unknown[]): Promise<void> {
   if (!isSupabaseConfigured || rows.length === 0) return;
   try {
-    const { error } = await supabase.from(tableName).upsert(rows as never[], { onConflict: 'id' });
+    const payload = normaliseBatchRows(rows);
+    const { error } = await supabase.from(tableName).upsert(payload as never[], { onConflict: 'id' });
     if (error) console.warn(`[supabaseSync] upsert ${tableName} error:`, error.message);
   } catch (e) {
     console.warn(`[supabaseSync] upsert ${tableName} exception:`, e);
@@ -148,37 +173,56 @@ async function deleteRows(tableName: string, ids: string[]): Promise<void> {
 
 // ─── Sync diff between prev and next AppData ──────────────────────────────────
 
+const TIER_1_PARENTS: [string, keyof SupabaseAppData][] = [
+  [T.programmes,   'programmes'],
+  [T.suppliers,    'suppliers'],
+  [T.participants, 'participants'],
+];
+
+const TIER_2_ORDERS: [string, keyof SupabaseAppData][] = [
+  [T.orders, 'orders'],
+];
+
+const TIER_3_CHILDREN: [string, keyof SupabaseAppData][] = [
+  [T.animals,      'animals'],
+  [T.payments,     'payments'],
+  [T.deliveries,   'deliveries'],
+  [T.certificates, 'certificates'],
+  [T.exceptions,   'exceptions'],
+  [T.auditLogs,    'auditLogs'],
+];
+
 export async function syncToSupabase(
   prev: SupabaseAppData,
   next: SupabaseAppData,
 ): Promise<void> {
   if (!isSupabaseConfigured) return;
 
-  const tables: [string, keyof SupabaseAppData][] = [
-    [T.orders,       'orders'],
-    [T.animals,      'animals'],
-    [T.payments,     'payments'],
-    [T.deliveries,   'deliveries'],
-    [T.certificates, 'certificates'],
-    [T.participants, 'participants'],
-    [T.suppliers,    'suppliers'],
-    [T.programmes,   'programmes'],
-    [T.exceptions,   'exceptions'],
-    [T.auditLogs,    'auditLogs'],
-  ];
+  const upsertTier = (tier: [string, keyof SupabaseAppData][]) =>
+    Promise.all(tier.map(async ([tableName, key]) => {
+      const prevArr = prev[key] as WithId[];
+      const nextArr = next[key] as WithId[];
+      const toUpsert = [...findNew(nextArr, prevArr), ...findChanged(nextArr, prevArr)];
+      await upsert(tableName, toUpsert);
+    }));
 
-  await Promise.all(tables.map(async ([tableName, key]) => {
-    const prevArr = prev[key] as WithId[];
-    const nextArr = next[key] as WithId[];
+  const deleteTier = (tier: [string, keyof SupabaseAppData][]) =>
+    Promise.all(tier.map(async ([tableName, key]) => {
+      const prevArr = prev[key] as WithId[];
+      const nextArr = next[key] as WithId[];
+      const deletedIds = findDeleted(nextArr, prevArr);
+      await deleteRows(tableName, deletedIds);
+    }));
 
-    const newRows     = findNew(nextArr, prevArr);
-    const changedRows = findChanged(nextArr, prevArr);
-    const deletedIds  = findDeleted(nextArr, prevArr);
+  // Upsert parents -> orders -> children so foreign keys are always satisfied
+  await upsertTier(TIER_1_PARENTS);
+  await upsertTier(TIER_2_ORDERS);
+  await upsertTier(TIER_3_CHILDREN);
 
-    const toUpsert = [...newRows, ...changedRows];
-    await upsert(tableName, toUpsert);
-    await deleteRows(tableName, deletedIds);
-  }));
+  // Delete children -> orders -> parents in reverse dependency order
+  await deleteTier(TIER_3_CHILDREN);
+  await deleteTier(TIER_2_ORDERS);
+  await deleteTier(TIER_1_PARENTS);
 }
 
 // ─── Full upsert (initial push of all local data to Supabase) ────────────────
@@ -187,14 +231,16 @@ export async function pushAllToSupabase(data: SupabaseAppData): Promise<void> {
   if (!isSupabaseConfigured) return;
 
   await Promise.all([
-    upsert(T.orders,       data.orders),
+    upsert(T.programmes,   data.programmes),
+    upsert(T.suppliers,    data.suppliers),
+    upsert(T.participants, data.participants),
+  ]);
+  await upsert(T.orders, data.orders);
+  await Promise.all([
     upsert(T.animals,      data.animals),
     upsert(T.payments,     data.payments),
     upsert(T.deliveries,   data.deliveries),
     upsert(T.certificates, data.certificates),
-    upsert(T.participants, data.participants),
-    upsert(T.suppliers,    data.suppliers),
-    upsert(T.programmes,   data.programmes),
     upsert(T.exceptions,   data.exceptions),
     upsert(T.auditLogs,    data.auditLogs),
   ]);

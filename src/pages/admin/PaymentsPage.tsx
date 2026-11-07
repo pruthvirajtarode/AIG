@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, CheckCircle2, XCircle, Eye, Clock, X, Upload, Download, ExternalLink, ZoomIn, ZoomOut, FileX } from 'lucide-react';
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
+import { formatPaymentMethod, formatServiceType } from '@/lib/orderRules';
 import type { PaymentStatus } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
-import { useAppData, type AppPayment as Payment } from '@/contexts/AppDataContext';
+import { useAppData, type AppPayment as Payment, type AppOrder } from '@/contexts/AppDataContext';
 
 const STATUS_COLOR: Record<PaymentStatus, string> = {
   pending:      'badge-yellow',
@@ -101,8 +102,9 @@ function ProofViewer({ payment, onClose }: { payment: Payment; onClose: () => vo
   );
 }
 
-function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
+function PaymentDetailModal({ payment, linkedOrder, onClose, onVerify, onReject }: {
   payment: Payment;
+  linkedOrder?: AppOrder;
   onClose: () => void;
   onVerify: (id: string) => void;
   onReject: (id: string, reason?: string) => void;
@@ -116,7 +118,9 @@ function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
         <div className="modal-header">
           <div>
             <div className="heading-md">Payment Details</div>
-            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.125rem' }}>{payment.payment_ref}</div>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.125rem' }}>
+              {payment.payment_ref} · Order <span style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)' }}>{payment.order_ref}</span>
+            </div>
           </div>
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
         </div>
@@ -127,10 +131,15 @@ function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
               <div className="detail-list">
                 {[
                   ['Reference', payment.payment_ref],
-                  ['Order Ref', payment.order_ref],
+                  ['Order Reference', payment.order_ref],
                   ['Participant', payment.participant],
+                  ...(linkedOrder ? [
+                    ['Programme', linkedOrder.programme],
+                    ['Service Type', formatServiceType(linkedOrder.service_type ?? 'qurban')],
+                    ['No. of Qurbans', String(linkedOrder.quantity)],
+                  ] : []),
                   ['Amount', formatCurrency(payment.amount, payment.currency)],
-                  ['Method', payment.method.replace(/_/g, ' ')],
+                  ['Method', formatPaymentMethod(payment.method)],
                   ['Bank', payment.bank || '—'],
                   ['Status', STATUS_LABEL[payment.status]],
                 ].map(([k, v]) => (
@@ -220,16 +229,22 @@ function PaymentDetailModal({ payment, onClose, onVerify, onReject }: {
 
 export function PaymentsPage() {
   usePageTitle('Payments');
-  const { payments, verifyPayment, rejectPayment } = useAppData();
+  const { payments, orders, verifyPayment, rejectPayment } = useAppData();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [selected, setSelected] = useState<Payment | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const selected = selectedId ? payments.find(p => p.id === selectedId) ?? null : null;
+  const selectedOrder = selected ? orders.find(o => o.order_ref === selected.order_ref) : undefined;
 
   const filtered = payments.filter(p => {
+    const q = search.toLowerCase();
     const matchSearch =
-      p.payment_ref.toLowerCase().includes(search.toLowerCase()) ||
-      p.participant.toLowerCase().includes(search.toLowerCase()) ||
-      p.order_ref.toLowerCase().includes(search.toLowerCase());
+      !q ||
+      p.payment_ref.toLowerCase().includes(q) ||
+      p.participant.toLowerCase().includes(q) ||
+      p.order_ref.toLowerCase().includes(q) ||
+      formatPaymentMethod(p.method).toLowerCase().includes(q);
     const matchStatus = !statusFilter || p.status === statusFilter;
     return matchSearch && matchStatus;
   });
@@ -241,7 +256,8 @@ export function PaymentsPage() {
       {selected && (
         <PaymentDetailModal
           payment={selected}
-          onClose={() => setSelected(null)}
+          linkedOrder={selectedOrder}
+          onClose={() => setSelectedId(null)}
           onVerify={verifyPayment}
           onReject={rejectPayment}
         />
@@ -309,7 +325,7 @@ export function PaymentsPage() {
             <thead>
               <tr>
                 <th>Payment Ref</th>
-                <th>Order</th>
+                <th>Order Reference</th>
                 <th>Participant</th>
                 <th>Amount</th>
                 <th>Method</th>
@@ -326,11 +342,15 @@ export function PaymentsPage() {
                       {p.payment_ref}
                     </span>
                   </td>
-                  <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>{p.order_ref}</td>
+                  <td>
+                    <span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                      {p.order_ref}
+                    </span>
+                  </td>
                   <td style={{ fontWeight: 500 }}>{p.participant}</td>
                   <td style={{ fontWeight: 600 }}>{formatCurrency(p.amount, p.currency)}</td>
-                  <td style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', textTransform: 'capitalize' }}>
-                    {p.method.replace(/_/g, ' ')}
+                  <td style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
+                    {formatPaymentMethod(p.method)}
                   </td>
                   <td>
                     <span className={`badge ${STATUS_COLOR[p.status]}`}>{STATUS_LABEL[p.status]}</span>
@@ -342,12 +362,12 @@ export function PaymentsPage() {
                     <div style={{ display: 'flex', gap: '0.375rem', justifyContent: 'flex-end' }}>
                       {(p.status === 'submitted' || p.status === 'under_review') && (
                         <>
-                          <button className="btn btn-sm" style={{ background: 'var(--success-bg)', color: 'var(--success)', border: '1px solid rgba(34,197,94,0.2)', gap: '0.25rem' }} onClick={() => setSelected(p)}>
+                          <button className="btn btn-sm" style={{ background: 'var(--success-bg)', color: 'var(--success)', border: '1px solid rgba(34,197,94,0.2)', gap: '0.25rem' }} onClick={() => setSelectedId(p.id)}>
                             <CheckCircle2 size={13} /> Verify
                           </button>
                         </>
                       )}
-                      <button className="btn btn-ghost btn-sm" onClick={() => setSelected(p)}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setSelectedId(p.id)}>
                         <Eye size={14} />
                       </button>
                     </div>

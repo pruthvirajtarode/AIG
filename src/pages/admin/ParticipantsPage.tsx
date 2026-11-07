@@ -2,18 +2,19 @@ import React, { useState } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, Plus, Eye, X, Send, ShieldCheck, ShoppingCart } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
+import { formatServiceType, participantsMatch } from '@/lib/orderRules';
 import { useToast } from '@/contexts/ToastContext';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useAppData, nextRef, uid, type AppParticipant as Participant, type AppOrder } from '@/contexts/AppDataContext';
 
 
-function ParticipantModal({ participant, orders, onClose, onSave, onSendInvite, emailTaken }: {
+function ParticipantModal({ participant, orders, onClose, onSave, onSendInvite, isDuplicate }: {
   participant?: Participant;
   orders?: AppOrder[];
   onClose: () => void;
   onSave: (data: Omit<Participant, 'id' | 'participant_ref' | 'orders_count' | 'total_spent' | 'is_active' | 'portal_access' | 'created_at'>) => void;
   onSendInvite?: (id: string) => void;
-  emailTaken?: (email: string) => boolean;
+  isDuplicate?: (fullName: string, email: string, phone: string) => boolean;
 }) {
   const { toast } = useToast();
   const isNew = !participant;
@@ -26,18 +27,30 @@ function ParticipantModal({ participant, orders, onClose, onSave, onSendInvite, 
   const [country,   setCountry]     = useState(participant?.country     ?? 'Singapore');
 
   const handleSave = () => {
-    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
-      toast('error', 'Missing fields', 'First name, last name and email are required');
+    if (!firstName.trim() || !email.trim()) {
+      toast('error', 'Missing fields', 'Name and email address are required');
       return;
     }
-    if (emailTaken?.(email)) {
-      toast('error', 'Duplicate email', 'Another participant already uses this email address');
+    const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+    if (isDuplicate?.(fullName, email, phone)) {
+      toast('error', 'Duplicate participant', 'A participant with the same Full Name, Email and Phone already exists');
       return;
     }
-    onSave({ first_name: firstName.trim(), last_name: lastName.trim(), email: email.trim(), phone: phone.trim(), ic_number: icNumber.trim(), country: country.trim() });
+    onSave({
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+      full_name: fullName,
+      email: email.trim(),
+      phone: phone.trim(),
+      contact_number: phone.trim(),
+      ic_number: icNumber.trim(),
+      country: country.trim(),
+    });
     toast('success', isNew ? 'Participant added!' : 'Changes saved', isNew ? 'New participant registered in the system' : `${firstName}'s profile updated`);
     onClose();
   };
+
+  const initials = `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase() || '?';
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -49,9 +62,9 @@ function ParticipantModal({ participant, orders, onClose, onSave, onSendInvite, 
         <div className="modal-body">
           {!isNew && participant && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', padding: '1rem', background: 'var(--surface-700)', borderRadius: 10 }}>
-              <div className="avatar avatar-lg">{firstName[0] || '?'}{lastName[0] || '?'}</div>
+              <div className="avatar avatar-lg">{initials}</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: '1.0625rem', color: 'var(--text-primary)' }}>{firstName} {lastName}</div>
+                <div style={{ fontWeight: 700, fontSize: '1.0625rem', color: 'var(--text-primary)' }}>{`${firstName} ${lastName}`.trim()}</div>
                 <div style={{ fontSize: '0.8125rem', color: 'var(--aig-green-400)', fontFamily: 'monospace' }}>{participant.participant_ref}</div>
                 <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.375rem', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{participant.orders_count} orders</span>
@@ -73,7 +86,7 @@ function ParticipantModal({ participant, orders, onClose, onSave, onSendInvite, 
               <input className="form-input" value={firstName} onChange={e => setFirstName(e.target.value)} autoFocus />
             </div>
             <div className="form-group">
-              <label className="form-label">Last Name *</label>
+              <label className="form-label">Last Name</label>
               <input className="form-input" value={lastName} onChange={e => setLastName(e.target.value)} />
             </div>
             <div className="form-group">
@@ -102,9 +115,12 @@ function ParticipantModal({ participant, orders, onClose, onSave, onSendInvite, 
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: 220, overflowY: 'auto' }}>
                 {orders.map(o => (
-                  <div key={o.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '0.625rem', padding: '0.625rem 0.875rem', background: 'var(--surface-900)', borderRadius: 8, border: '1px solid var(--border-subtle)', alignItems: 'center', fontSize: '0.8125rem' }}>
+                  <div key={o.id} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto auto', gap: '0.625rem', padding: '0.625rem 0.875rem', background: 'var(--surface-900)', borderRadius: 8, border: '1px solid var(--border-subtle)', alignItems: 'center', fontSize: '0.8125rem' }}>
                     <span style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)', fontWeight: 700 }}>{o.order_ref}</span>
                     <span style={{ color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.programme}</span>
+                    <span className="badge badge-teal" style={{ fontSize: '0.62rem' }}>
+                      {formatServiceType(o.service_type ?? 'qurban')} · {o.quantity}
+                    </span>
                     <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{formatCurrency(o.total_amount, o.currency)}</span>
                     <StatusBadge status={o.status} size="sm" />
                   </div>
@@ -204,8 +220,10 @@ export function ParticipantsPage() {
     }
   };
 
-  const emailTaken = (email: string) =>
-    participants.some(p => p.id !== editP?.id && p.email.trim().toLowerCase() === email.trim().toLowerCase());
+  const isDuplicate = (fullName: string, email: string, phone: string) =>
+    participants.some(
+      p => p.id !== editP?.id && participantsMatch({ full_name: fullName, email, contact_number: phone }, p),
+    );
 
   const sendPortalInvite = (id: string) => {
     const p = participants.find(x => x.id === id);
@@ -217,12 +235,16 @@ export function ParticipantsPage() {
     );
   };
 
-  const filtered = participants.filter(p =>
-    `${p.first_name} ${p.last_name}`.toLowerCase().includes(search.toLowerCase()) ||
-    p.email.toLowerCase().includes(search.toLowerCase()) ||
-    p.participant_ref.toLowerCase().includes(search.toLowerCase()) ||
-    (p.ic_number && p.ic_number.includes(search))
-  );
+  const filtered = participants.filter(p => {
+    const q = search.toLowerCase();
+    return (
+      `${p.first_name} ${p.last_name}`.toLowerCase().includes(q) ||
+      p.email.toLowerCase().includes(q) ||
+      (p.phone ?? '').toLowerCase().includes(q) ||
+      p.participant_ref.toLowerCase().includes(q) ||
+      (p.ic_number && p.ic_number.toLowerCase().includes(q))
+    );
+  });
 
   return (
     <div className="page-content animate-fadeInUp">
@@ -233,7 +255,7 @@ export function ParticipantsPage() {
           onClose={() => { setShowModal(false); setEditP(undefined); }}
           onSave={handleSave}
           onSendInvite={sendPortalInvite}
-          emailTaken={emailTaken}
+          isDuplicate={isDuplicate}
         />
       )}
 
@@ -294,9 +316,9 @@ export function ParticipantsPage() {
                 <tr key={p.id}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                      <div className="avatar avatar-sm">{p.first_name[0]}{p.last_name[0]}</div>
+                      <div className="avatar avatar-sm">{`${p.first_name[0] ?? ''}${p.last_name[0] ?? ''}`.toUpperCase() || '?'}</div>
                       <div>
-                        <div style={{ fontWeight: 500 }}>{p.first_name} {p.last_name}</div>
+                        <div style={{ fontWeight: 500 }}>{`${p.first_name} ${p.last_name}`.trim()}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{formatDate(p.created_at)}</div>
                       </div>
                     </div>

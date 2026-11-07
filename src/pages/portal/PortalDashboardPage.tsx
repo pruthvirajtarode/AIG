@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import {
@@ -7,13 +7,16 @@ import {
 } from 'lucide-react';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatDate } from '@/lib/utils';
 import type { OrderStatus } from '@/lib/database.types';
+import { useAuth } from '@/contexts/AuthContext';
+import { useAppData } from '@/contexts/AppDataContext';
+import { normaliseEmail, normaliseName, participantFullName } from '@/lib/orderRules';
 
-// ── Mock data (matches PortalOrdersPage data) ─────────────────
+// ── Demo fallback data ────────────────────────────────────────
 const PARTICIPANT_NAME = 'Ahmad Rizal';
 
-const ORDERS = [
+const DEMO_ORDERS = [
   {
     id: 'o1',
     order_ref: 'AIG-2025-000158',
@@ -48,6 +51,11 @@ const UPCOMING = [
 ];
 
 const COUNTRIES: Record<string, string> = {
+  Australia: '🇦🇺',
+  Singapore: '🇸🇬',
+  Indonesia: '🇮🇩',
+  Yemen: '🇾🇪',
+  Uganda: '🇺🇬',
   Somalia: '🇸🇴',
   Malaysia: '🇲🇾',
   Turkey: '🇹🇷',
@@ -55,8 +63,33 @@ const COUNTRIES: Record<string, string> = {
   Bangladesh: '🇧🇩',
 };
 
+const STATUS_PROGRESS: Partial<Record<OrderStatus, number>> = {
+  draft: 1,
+  pending_payment: 1,
+  payment_submitted: 1,
+  payment_under_review: 1,
+  payment_rejected: 1,
+  payment_verified: 2,
+  confirmed: 2,
+  animal_allocated: 3,
+  animal_growing: 3,
+  final_inspection: 3,
+  qurban_complete: 4,
+  processing: 4,
+  shipped: 4,
+  arrived: 4,
+  delivery_scheduled: 4,
+  out_for_delivery: 4,
+  delivered: 4,
+  certificate_generated: 5,
+  completed: 5,
+};
+
 export function PortalDashboardPage() {
   usePageTitle('My Portal');
+  const { user, profile } = useAuth();
+  const { orders, animals, programmes, participants } = useAppData();
+
   const [greeting] = useState(() => {
     const h = new Date().getHours();
     if (h < 12) return 'Good morning';
@@ -64,10 +97,56 @@ export function PortalDashboardPage() {
     return 'Good evening';
   });
 
-  const totalOrders   = ORDERS.length;
-  const completedOrders = ORDERS.filter(o => o.status === 'completed').length;
-  const inProgressOrders = ORDERS.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length;
-  const totalSpent = ORDERS.reduce((a, o) => a + o.total_amount, 0);
+  const { displayParticipantName, portalOrders } = useMemo(() => {
+    const authEmail = normaliseEmail(profile?.email ?? user?.email);
+    const profileName = profile ? `${profile.first_name} ${profile.last_name}`.trim() : '';
+    const authName = normaliseName(profileName);
+    const matchedParticipant = authEmail
+      ? participants.find(p => normaliseEmail(p.email) === authEmail)
+      : undefined;
+
+    const realOrders = orders.filter(o => {
+      if (matchedParticipant && o.participant_id === matchedParticipant.id) return true;
+      if (authEmail && o.email && normaliseEmail(o.email) === authEmail) return true;
+      if (matchedParticipant && normaliseName(o.participant) === normaliseName(participantFullName(matchedParticipant))) return true;
+      if (authName && authName !== 'demo admin' && normaliseName(o.participant) === authName) return true;
+      return false;
+    });
+
+    const resolvedName = matchedParticipant
+      ? participantFullName(matchedParticipant)
+      : profileName && authName !== 'demo admin'
+        ? profileName
+        : PARTICIPANT_NAME;
+
+    if (realOrders.length === 0) {
+      return { displayParticipantName: resolvedName, portalOrders: DEMO_ORDERS };
+    }
+
+    const mapped = realOrders.map(o => {
+      const prog = programmes.find(p => (o.programme_id && p.id === o.programme_id) || normaliseName(p.name) === normaliseName(o.programme));
+      const linkedAnimal = animals.find(a => a.order_ref === o.order_ref);
+      return {
+        id: o.id,
+        order_ref: o.order_ref,
+        programme: o.programme,
+        animal_type: linkedAnimal?.animal_type ?? prog?.animal_type ?? 'goat',
+        total_amount: o.total_amount,
+        currency: o.currency,
+        status: o.status,
+        qurban_date: prog?.qurban_date ? formatDate(prog.qurban_date) : '2026 Season (1447H)',
+        country: o.programme_country || prog?.country || 'Singapore',
+        progress: STATUS_PROGRESS[o.status] ?? 1,
+      };
+    });
+
+    return { displayParticipantName: resolvedName, portalOrders: mapped };
+  }, [user, profile, orders, animals, programmes, participants]);
+
+  const totalOrders = portalOrders.length;
+  const completedOrders = portalOrders.filter(o => o.status === 'completed').length;
+  const inProgressOrders = portalOrders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length;
+  const totalSpent = portalOrders.reduce((a, o) => a + o.total_amount, 0);
 
   return (
     <div className="page-content animate-fadeInUp">
@@ -96,7 +175,7 @@ export function PortalDashboardPage() {
             color: '#fff', margin: '0 0 0.5rem',
             fontFamily: "'Plus Jakarta Sans', sans-serif",
           }}>
-            {PARTICIPANT_NAME}
+            {displayParticipantName}
           </h1>
           <p style={{ fontSize: '0.9375rem', color: 'rgba(255,255,255,0.55)', margin: '0 0 1.5rem', maxWidth: 480 }}>
             Welcome to your Qurban portal. Track your orders, download certificates, and stay updated on your contributions.
@@ -163,7 +242,7 @@ export function PortalDashboardPage() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-            {ORDERS.map(order => (
+            {portalOrders.map(order => (
               <Link
                 key={order.id}
                 to="/portal/orders"
@@ -271,7 +350,7 @@ export function PortalDashboardPage() {
               <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--text-primary)' }}>Your Contributions</div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-              {ORDERS.map(order => (
+              {portalOrders.map(order => (
                 <div key={order.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.75rem', background: 'var(--surface-700)', borderRadius: 8 }}>
                   <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>{COUNTRIES[order.country] ?? '🌍'}</span>
                   <div style={{ flex: 1 }}>

@@ -13,6 +13,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useToast } from '@/contexts/ToastContext';
 import { useAppData } from '@/contexts/AppDataContext';
+import { formatDeliveryPortion, formatPaymentMethod, formatServiceType } from '@/lib/orderRules';
 
 // ── Mock data ────────────────────────────────────────────────
 const REVENUE_DATA = [
@@ -120,7 +121,10 @@ export function DashboardPage() {
   // Compute live stats from real data
   const totalOrders = orders.filter(o => o.status !== 'cancelled').length;
   const totalRevenue = payments.filter(p => p.status === 'verified').reduce((s, p) => s + p.amount, 0);
-  const allocatedAnimals = animals.filter(a => ['allocated','growing','inspection_pending','inspection_passed','qurban_ready'].includes(a.status)).length;
+  const reservedAnimals = animals.filter(a => a.status === 'reserved').length;
+  const allocatedAnimals = animals.filter(a =>
+    ['reserved', 'allocated', 'growing', 'inspection_pending', 'inspection_passed', 'qurban_ready', 'slaughtered', 'processed', 'completed'].includes(a.status)
+  ).length;
   const totalDeliveries = deliveries.length;
   const totalCertificates = certificates.length;
   const openExceptions = exceptions.filter(e => e.status === 'open' || e.status === 'escalated').length;
@@ -144,8 +148,13 @@ export function DashboardPage() {
 
   // Recent orders (latest 5)
   const RECENT_ORDERS = orders.slice(0, 5).map(o => ({
-    ref: o.order_ref, participant: o.participant,
-    programme: o.programme, amount: `${o.currency} ${o.total_amount}`, status: o.status,
+    ref: o.order_ref,
+    participant: o.participant,
+    programme: o.programme,
+    service: formatServiceType(o.service_type ?? 'qurban'),
+    quantity: o.quantity,
+    amount: `${o.currency} ${o.total_amount}`,
+    status: o.status,
   }));
 
   // Active exceptions (latest 5)
@@ -166,14 +175,14 @@ export function DashboardPage() {
   // ── Export Report: real CSV download ───────────────────────
   const handleExport = useCallback(() => {
     const rows: (string | number)[][] = [
-      ['Al Ihsan Group — Qurban Season 2025 Dashboard Report'],
+      ['Al Ihsan Group — Qurban Season 2025/2026 Dashboard Report'],
       ['Generated', new Date().toLocaleString()],
       [],
       ['SUMMARY'],
       ['Metric', 'Value'],
       ['Total Orders', totalOrders],
       ['Revenue Collected (SGD)', totalRevenue],
-      ['Animals Allocated', allocatedAnimals],
+      ['Animals Reserved / Allocated', allocatedAnimals],
       ['Deliveries', totalDeliveries],
       ['Certificates', totalCertificates],
       ['Open Exceptions', openExceptions],
@@ -186,9 +195,40 @@ export function DashboardPage() {
       ['Status', 'Count'],
       ...ORDER_DIST.map(o => [o.name, o.value]),
       [],
-      ['RECENT ORDERS'],
-      ['Order Ref', 'Participant', 'Programme', 'Amount', 'Status'],
-      ...RECENT_ORDERS.map(o => [o.ref, o.participant, o.programme, o.amount, o.status]),
+      ['ORDERS'],
+      ['Order Ref', 'Participant', 'Contact', 'Email', 'Programme', 'Service Type', 'No. of Qurbans', 'Payment Method', 'Payment Status', 'Delivery Portion', 'Amount', 'Order Status', 'Created Date'],
+      ...orders.map(o => {
+        const pay = payments.find(p => p.order_ref === o.order_ref);
+        return [
+          o.order_ref,
+          o.participant,
+          o.contact_number || '—',
+          o.email || '—',
+          o.programme,
+          formatServiceType(o.service_type ?? 'qurban'),
+          o.quantity,
+          formatPaymentMethod(o.payment_method ?? 'paynow'),
+          pay?.status ?? 'pending',
+          formatDeliveryPortion(o.delivery_portion),
+          `${o.currency} ${o.total_amount}`,
+          o.status,
+          o.created_at,
+        ];
+      }),
+      [],
+      ['ANIMAL STOCK'],
+      ['Animal Code', 'Order Ref', 'Qurban Name Holder', 'Programme', 'Service Type', 'Delivery Portion', 'Animal Type', 'Location', 'Status'],
+      ...animals.map(a => [
+        a.animal_code || a.animal_ref,
+        a.order_ref || '—',
+        a.qurban_name_holder || '—',
+        a.programme || '—',
+        formatServiceType(a.service_type ?? 'qurban'),
+        formatDeliveryPortion(a.delivery_portion),
+        a.animal_type,
+        a.location,
+        a.status,
+      ]),
       [],
       ['ACTIVE EXCEPTIONS'],
       ['Severity', 'Title', 'Reference', 'Time'],
@@ -205,7 +245,7 @@ export function DashboardPage() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast('success', 'Report exported!', 'Dashboard report downloaded as CSV file');
-  }, [toast, totalOrders, totalRevenue, allocatedAnimals, totalDeliveries, totalCertificates, openExceptions, revenueData, ORDER_DIST, RECENT_ORDERS, EXCEPTIONS]);
+  }, [toast, totalOrders, totalRevenue, allocatedAnimals, totalDeliveries, totalCertificates, openExceptions, revenueData, ORDER_DIST, orders, payments, animals, EXCEPTIONS]);
 
   return (
     <div className="page-content animate-fadeInUp">
@@ -270,6 +310,7 @@ export function DashboardPage() {
           iconBg="linear-gradient(135deg, #3b1f5f, #a855f7)"
           label="Animals Allocated"
           value={String(allocatedAnimals)}
+          subtitle={reservedAnimals > 0 ? `${reservedAnimals} reserved from orders` : undefined}
         />
         <StatCard
           icon={Truck}
@@ -431,6 +472,8 @@ export function DashboardPage() {
                 <th>Order Ref</th>
                 <th>Participant</th>
                 <th>Programme</th>
+                <th>Service</th>
+                <th>Qurbans</th>
                 <th>Amount</th>
                 <th>Status</th>
               </tr>
@@ -438,7 +481,7 @@ export function DashboardPage() {
             <tbody>
               {RECENT_ORDERS.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem', fontSize: '0.875rem' }}>
+                  <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem', fontSize: '0.875rem' }}>
                     No orders yet
                   </td>
                 </tr>
@@ -452,6 +495,12 @@ export function DashboardPage() {
                     </td>
                     <td>{o.participant}</td>
                     <td style={{ color: 'var(--text-muted)' }}>{o.programme}</td>
+                    <td>
+                      <span className={`badge ${o.service === 'Aqiqah' ? 'badge-blue' : 'badge-green'}`} style={{ fontSize: '0.6875rem' }}>
+                        {o.service}
+                      </span>
+                    </td>
+                    <td style={{ color: 'var(--text-muted)' }}>{o.quantity}</td>
                     <td style={{ fontWeight: 600 }}>{o.amount}</td>
                     <td><StatusBadge status={o.status} size="sm" /></td>
                   </tr>

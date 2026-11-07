@@ -3,6 +3,7 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, Plus, X, Weight, CheckCircle2, ClipboardCheck, RefreshCw } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import type { AnimalStatus, AnimalType } from '@/lib/database.types';
+import { formatDeliveryPortion, formatServiceType } from '@/lib/orderRules';
 import { useToast } from '@/contexts/ToastContext';
 import { ANIMAL_IMAGES } from '@/lib/animalImages';
 import { useAppData, nextRef, uid, type AppAnimal as Animal } from '@/contexts/AppDataContext';
@@ -190,8 +191,12 @@ function EditAnimalModal({ animal, onClose, onSave }: {
   onSave: (id: string, patch: Partial<Animal>) => void;
 }) {
   const { toast } = useToast();
-  const { suppliers } = useAppData();
+  const { suppliers, programmes } = useAppData();
+  const activeProgrammes = programmes.filter(p => p.is_active || p.name === animal.programme);
   const clean = (v: string) => (v === 'To be assigned' || v === 'Pending' ? '' : v);
+  const isOrderAnimal = Boolean(animal.order_ref || animal.animal_code);
+
+  const [programmeName, setProgrammeName] = useState(animal.programme ?? '');
   const [animalType, setAnimalType] = useState<AnimalType>(animal.animal_type);
   const [breed, setBreed] = useState(clean(animal.breed));
   const [gender, setGender] = useState(animal.gender || 'male');
@@ -199,17 +204,35 @@ function EditAnimalModal({ animal, onClose, onSave }: {
   const [minWeight, setMinWeight] = useState(String(animal.min_weight_kg || ''));
   const [location, setLocation] = useState(animal.location);
   const [supplier, setSupplier] = useState(clean(animal.supplier));
+  const [qurbanHolder, setQurbanHolder] = useState(animal.qurban_name_holder ?? '');
 
   const handleSave = () => {
-    if (!breed.trim() || !tagNumber.trim() || !supplier.trim() || !location.trim()) {
+    if (!location.trim()) {
+      toast('error', 'Missing fields', 'Location is required');
+      return;
+    }
+    if (!isOrderAnimal && (!breed.trim() || !tagNumber.trim() || !supplier.trim())) {
       toast('error', 'Missing fields', 'Breed, tag number, location and supplier are required');
       return;
     }
+    if (isOrderAnimal && !qurbanHolder.trim()) {
+      toast('error', 'Missing fields', 'Qurban Name Holder is required for order animals');
+      return;
+    }
+    const matchedProg = programmes.find(p => p.name === programmeName);
     onSave(animal.id, {
-      animal_type: animalType, breed: breed.trim(), gender, tag_number: tagNumber.trim(),
-      min_weight_kg: Number(minWeight) || 0, location: location.trim(), supplier: supplier.trim(),
+      programme: programmeName || undefined,
+      programme_id: matchedProg?.id ?? animal.programme_id,
+      animal_type: animalType,
+      breed: breed.trim() || 'To be assigned',
+      gender,
+      tag_number: tagNumber.trim() || 'Pending',
+      min_weight_kg: Number(minWeight) || 0,
+      location: location.trim(),
+      supplier: supplier.trim() || 'To be assigned',
+      ...(isOrderAnimal ? { qurban_name_holder: qurbanHolder.trim() } : {}),
     });
-    toast('success', 'Animal updated', `${animal.animal_ref} details saved`);
+    toast('success', 'Animal updated', `${animal.animal_code || animal.animal_ref} details saved`);
     onClose();
   };
 
@@ -217,11 +240,35 @@ function EditAnimalModal({ animal, onClose, onSave }: {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <div className="heading-md">Edit {animal.animal_ref}</div>
+          <div className="heading-md">Edit {animal.animal_code || animal.animal_ref}</div>
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="modal-body">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="settings-grid-2">
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label className="form-label">Programme</label>
+              <select
+                className="form-input form-select"
+                value={programmeName}
+                onChange={e => {
+                  const name = e.target.value;
+                  setProgrammeName(name);
+                  const p = activeProgrammes.find(x => x.name === name);
+                  if (p) setAnimalType(p.animal_type);
+                }}
+              >
+                <option value="">General stock (no programme)</option>
+                {activeProgrammes.map(p => (
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            {isOrderAnimal && (
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label className="form-label">Qurban Name Holder *</label>
+                <input className="form-input" value={qurbanHolder} onChange={e => setQurbanHolder(e.target.value)} />
+              </div>
+            )}
             <div className="form-group">
               <label className="form-label">Animal Type *</label>
               <select className="form-input form-select" value={animalType} onChange={e => setAnimalType(e.target.value as AnimalType)}>
@@ -229,8 +276,8 @@ function EditAnimalModal({ animal, onClose, onSave }: {
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Breed *</label>
-              <input className="form-input" value={breed} onChange={e => setBreed(e.target.value)} autoFocus />
+              <label className="form-label">Breed {isOrderAnimal ? '' : '*'}</label>
+              <input className="form-input" placeholder="To be assigned" value={breed} onChange={e => setBreed(e.target.value)} autoFocus />
             </div>
             <div className="form-group">
               <label className="form-label">Gender</label>
@@ -239,8 +286,8 @@ function EditAnimalModal({ animal, onClose, onSave }: {
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Tag Number *</label>
-              <input className="form-input" value={tagNumber} onChange={e => setTagNumber(e.target.value)} />
+              <label className="form-label">Tag Number {isOrderAnimal ? '' : '*'}</label>
+              <input className="form-input" placeholder="Pending" value={tagNumber} onChange={e => setTagNumber(e.target.value)} />
             </div>
             <div className="form-group">
               <label className="form-label">Min Weight Threshold (kg)</label>
@@ -251,8 +298,8 @@ function EditAnimalModal({ animal, onClose, onSave }: {
               <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} />
             </div>
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-              <label className="form-label">Supplier *</label>
-              <input className="form-input" list="edit-animal-supplier-list" value={supplier} onChange={e => setSupplier(e.target.value)} />
+              <label className="form-label">Supplier {isOrderAnimal ? '' : '*'}</label>
+              <input className="form-input" placeholder="To be assigned" list="edit-animal-supplier-list" value={supplier} onChange={e => setSupplier(e.target.value)} />
               <datalist id="edit-animal-supplier-list">
                 {suppliers.map(s => <option key={s.id} value={s.name} />)}
               </datalist>
@@ -473,9 +520,12 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
               />
             </div>
             <div>
-              <div className="heading-md">{animal.animal_ref}</div>
+              <div className="heading-md" style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)' }}>
+                {animal.animal_code || animal.animal_ref}
+              </div>
               <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                 {animal.breed} · {animal.animal_type}
+                {animal.order_ref ? ` · Order ${animal.order_ref}` : ''}
               </div>
             </div>
           </div>
@@ -485,16 +535,18 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }} className="settings-grid-2">
             <div className="detail-list">
               {[
-                ['Tag Number', animal.tag_number],
-                ['Breed',      animal.breed],
-                ['Gender',     animal.gender || '—'],
-                ['Location',   animal.location],
-                ['Supplier',   animal.supplier],
-                ['Registered', formatDate(animal.created_at)],
+                ['Animal Code', animal.animal_code || animal.animal_ref],
                 ['Order Reference', animal.order_ref || '—'],
                 ['Qurban Name Holder', animal.qurban_name_holder || '—'],
                 ['Programme', animal.programme || '—'],
-                ['Service Type', animal.service_type ? animal.service_type.charAt(0).toUpperCase() + animal.service_type.slice(1) : '—'],
+                ['Service Type', formatServiceType(animal.service_type)],
+                ...(animal.delivery_portion ? [['Portion to be Delivered', formatDeliveryPortion(animal.delivery_portion)]] : []),
+                ['Location', animal.location],
+                ['Tag Number', animal.tag_number],
+                ['Breed', animal.breed],
+                ['Gender', animal.gender || '—'],
+                ['Supplier', animal.supplier],
+                ['Registered', formatDate(animal.created_at)],
               ].map(([k, v]) => (
                 <div key={k} className="detail-row">
                   <div className="detail-key">{k}</div>
@@ -573,14 +625,16 @@ export function AnimalsPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [programmeFilter, setProgrammeFilter] = useState('');
+  const [serviceFilter, setServiceFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [selected, setSelected] = useState<Animal | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [weightAnimal, setWeightAnimal] = useState<Animal | null>(null);
   const [inspectionAnimal, setInspectionAnimal] = useState<Animal | null>(null);
   const [statusAnimal, setStatusAnimal] = useState<Animal | null>(null);
   const [editAnimal, setEditAnimal] = useState<Animal | null>(null);
   const [showRegister, setShowRegister] = useState(false);
 
+  const selected = selectedId ? animals.find(a => a.id === selectedId) ?? null : null;
   const nextAnimalRef = nextRef('A', animals.map(a => a.animal_ref), 3);
 
   const registerAnimal = useCallback((animal: Animal) => {
@@ -589,7 +643,6 @@ export function AnimalsPage() {
 
   const updateAnimal = useCallback((id: string, patch: Partial<Animal>) => {
     ctxUpdateAnimal(id, patch);
-    setSelected(prev => prev?.id === id ? { ...prev, ...patch } : prev);
   }, [ctxUpdateAnimal]);
 
 
@@ -601,19 +654,27 @@ export function AnimalsPage() {
     updateAnimal(id, { status });
   }, [updateAnimal]);
 
-  const openWeight = (a: Animal) => { setSelected(null); setWeightAnimal(a); };
-  const openInspection = (a: Animal) => { setSelected(null); setInspectionAnimal(a); };
-  const openStatus = (a: Animal) => { setSelected(null); setStatusAnimal(a); };
-  const openEdit = (a: Animal) => { setSelected(null); setEditAnimal(a); };
+  const openWeight = (a: Animal) => { setSelectedId(null); setWeightAnimal(a); };
+  const openInspection = (a: Animal) => { setSelectedId(null); setInspectionAnimal(a); };
+  const openStatus = (a: Animal) => { setSelectedId(null); setStatusAnimal(a); };
+  const openEdit = (a: Animal) => { setSelectedId(null); setEditAnimal(a); };
 
   const filtered = animals.filter(a => {
     const q = search.toLowerCase();
-    const matchSearch = a.animal_ref.toLowerCase().includes(q) || a.breed.toLowerCase().includes(q) || a.location.toLowerCase().includes(q)
-      || (a.order_ref ?? '').toLowerCase().includes(q) || (a.qurban_name_holder ?? '').toLowerCase().includes(q);
+    const matchSearch =
+      a.animal_ref.toLowerCase().includes(q) ||
+      (a.animal_code ?? '').toLowerCase().includes(q) ||
+      a.breed.toLowerCase().includes(q) ||
+      a.location.toLowerCase().includes(q) ||
+      (a.programme ?? '').toLowerCase().includes(q) ||
+      (a.service_type ?? '').toLowerCase().includes(q) ||
+      (a.order_ref ?? '').toLowerCase().includes(q) ||
+      (a.qurban_name_holder ?? '').toLowerCase().includes(q);
     const matchType = !typeFilter || a.animal_type === typeFilter;
     const matchProgramme = !programmeFilter || (programmeFilter === '__none' ? !a.programme : a.programme === programmeFilter);
+    const matchService = !serviceFilter || a.service_type === serviceFilter;
     const matchStatus = !statusFilter || a.status === statusFilter;
-    return matchSearch && matchType && matchProgramme && matchStatus;
+    return matchSearch && matchType && matchProgramme && matchService && matchStatus;
   });
 
   return (
@@ -629,7 +690,7 @@ export function AnimalsPage() {
       {selected && (
         <AnimalDetailModal
           animal={selected}
-          onClose={() => setSelected(null)}
+          onClose={() => setSelectedId(null)}
           onWeightLog={openWeight}
           onInspection={openInspection}
           onStatusUpdate={openStatus}
@@ -681,6 +742,7 @@ export function AnimalsPage() {
         {[
           { label: 'Total Animals', value: String(animals.length),                                            color: 'var(--aig-green-400)' },
           { label: 'Available',     value: String(animals.filter(a => a.status === 'available').length),       color: 'var(--success)' },
+          { label: 'Reserved',      value: String(animals.filter(a => a.status === 'reserved').length),        color: 'var(--info)' },
           { label: 'Allocated',     value: String(animals.filter(a => a.status === 'allocated').length),       color: 'var(--purple, #a855f7)' },
           { label: 'Qurban Ready',  value: String(animals.filter(a => a.status === 'qurban_ready').length),    color: '#10b981' },
           { label: 'Exceptions',    value: String(animals.filter(a => ['rejected','inspection_pending'].includes(a.status)).length), color: 'var(--danger)' },
@@ -698,7 +760,7 @@ export function AnimalsPage() {
           <Search className="search-icon" size={15} />
           <input
             id="animals-search" type="search" className="form-input"
-            placeholder="Search by ref, breed, location..."
+            placeholder="Search by animal code, order ref, holder, programme..."
             value={search} onChange={e => setSearch(e.target.value)}
             style={{ height: 38 }}
           />
@@ -714,6 +776,11 @@ export function AnimalsPage() {
           {programmes.filter(p => p.is_active).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
           <option value="__none">General stock (no programme)</option>
         </select>
+        <select id="animals-service-filter" className="form-input form-select" style={{ width: 'auto', height: 38, fontSize: '0.875rem' }} value={serviceFilter} onChange={e => setServiceFilter(e.target.value)}>
+          <option value="">All Services</option>
+          <option value="qurban">Qurban</option>
+          <option value="aqiqah">Aqiqah</option>
+        </select>
         <select className="form-input form-select" style={{ width: 'auto', height: 38, fontSize: '0.875rem' }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           <option value="">All Statuses</option>
           {(Object.keys(ANIMAL_STATUS_LABEL) as AnimalStatus[]).map(s => (
@@ -727,12 +794,13 @@ export function AnimalsPage() {
         {filtered.map(a => {
           const weightPct = a.min_weight_kg > 0 ? Math.min(100, Math.round((a.current_weight_kg / a.min_weight_kg) * 100)) : 100;
           const belowMin = a.current_weight_kg < a.min_weight_kg;
+          const displayCode = a.animal_code || a.animal_ref;
           return (
             <div
               key={a.id}
               className="card card-hover"
               style={{ cursor: 'pointer', padding: 0, overflow: 'hidden' }}
-              onClick={() => setSelected(a)}
+              onClick={() => setSelectedId(a.id)}
             >
               {/* Real animal image at top */}
               <div style={{ height: 180, background: '#0e1a14', overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -747,25 +815,79 @@ export function AnimalsPage() {
                     if (parent) parent.style.display = 'flex', parent.style.alignItems = 'center', parent.style.justifyContent = 'center';
                   }}
                 />
+                {/* Service badge overlay (top-left when linked to order) */}
+                {a.service_type && (
+                  <div style={{ position: 'absolute', top: 8, left: 8 }}>
+                    <span className="badge badge-teal" style={{ fontSize: '0.65rem' }}>
+                      {formatServiceType(a.service_type)}
+                    </span>
+                  </div>
+                )}
                 {/* Status badge overlay */}
                 <div style={{ position: 'absolute', top: 8, right: 8 }}>
                   <span className={`badge ${ANIMAL_STATUS_BADGE[a.status]}`} style={{ fontSize: '0.68rem' }}>
                     {ANIMAL_STATUS_LABEL[a.status]}
                   </span>
                 </div>
-                {/* Animal ref overlay */}
+                {/* Animal code overlay */}
                 <div style={{
                   position: 'absolute', bottom: 0, left: 0, right: 0,
-                  background: 'linear-gradient(transparent, rgba(0,0,0,0.75))',
+                  background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
                   padding: '1rem 0.875rem 0.625rem',
                 }}>
-                  <div style={{ fontWeight: 700, color: 'var(--aig-green-300)', fontSize: '0.875rem' }}>{a.animal_ref}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.65)' }}>{a.breed} · {a.animal_type}</div>
+                  <div style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--aig-green-300)', fontSize: '0.875rem' }}>
+                    {displayCode}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)' }}>{a.breed} · {a.animal_type}</div>
                 </div>
               </div>
 
               {/* Card body */}
               <div style={{ padding: '0.875rem' }}>
+                {/* Order / Holder / Programme linkage block */}
+                {(a.order_ref || a.qurban_name_holder || a.programme) && (
+                  <div style={{
+                    marginBottom: '0.625rem',
+                    padding: '0.5rem 0.625rem',
+                    borderRadius: 8,
+                    background: 'var(--surface-900)',
+                    border: '1px solid var(--border-subtle)',
+                    fontSize: '0.75rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.25rem',
+                  }}>
+                    {a.order_ref && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Order Ref</span>
+                        <span style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)', fontWeight: 600 }}>{a.order_ref}</span>
+                      </div>
+                    )}
+                    {a.qurban_name_holder && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>Qurban Holder</span>
+                        <span style={{ color: 'var(--text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {a.qurban_name_holder}
+                        </span>
+                      </div>
+                    )}
+                    {a.programme && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>Programme</span>
+                        <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {a.programme}
+                        </span>
+                      </div>
+                    )}
+                    {a.delivery_portion && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Portion</span>
+                        <span style={{ color: 'var(--aig-green-300)', fontWeight: 600 }}>{formatDeliveryPortion(a.delivery_portion)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Weight bar */}
                 <div style={{ marginBottom: '0.625rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>

@@ -1,13 +1,16 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { Award, Eye, X, Printer } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 import { CertificateDesign, printCertificate, type Certificate } from '@/components/ui/CertificateDesign';
 import { useToast } from '@/contexts/ToastContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useAppData } from '@/contexts/AppDataContext';
+import { normaliseEmail, normaliseName, participantFullName } from '@/lib/orderRules';
 
 // Same shape as the admin certificates, so the participant sees the identical certificate.
-const PARTICIPANT_CERTS: Certificate[] = [
+const DEMO_PARTICIPANT_CERTS: Certificate[] = [
   {
     id: 'c1',
     certificate_ref: 'CERT-2024-00042',
@@ -69,7 +72,35 @@ function CertViewModal({ cert, onClose }: { cert: Certificate; onClose: () => vo
 export function PortalCertificatesPage() {
   usePageTitle('My Certificates');
   const { toast } = useToast();
+  const { user, profile } = useAuth();
+  const { orders, participants, certificates } = useAppData();
   const [selected, setSelected] = useState<Certificate | null>(null);
+
+  const participantCerts = useMemo<Certificate[]>(() => {
+    const authEmail = normaliseEmail(profile?.email ?? user?.email);
+    const authName = normaliseName(profile ? `${profile.first_name} ${profile.last_name}` : '');
+    const matchedParticipant = authEmail
+      ? participants.find(p => normaliseEmail(p.email) === authEmail)
+      : undefined;
+
+    const myOrderRefs = new Set(
+      orders
+        .filter(o => {
+          if (matchedParticipant && o.participant_id === matchedParticipant.id) return true;
+          if (authEmail && o.email && normaliseEmail(o.email) === authEmail) return true;
+          if (matchedParticipant && normaliseName(o.participant) === normaliseName(participantFullName(matchedParticipant))) return true;
+          if (authName && authName !== 'demo admin' && normaliseName(o.participant) === authName) return true;
+          return false;
+        })
+        .map(o => o.order_ref),
+    );
+
+    if (myOrderRefs.size === 0) return DEMO_PARTICIPANT_CERTS;
+
+    return certificates.filter(
+      c => myOrderRefs.has(c.order_ref) && ['generated', 'sent', 'regenerated'].includes(c.status),
+    );
+  }, [user, profile, orders, participants, certificates]);
 
   // Download = open the viewer first (so the certificate is rendered), then print/save as PDF
   const handleDownload = (cert: Certificate) => {
@@ -88,7 +119,7 @@ export function PortalCertificatesPage() {
         <p className="page-subtitle">View and download your Qurban certificates</p>
       </div>
 
-      {PARTICIPANT_CERTS.length === 0 ? (
+      {participantCerts.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <div className="empty-icon"><Award size={24} color="var(--text-muted)" /></div>
@@ -98,7 +129,7 @@ export function PortalCertificatesPage() {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
-          {PARTICIPANT_CERTS.map(cert => (
+          {participantCerts.map(cert => (
             <div key={cert.id} className="card card-hover" style={{ cursor: 'pointer', textAlign: 'center' }} onClick={() => setSelected(cert)}>
               {/* Certificate preview — matches the admin certificate colours (black + gold) */}
               <div style={{

@@ -38,12 +38,12 @@ export type OrderStatus =
   | 'refunded';
 
 export type PaymentStatus = 'pending' | 'submitted' | 'under_review' | 'verified' | 'rejected' | 'refunded' | 'cancelled';
-export type PaymentMethod = 'bank_transfer' | 'paynow' | 'credit_card' | 'debit_card' | 'online_gateway' | 'cash' | 'manual';
+export type PaymentMethod = 'bank_transfer' | 'paynow' | 'installment' | 'credit_card' | 'debit_card' | 'online_gateway' | 'cash' | 'manual';
 export type AnimalStatus = 'available' | 'reserved' | 'allocated' | 'growing' | 'inspection_pending' | 'inspection_passed' | 'qurban_ready' | 'slaughtered' | 'processed' | 'completed' | 'rejected';
 export type AnimalType = 'cow' | 'goat' | 'sheep' | 'lamb' | 'camel' | 'buffalo';
 export type ServiceType = 'qurban' | 'aqiqah' | 'nazar';
-/** Doorstep delivery share for Australia Qurban: 1/3, 2/3 or the full animal. */
-export type DeliveryPortion = 'one_third' | 'two_thirds' | 'full';
+/** Doorstep delivery share for Australia → Singapore Qurban/Aqiqah: Full, 1/3, 2/3, or NIL. */
+export type DeliveryPortion = 'one_third' | 'two_thirds' | 'full' | 'nil';
 export type WouldRecommend = 'definitely' | 'probably' | 'not_sure' | 'no';
 export type DeliveryStatus = 'pending' | 'scheduled' | 'out_for_delivery' | 'delivered' | 'failed' | 'returned' | 'cancelled';
 export type CertificateStatus = 'not_generated' | 'generating' | 'generated' | 'sent' | 'regenerated' | 'failed';
@@ -149,8 +149,11 @@ export interface Participant {
   participant_ref: string;
   first_name: string;
   last_name: string;
+  full_name?: string | null;
   email: string;
   phone: string;
+  contact_number?: string | null;
+  portal_access?: boolean;
   ic_number: string | null;
   country: string;
   nationality: string | null;
@@ -183,14 +186,17 @@ export interface Order {
   id: string;
   tenant_id: string;
   order_ref: string;
+  order_reference?: string | null;
   participant_id: string;
   programme_id: string;
   status: OrderStatus;
   quantity: number;
+  number_of_qurbans?: number | null;
   unit_price: number;
   total_amount: number;
   currency: string;
   service_type: ServiceType;
+  payment_method?: PaymentMethod | null;
   /** Name the Qurban is performed for (certificate name); falls back to the payer. */
   qurban_name: string | null;
   qurban_phone: string | null;
@@ -296,6 +302,12 @@ export interface Animal {
   id: string;
   tenant_id: string;
   animal_ref: string;
+  animal_code?: string | null;
+  order_id?: string | null;
+  order_ref?: string | null;
+  qurban_name_holder?: string | null;
+  programme_id?: string | null;
+  delivery_portion?: DeliveryPortion | null;
   supplier_id: string | null;
   animal_type: AnimalType;
   breed: string | null;
@@ -623,13 +635,48 @@ export interface Database {
       status_history: { Row: StatusHistory; Insert: Partial<StatusHistory>; Update: Partial<StatusHistory> };
       notifications: { Row: Notification; Insert: Partial<Notification>; Update: Partial<Notification> };
       system_settings: { Row: { id: string; tenant_id: string | null; key: string; value: Json; description: string | null; is_public: boolean; updated_by: string | null; created_at: string; updated_at: string }; Insert: Record<string, unknown>; Update: Record<string, unknown> };
+      aigms_programmes: { Row: Record<string, unknown>; Insert: Record<string, unknown>; Update: Record<string, unknown> };
+      aigms_suppliers: { Row: Record<string, unknown>; Insert: Record<string, unknown>; Update: Record<string, unknown> };
+      aigms_participants: { Row: Record<string, unknown>; Insert: Record<string, unknown>; Update: Record<string, unknown> };
+      aigms_orders: { Row: Record<string, unknown>; Insert: Record<string, unknown>; Update: Record<string, unknown> };
+      aigms_animals: { Row: Record<string, unknown>; Insert: Record<string, unknown>; Update: Record<string, unknown> };
+      aigms_payments: { Row: Record<string, unknown>; Insert: Record<string, unknown>; Update: Record<string, unknown> };
+      aigms_deliveries: { Row: Record<string, unknown>; Insert: Record<string, unknown>; Update: Record<string, unknown> };
+      aigms_certificates: { Row: Record<string, unknown>; Insert: Record<string, unknown>; Update: Record<string, unknown> };
+      aigms_exceptions: { Row: Record<string, unknown>; Insert: Record<string, unknown>; Update: Record<string, unknown> };
+      aigms_audit_logs: { Row: Record<string, unknown>; Insert: Record<string, unknown>; Update: Record<string, unknown> };
+    };
+    Functions: {
+      get_my_profile: { Args: Record<string, never>; Returns: Profile | null };
+      create_aigms_order: {
+        Args: {
+          p_full_name: string;
+          p_email: string;
+          p_contact_number: string;
+          p_programme_id: string;
+          p_service_type: string;
+          p_payment_method: string;
+          p_quantity: number;
+          p_unit_price: number;
+          p_qurban_entries: Json;
+          p_order_ref?: string | null;
+          p_delivery_portion?: string | null;
+          p_notes?: string | null;
+          p_initial_status?: string | null;
+          p_client_request_id?: string | null;
+        };
+        Returns: Json;
+      };
     };
     Enums: {
       user_role: UserRole;
       order_status: OrderStatus;
       payment_status: PaymentStatus;
+      payment_method: PaymentMethod;
       animal_status: AnimalStatus;
       animal_type: AnimalType;
+      service_type: ServiceType;
+      delivery_portion: DeliveryPortion;
       delivery_status: DeliveryStatus;
     };
   };
