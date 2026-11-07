@@ -1,20 +1,23 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { ShoppingCart, Clock, CheckCircle2, ChevronDown, ChevronUp, Download, Eye } from 'lucide-react';
+import { ShoppingCart, Clock, CheckCircle2, ChevronDown, ChevronUp, Download, Eye, Weight } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { OrderStatus } from '@/lib/database.types';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 import { useAuth } from '@/contexts/AuthContext';
-import { useAppData } from '@/contexts/AppDataContext';
+import { useAppData, type AnimalWeightEntry } from '@/contexts/AppDataContext';
 import {
+  defaultApproxWeight,
   formatDeliveryPortion,
   formatPaymentMethod,
   formatServiceType,
+  isBreedingProgramme,
   normaliseEmail,
   normaliseName,
   participantFullName,
+  summarizeOrderPortions,
 } from '@/lib/orderRules';
 
 interface PortalOrderView {
@@ -24,6 +27,8 @@ interface PortalOrderView {
   service_type: string;
   payment_method?: string;
   delivery_portion?: string | null;
+  supports_weight_timeline: boolean;
+  certificate_ready: boolean;
   animal_type: string;
   quantity: number;
   total_amount: number;
@@ -31,7 +36,15 @@ interface PortalOrderView {
   status: OrderStatus;
   created_at: string;
   qurban_date: string;
-  animals: { code: string; holder: string; status: string }[];
+  animals: {
+    code: string;
+    holder: string;
+    status: string;
+    portion?: string | null;
+    approx_weight: string;
+    current_weight_kg: number;
+    weight_history: AnimalWeightEntry[];
+  }[];
   steps: { label: string; done: boolean; date: string | null }[];
 }
 
@@ -41,6 +54,8 @@ const DEMO_PARTICIPANT_ORDERS: PortalOrderView[] = [
     order_ref: 'AIG-2025-000158',
     programme: 'Cow Share — Somalia',
     service_type: 'Qurban',
+    supports_weight_timeline: false,
+    certificate_ready: false,
     animal_type: 'cow',
     quantity: 1,
     total_amount: 850,
@@ -62,6 +77,8 @@ const DEMO_PARTICIPANT_ORDERS: PortalOrderView[] = [
     order_ref: 'AIG-2025-000110',
     programme: 'Goat — Malaysia',
     service_type: 'Qurban',
+    supports_weight_timeline: false,
+    certificate_ready: true,
     animal_type: 'goat',
     quantity: 2,
     total_amount: 840,
@@ -105,7 +122,7 @@ const STATUS_STEP_RANK: Partial<Record<OrderStatus, number>> = {
 export function PortalOrdersPage() {
   usePageTitle('My Orders');
   const { user, profile } = useAuth();
-  const { orders, animals, programmes, participants } = useAppData();
+  const { orders, animals, programmes, participants, certificates } = useAppData();
 
   const participantOrders = useMemo<PortalOrderView[]>(() => {
     const authEmail = normaliseEmail(profile?.email ?? user?.email);
@@ -129,6 +146,11 @@ export function PortalOrdersPage() {
         .filter(a => a.order_ref === o.order_ref)
         .sort((a, b) => (a.animal_code ?? a.animal_ref).localeCompare(b.animal_code ?? b.animal_ref));
       const prog = programmes.find(p => (o.programme_id && p.id === o.programme_id) || normaliseName(p.name) === normaliseName(o.programme));
+      const supportsWeightTimeline = isBreedingProgramme(o.programme, prog?.supports_weight_timeline);
+      const portionSummary = summarizeOrderPortions(linkedAnimals.map(a => a.delivery_portion), o.delivery_portion);
+      const hasReadyCert = certificates.some(
+        c => c.order_ref === o.order_ref && ['generated', 'sent', 'regenerated'].includes(c.status),
+      );
       const animalType = linkedAnimals[0]?.animal_type ?? prog?.animal_type ?? 'goat';
       const stepRank = STATUS_STEP_RANK[o.status] ?? 1;
       const createdDate = formatDate(o.created_at);
@@ -138,7 +160,9 @@ export function PortalOrdersPage() {
         programme: o.programme,
         service_type: formatServiceType(o.service_type ?? 'qurban'),
         payment_method: formatPaymentMethod(o.payment_method ?? 'paynow'),
-        delivery_portion: o.delivery_portion ? formatDeliveryPortion(o.delivery_portion) : null,
+        delivery_portion: portionSummary !== '—' ? portionSummary : null,
+        supports_weight_timeline: supportsWeightTimeline,
+        certificate_ready: hasReadyCert || o.status === 'certificate_generated' || o.status === 'completed',
         animal_type: animalType,
         quantity: o.quantity,
         total_amount: o.total_amount,
@@ -150,17 +174,21 @@ export function PortalOrdersPage() {
           code: a.animal_code || a.animal_ref,
           holder: a.qurban_name_holder || o.participant,
           status: a.status,
+          portion: a.delivery_portion ? formatDeliveryPortion(a.delivery_portion) : null,
+          approx_weight: a.approx_weight || prog?.approx_weight_label || defaultApproxWeight(a.programme || o.programme, a.animal_type),
+          current_weight_kg: a.current_weight_kg,
+          weight_history: a.weight_history ?? [],
         })),
         steps: [
           { label: 'Order Placed', done: stepRank >= 1, date: createdDate },
           { label: 'Payment Verified', done: stepRank >= 2, date: stepRank >= 2 ? createdDate : null },
           { label: 'Animal Allocated', done: stepRank >= 3, date: null },
           { label: 'Qurban Performed', done: stepRank >= 4, date: null },
-          { label: 'Certificate Issued', done: stepRank >= 5, date: null },
+          { label: 'Certificate Issued', done: stepRank >= 5 || hasReadyCert, date: null },
         ],
       };
     });
-  }, [user, profile, orders, animals, programmes, participants]);
+  }, [user, profile, orders, animals, programmes, participants, certificates]);
 
   const [expandedId, setExpandedId] = useState<string | null>(() => participantOrders[0]?.id ?? null);
 
@@ -246,14 +274,46 @@ export function PortalOrdersPage() {
                 </div>
 
                 {order.animals.length > 0 && (
-                  <div style={{ marginBottom: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.625rem' }}>
+                  <div style={{ marginBottom: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.625rem' }}>
                     {order.animals.map((a, idx) => (
-                      <div key={a.code} style={{ padding: '0.625rem 0.875rem', background: 'var(--surface-700)', borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
+                      <div key={a.code} style={{ padding: '0.75rem 0.875rem', background: 'var(--surface-700)', borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
                           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Qurban {idx + 1}</span>
                           <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--aig-green-300)' }}>{a.code}</span>
                         </div>
-                        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)' }}>{a.holder}</div>
+                        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.375rem' }}>{a.holder}</div>
+                        {a.portion && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--aig-green-300)', marginBottom: '0.25rem' }}>
+                            Portion: <strong>{a.portion}</strong>
+                          </div>
+                        )}
+                        {order.supports_weight_timeline ? (
+                          <div style={{ marginTop: '0.375rem', paddingTop: '0.375rem', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--aig-green-300)', fontWeight: 600, marginBottom: '0.25rem' }}>
+                              <Weight size={11} />
+                              <span>
+                                Weight Updates: {a.current_weight_kg > 0 ? `${a.current_weight_kg} kg` : a.approx_weight}
+                              </span>
+                            </div>
+                            {a.weight_history.length > 0 ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', color: 'var(--text-muted)' }}>
+                                {a.weight_history.map((w, wi) => (
+                                  <div key={wi} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span>{w.weight_kg} kg{w.notes ? ` · ${w.notes}` : ''}</span>
+                                    <span>{formatDate(w.recorded_at)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={{ color: 'var(--text-muted)' }}>Monthly breeding weight updates will appear here.</div>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <Weight size={11} />
+                            <span>{a.approx_weight}</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -302,15 +362,15 @@ export function PortalOrdersPage() {
                   ))}
                 </div>
 
-                {order.status === 'completed' && (
-                  <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.75rem' }}>
+                {order.certificate_ready && (
+                  <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <Link to="/portal/certificates" className="btn btn-outline-green btn-sm">
                       <Download size={14} />
-                      Download Certificate
+                      Download Certificate (PDF)
                     </Link>
                     <Link to="/portal/certificates" className="btn btn-ghost btn-sm">
                       <Eye size={14} />
-                      View Details
+                      View Certificate
                     </Link>
                   </div>
                 )}

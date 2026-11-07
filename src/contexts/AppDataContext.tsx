@@ -21,6 +21,10 @@ import type {
 import { getStatusLabel } from '@/lib/statusEngine';
 import {
   animalCodeForOrder,
+  defaultApproxWeight,
+  formatPaymentMethod,
+  formatServiceType,
+  isBreedingProgramme,
   nextOrderRef,
   normaliseName,
   normaliseOrderRef,
@@ -39,6 +43,12 @@ export { animalCodeForOrder, nextOrderRef };
 // ─────────────────────────────────────────────────────────────
 // Local flat types used by the admin pages
 // ─────────────────────────────────────────────────────────────
+
+export type AnimalWeightEntry = {
+  weight_kg: number;
+  recorded_at: string;
+  notes?: string;
+};
 
 export type AppOrder = {
   id: string;
@@ -63,6 +73,7 @@ export type AppOrder = {
   recipient?: string;
   notes?: string;
   client_request_id?: string;
+  confirmation_email_sent_at?: string | null;
 };
 
 export type AppAnimal = {
@@ -75,6 +86,8 @@ export type AppAnimal = {
   status: AnimalStatus;
   current_weight_kg: number;
   min_weight_kg: number;
+  approx_weight?: string;
+  weight_history?: AnimalWeightEntry[];
   location: string;
   supplier: string;
   created_at: string;
@@ -187,6 +200,8 @@ export type AppProgramme = {
   is_active: boolean;
   qurban_date: string;
   orders_count: number;
+  approx_weight_label?: string;
+  supports_weight_timeline?: boolean;
 };
 
 export type AppException = {
@@ -216,6 +231,7 @@ export type AppAuditLog = {
 
 export type QurbanEntry = {
   qurban_name_holder: string;
+  delivery_portion?: 'full' | 'one_third' | 'two_thirds' | 'nil' | null;
 };
 
 export type NewOrderInput = {
@@ -309,9 +325,15 @@ function ensureLiveProgrammes(d: AppData): AppData {
     .filter(p => !liveIds.has(p.id) && !liveNames.has(p.name.trim().toLowerCase()))
     .map(p => versionSynced ? p : { ...p, is_active: false });
 
-  const canonicalLive = LIVE_PROGRAMMES.map(lp =>
-    existingLive.find(p => p.id === lp.id || p.name.trim().toLowerCase() === lp.name.trim().toLowerCase()) ?? lp,
-  );
+  const canonicalLive = LIVE_PROGRAMMES.map(lp => {
+    const existing = existingLive.find(p => p.id === lp.id || p.name.trim().toLowerCase() === lp.name.trim().toLowerCase());
+    if (!existing) return lp;
+    return {
+      ...existing,
+      approx_weight_label: existing.approx_weight_label ?? lp.approx_weight_label,
+      supports_weight_timeline: existing.supports_weight_timeline ?? lp.supports_weight_timeline,
+    };
+  });
 
   if (!versionSynced && nonLive.length > 0) {
     try { localStorage.setItem(PROGRAMMES_VERSION_KEY, LIVE_PROGRAMMES_VERSION); } catch { /* ignore */ }
@@ -931,6 +953,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       : nextOrderRef(d0.orders.map(o => o.order_ref));
     const targetStatus: OrderStatus = input.status ?? 'pending_payment';
 
+    const orderCurrency = input.currency ?? matchedProg?.currency ?? 'SGD';
+    const shouldSendConfirmationOnce = targetStatus !== 'draft';
     const order: AppOrder = {
       id: uid(),
       order_ref: orderRef,
@@ -948,17 +972,20 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       quantity: input.quantity,
       number_of_qurbans: input.quantity,
       total_amount: input.total_amount,
-      currency: input.currency ?? matchedProg?.currency ?? 'SGD',
+      currency: orderCurrency,
       status: targetStatus,
       created_at: nowIso(),
       notes: input.notes?.trim() || undefined,
       client_request_id: reqId || undefined,
+      confirmation_email_sent_at: shouldSendConfirmationOnce ? nowIso() : null,
     };
 
     // ── Create 1..N animals linked to the SAME Order Reference ──
     const animalType = matchedProg?.animal_type ?? inferAnimalType(d0, canonicalProgramme);
     const initialAnimalStatus: AnimalStatus = animalStatusFor(targetStatus) ?? 'reserved';
     const minWeight = animalType === 'cow' || animalType === 'buffalo' ? 350 : animalType === 'camel' ? 300 : 25;
+    const approxWeightLabel =
+      matchedProg?.approx_weight_label || defaultApproxWeight(canonicalProgramme, animalType);
 
     const newAnimals: AppAnimal[] = input.qurban_entries.map((entry, i) => {
       const animalCode = animalCodeForOrder(orderRef, i);
@@ -972,6 +999,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         status: initialAnimalStatus,
         current_weight_kg: 0,
         min_weight_kg: minWeight,
+        approx_weight: approxWeightLabel,
+        weight_history: [],
         location: canonicalCountry || 'TBD',
         supplier: 'To be assigned',
         created_at: nowIso(),
@@ -982,7 +1011,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         programme: canonicalProgramme,
         programme_id: canonicalProgId,
         service_type: input.service_type,
-        delivery_portion: validation.normalizedPortion,
+        delivery_portion: validation.normalizedPortions[i] ?? validation.normalizedPortion,
       };
     });
 
@@ -1060,17 +1089,38 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
 
-    if (createdNewParticipant) {
-      // Non-blocking portal access notification via abstracted notificationService (no sensitive DB keys exposed)
-      void notificationService.sendEmail({
-        recipient: {
-          name: participantName,
-          email: input.email.trim(),
-          phone: input.contact_number.trim(),
-        },
-        subject: `Al Ihsan Group — Portal Access & Order ${orderRef}`,
-        body: `Assalamu Alaikum ${participantName}, your Qurban portal access is ready for order ${orderRef}. Sign in using ${input.email.trim()} at /login?mode=participant.`,
-      }).catch(() => {});
+    if (shouldSendConfirmationOnce) {
+      // Confirmed Communication Rule:
+      // 1. Order Confirmation & Invoice sent ONCE to Email (never re-sent on edit/refresh)
+      // 2. Order & Payment confirmation also sent via WhatsApp (+6585456783)
+      void notificationService
+        .notifyOrderCreatedAndInvoice({
+          recipient: {
+            name: participantName,
+            email: input.email.trim(),
+            phone: input.contact_number.trim(),
+          },
+          orderRef,
+          programme: canonicalProgramme,
+          serviceTypeLabel: formatServiceType(input.service_type),
+          quantity: input.quantity,
+          totalFormatted: `${orderCurrency} ${input.total_amount.toLocaleString()}`,
+          paymentMethodLabel: formatPaymentMethod(input.payment_method),
+          alreadySentEmail: false,
+        })
+        .catch(() => {});
+    } else if (createdNewParticipant) {
+      void notificationService
+        .sendWhatsAppWithEmailFallback({
+          recipient: {
+            name: participantName,
+            email: input.email.trim(),
+            phone: input.contact_number.trim(),
+          },
+          subject: `Al Ihsan Group — Portal Access Ready (${orderRef})`,
+          body: `Assalamu Alaikum ${participantName}, your Participant Portal access is ready for draft order ${orderRef}.`,
+        })
+        .catch(() => {});
     }
 
     return dataRef.current.orders.find(o => o.id === order.id || (reqId && o.client_request_id === reqId)) ?? order;
@@ -1111,6 +1161,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       patch.qurban_entries ??
       Array.from({ length: nextQuantity }, (_, i) => ({
         qurban_name_holder: existingAnimals[i]?.qurban_name_holder ?? existing.participant,
+        delivery_portion: existingAnimals[i]?.delivery_portion ?? existing.delivery_portion ?? null,
       }));
     const nextTotal = patch.total_amount ?? existing.total_amount;
     const candidatePortion =
@@ -1239,6 +1290,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const programmeChanged = normaliseName(cur.programme) !== normaliseName(nextProgramme);
       const targetAnimalType = matchedProg?.animal_type ?? inferAnimalType(next, nextProgramme);
       const minWeight = targetAnimalType === 'cow' || targetAnimalType === 'buffalo' ? 350 : targetAnimalType === 'camel' ? 300 : 25;
+      const nextApproxWeight =
+        matchedProg?.approx_weight_label || defaultApproxWeight(nextProgramme, targetAnimalType);
 
       const removeIds = new Set(orderAnimals.slice(nextQuantity).map(a => a.id));
       const updatedById = new Map<string, AppAnimal>();
@@ -1256,7 +1309,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           programme: nextProgramme,
           programme_id: nextProgId,
           service_type: nextServiceType,
-          delivery_portion: validation.normalizedPortion,
+          delivery_portion: validation.normalizedPortions[i] ?? validation.normalizedPortion,
+          approx_weight: programmeChanged ? nextApproxWeight : existingAnimal.approx_weight ?? nextApproxWeight,
           ...(programmeChanged && unassignedBreed
             ? {
                 animal_type: targetAnimalType,
@@ -1288,6 +1342,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             status: defaultStatus,
             current_weight_kg: 0,
             min_weight_kg: minWeight,
+            approx_weight: nextApproxWeight,
+            weight_history: [],
             location: nextCountry || 'TBD',
             supplier: 'To be assigned',
             created_at: nowIso(),
@@ -1298,7 +1354,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             programme: nextProgramme,
             programme_id: nextProgId,
             service_type: nextServiceType,
-            delivery_portion: validation.normalizedPortion,
+            delivery_portion: validation.normalizedPortions[i] ?? validation.normalizedPortion,
           });
         }
         syncedAnimals = [...added, ...syncedAnimals];
@@ -1337,7 +1393,68 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   }, [commit]);
 
   const updateOrderStatus = useCallback((id: string, status: OrderStatus) => {
+    const prevOrder = dataRef.current.orders.find(o => o.id === id);
     commit((d, actor) => applyOrderStatus(d, id, status, actor));
+
+    const updatedOrder = dataRef.current.orders.find(o => o.id === id);
+    if (updatedOrder && prevOrder && prevOrder.status !== status) {
+      const recipient = {
+        name: updatedOrder.participant,
+        email: updatedOrder.email,
+        phone: updatedOrder.contact_number,
+      };
+      // If draft order moves to pending_payment for the first time, send one-time email invoice + WA
+      if (prevOrder.status === 'draft' && !updatedOrder.confirmation_email_sent_at && status !== 'cancelled') {
+        commit(d => ({
+          ...d,
+          orders: d.orders.map(o => (o.id === id ? { ...o, confirmation_email_sent_at: nowIso() } : o)),
+        }));
+        void notificationService
+          .notifyOrderCreatedAndInvoice({
+            recipient,
+            orderRef: updatedOrder.order_ref,
+            programme: updatedOrder.programme,
+            serviceTypeLabel: formatServiceType(updatedOrder.service_type ?? 'qurban'),
+            quantity: updatedOrder.quantity,
+            totalFormatted: `${updatedOrder.currency} ${updatedOrder.total_amount.toLocaleString()}`,
+            paymentMethodLabel: formatPaymentMethod(updatedOrder.payment_method ?? 'paynow'),
+            alreadySentEmail: false,
+          })
+          .catch(() => {});
+      } else if (status === 'certificate_generated') {
+        const cert = dataRef.current.certificates.find(c => c.order_ref === updatedOrder.order_ref);
+        void notificationService
+          .notifyCertificateReady({
+            recipient,
+            orderRef: updatedOrder.order_ref,
+            certificateRef: cert?.certificate_ref ?? updatedOrder.order_ref,
+            programme: updatedOrder.programme,
+          })
+          .catch(() => {});
+      } else if (
+        [
+          'confirmed',
+          'animal_allocated',
+          'animal_growing',
+          'qurban_complete',
+          'shipped',
+          'arrived',
+          'delivery_scheduled',
+          'out_for_delivery',
+          'delivered',
+          'completed',
+        ].includes(status)
+      ) {
+        void notificationService
+          .notifyQurbanStatusUpdate({
+            recipient,
+            orderRef: updatedOrder.order_ref,
+            programme: updatedOrder.programme,
+            statusLabel: getStatusLabel(status),
+          })
+          .catch(() => {});
+      }
+    }
   }, [commit]);
 
   const cancelOrder = useCallback((id: string) => {
@@ -1355,10 +1472,28 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   }, [commit]);
 
   const updateAnimal = useCallback((id: string, patch: Partial<AppAnimal>) => {
+    let loggedBreedingWeight: { animal: AppAnimal; order?: AppOrder } | null = null;
     commit((d, actor) => {
       const a = d.animals.find(x => x.id === id);
       if (!a) return d;
-      const updated = { ...a, ...patch };
+      const weightChanged =
+        patch.current_weight_kg !== undefined &&
+        patch.current_weight_kg > 0 &&
+        patch.current_weight_kg !== a.current_weight_kg;
+      const nextWeightHistory =
+        patch.weight_history ??
+        (weightChanged
+          ? [
+              ...(a.weight_history ?? []),
+              { weight_kg: patch.current_weight_kg!, recorded_at: nowIso() },
+            ]
+          : a.weight_history);
+
+      const updated: AppAnimal = {
+        ...a,
+        ...patch,
+        ...(nextWeightHistory ? { weight_history: nextWeightHistory } : {}),
+      };
       let next: AppData = { ...d, animals: d.animals.map(x => x.id === id ? updated : x) };
       if (patch.status && patch.status !== a.status) {
         next = withLog(next, actor, 'animal.status_changed', 'animal', a.animal_ref, `Animal ${a.animal_ref} → ${patch.status.replace(/_/g, ' ')}`);
@@ -1371,8 +1506,17 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           });
         }
       }
-      if (patch.current_weight_kg !== undefined && patch.current_weight_kg !== a.current_weight_kg) {
+      if (weightChanged) {
         next = withLog(next, actor, 'animal.weight_logged', 'animal', a.animal_ref, `Animal ${a.animal_ref} weight ${patch.current_weight_kg} kg`);
+        const prog = next.programmes.find(
+          p => (updated.programme_id && p.id === updated.programme_id) || normaliseName(p.name) === normaliseName(updated.programme ?? ''),
+        );
+        if (isBreedingProgramme(updated.programme, prog?.supports_weight_timeline) && updated.order_ref) {
+          loggedBreedingWeight = {
+            animal: updated,
+            order: next.orders.find(o => o.order_ref === updated.order_ref),
+          };
+        }
       }
       // Keep certificate animal info in sync when the animal is edited
       if (a.order_ref && (patch.animal_ref || patch.animal_type)) {
@@ -1385,6 +1529,25 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       }
       return next;
     });
+
+    if (loggedBreedingWeight) {
+      const { animal: bAnimal, order: bOrder } = loggedBreedingWeight as { animal: AppAnimal; order?: AppOrder };
+      if (bOrder) {
+        void notificationService
+          .notifyBreedingWeightUpdate({
+            recipient: {
+              name: bOrder.participant,
+              email: bOrder.email,
+              phone: bOrder.contact_number,
+            },
+            orderRef: bOrder.order_ref,
+            animalCode: bAnimal.animal_code || bAnimal.animal_ref,
+            qurbanHolder: bAnimal.qurban_name_holder || bOrder.participant,
+            weightKg: bAnimal.current_weight_kg,
+          })
+          .catch(() => {});
+      }
+    }
   }, [commit]);
 
   const updateAnimalStatus = useCallback((id: string, status: AnimalStatus) => {
@@ -1397,6 +1560,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   }, [commit]);
 
   const verifyPayment = useCallback((id: string) => {
+    let verifiedInfo: { payment: AppPayment; order?: AppOrder } | null = null;
     commit((d, actor) => {
       const p = d.payments.find(x => x.id === id);
       if (!p) return d;
@@ -1413,11 +1577,27 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       } else if (o && o.status === 'payment_rejected') {
         next = applyOrderStatus(next, o.id, 'payment_verified', actor);
       }
+      verifiedInfo = { payment: p, order: next.orders.find(x => x.order_ref === p.order_ref) };
       return next;
     });
+    if (verifiedInfo) {
+      const { payment: vp, order: vo } = verifiedInfo as { payment: AppPayment; order?: AppOrder };
+      if (vo) {
+        void notificationService
+          .notifyPaymentUpdate({
+            recipient: { name: vo.participant, email: vo.email, phone: vo.contact_number },
+            orderRef: vo.order_ref,
+            paymentRef: vp.payment_ref,
+            status: 'verified',
+            amountFormatted: `${vp.currency} ${vp.amount.toLocaleString()}`,
+          })
+          .catch(() => {});
+      }
+    }
   }, [commit]);
 
   const rejectPayment = useCallback((id: string, reason?: string) => {
+    let rejectedInfo: { payment: AppPayment; order?: AppOrder } | null = null;
     commit((d, actor) => {
       const p = d.payments.find(x => x.id === id);
       if (!p) return d;
@@ -1438,8 +1618,24 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         description: `Payment of ${p.currency} ${p.amount} from ${p.participant} for order ${p.order_ref} was rejected.${reason ? ` Reason: ${reason}.` : ''} Follow up with the participant to resubmit.`,
         related_entity: 'payment', related_entity_id: p.payment_ref,
       });
+      rejectedInfo = { payment: p, order: next.orders.find(x => x.order_ref === p.order_ref) };
       return next;
     });
+    if (rejectedInfo) {
+      const { payment: rp, order: ro } = rejectedInfo as { payment: AppPayment; order?: AppOrder };
+      if (ro) {
+        void notificationService
+          .notifyPaymentUpdate({
+            recipient: { name: ro.participant, email: ro.email, phone: ro.contact_number },
+            orderRef: ro.order_ref,
+            paymentRef: rp.payment_ref,
+            status: 'rejected',
+            amountFormatted: `${rp.currency} ${rp.amount.toLocaleString()}`,
+            reason: reason?.trim(),
+          })
+          .catch(() => {});
+      }
+    }
   }, [commit]);
 
   // ── Deliveries ─────────────────────────────────────────────
@@ -1488,6 +1684,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   // ── Certificates ──────────────────────────────────────────
   const updateCertStatus = useCallback((id: string, status: CertificateStatus) => {
+    let notifyCert: { cert: AppCertificate; order?: AppOrder } | null = null;
     commit((d, actor) => {
       const c = d.certificates.find(x => x.id === id);
       if (!c || c.status === status) return d;
@@ -1506,8 +1703,24 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (o && (status === 'generated' || status === 'sent') && orderRank(o.status) >= 0 && orderRank(o.status) < R('certificate_generated')) {
         next = applyOrderStatus(next, o.id, 'certificate_generated', actor);
       }
+      if (status === 'sent' || status === 'generated') {
+        notifyCert = { cert: c, order: o };
+      }
       return next;
     });
+    if (notifyCert) {
+      const { cert: nc, order: no } = notifyCert as { cert: AppCertificate; order?: AppOrder };
+      if (no) {
+        void notificationService
+          .notifyCertificateReady({
+            recipient: { name: no.participant, email: no.email, phone: no.contact_number },
+            orderRef: no.order_ref,
+            certificateRef: nc.certificate_ref,
+            programme: no.programme,
+          })
+          .catch(() => {});
+      }
+    }
   }, [commit]);
 
   // ── Participants ──────────────────────────────────────────

@@ -8,25 +8,32 @@ import { AppDataProvider, useAppData } from '@/contexts/AppDataContext';
 import { LIVE_PROGRAMMES } from '@/data/liveProgrammes';
 import {
   AUSTRALIA_SINGAPORE_PORTION_OPTIONS,
+  OFFICIAL_WHATSAPP_NUMBER,
   ORDER_PAYMENT_OPTIONS,
   ORDER_SERVICE_OPTIONS,
   animalCodeForOrder,
+  defaultApproxWeight,
   formatDeliveryPortion,
   formatPaymentMethod,
   formatServiceType,
   isAustraliaToSingaporeProgramme,
+  isBreedingProgramme,
   isIndonesiaProgramme,
   normaliseEmail,
   normaliseName,
   normalisePhone,
   participantsMatch,
+  summarizeOrderPortions,
   validateOrderCandidate,
 } from '@/lib/orderRules';
+import { notificationService } from '@/services/notificationService';
 import { OrdersPage } from '@/pages/admin/OrdersPage';
 import { AnimalsPage } from '@/pages/admin/AnimalsPage';
 import { ParticipantsPage } from '@/pages/admin/ParticipantsPage';
 import { PaymentsPage } from '@/pages/admin/PaymentsPage';
 import { DashboardPage } from '@/pages/admin/DashboardPage';
+import { PortalOrdersPage } from '@/pages/portal/PortalOrdersPage';
+import { PortalCertificatesPage } from '@/pages/portal/PortalCertificatesPage';
 
 class MemoryStorage implements Storage {
   private map = new Map<string, string>();
@@ -752,5 +759,230 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
     const dashboardHtml = store.renderScreen(<DashboardPage />);
     expect(dashboardHtml).toContain('ORD-10025');
     expect(dashboardHtml).toContain('Fatimah Zahra');
+  });
+
+  it('TEST 11: Per-Qurban Portion to be Delivered allows each Qurban 1..N to select its own portion independently', () => {
+    const store = mountAppDataStore();
+    let ctx = store.getState();
+    const auSgLamb = ctx.programmes.find(p => p.name === 'Australia to Singapore - Lamb')!;
+
+    // Missing portion on Qurban 2 when no order-level fallback is passed must fail validation
+    expect(() =>
+      ctx.addOrder({
+        order_ref: 'ORD-PERQ-ERR',
+        full_name: 'Yusuf Mansur',
+        email: 'yusuf@example.com',
+        contact_number: '+65 9111 2222',
+        programme: auSgLamb.name,
+        programme_id: auSgLamb.id,
+        programme_country: auSgLamb.country,
+        service_type: 'qurban',
+        payment_method: 'paynow',
+        delivery_portion: null,
+        quantity: 2,
+        qurban_entries: [
+          { qurban_name_holder: 'Holder 1', delivery_portion: 'two_thirds' },
+          { qurban_name_holder: 'Holder 2', delivery_portion: null },
+        ],
+        total_amount: auSgLamb.price_per_share * 2,
+        currency: auSgLamb.currency,
+      }),
+    ).toThrow(/required for Qurban 2/i);
+
+    // 3 Qurbans with 3 distinct portions under the same Order Reference
+    ctx = store.getState();
+    const order = ctx.addOrder({
+      order_ref: 'ORD-PERQ-03',
+      full_name: 'Yusuf Mansur',
+      email: 'yusuf@example.com',
+      contact_number: '+65 9111 2222',
+      programme: auSgLamb.name,
+      programme_id: auSgLamb.id,
+      programme_country: auSgLamb.country,
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      delivery_portion: 'two_thirds',
+      quantity: 3,
+      qurban_entries: [
+        { qurban_name_holder: 'abc', delivery_portion: 'two_thirds' },
+        { qurban_name_holder: 'def', delivery_portion: 'full' },
+        { qurban_name_holder: 'ghi', delivery_portion: 'nil' },
+      ],
+      total_amount: auSgLamb.price_per_share * 3,
+      currency: auSgLamb.currency,
+    });
+
+    const next = store.getState();
+    const linked = next.animals
+      .filter(a => a.order_ref === order.order_ref)
+      .sort((a, b) => (a.animal_code ?? '').localeCompare(b.animal_code ?? ''));
+
+    expect(linked).toHaveLength(3);
+    expect(linked.map(a => a.animal_code)).toEqual(['ANM-PERQ-03-01', 'ANM-PERQ-03-02', 'ANM-PERQ-03-03']);
+    expect(linked.map(a => a.delivery_portion)).toEqual(['two_thirds', 'full', 'nil']);
+    expect(summarizeOrderPortions(linked.map(a => a.delivery_portion), order.delivery_portion)).toBe(
+      'Qurban 1: 2/3 · Qurban 2: Full · Qurban 3: NIL',
+    );
+  });
+
+  it('TEST 12: Indonesia - Breeding Programme shows Weight Timeline & allows Installment, while standard programmes show Approx. Weight only', () => {
+    const store = mountAppDataStore();
+    let ctx = store.getState();
+
+    expect(LIVE_PROGRAMMES).toHaveLength(12);
+    const breedingProg = ctx.programmes.find(p => p.id === 'prog-id-breeding')!;
+    expect(breedingProg).toBeDefined();
+    expect(breedingProg.name).toBe('Indonesia - Breeding Programme');
+    expect(isIndonesiaProgramme(breedingProg.name, breedingProg.country)).toBe(true);
+    expect(isBreedingProgramme(breedingProg.name, breedingProg.supports_weight_timeline)).toBe(true);
+
+    // All 11 standard programmes must NOT enable weight timeline
+    const standardProgs = ctx.programmes.filter(p => p.id !== 'prog-id-breeding');
+    expect(standardProgs).toHaveLength(11);
+    for (const p of standardProgs) {
+      expect(isBreedingProgramme(p.name, p.supports_weight_timeline)).toBe(false);
+    }
+
+    // Create 1 standard Uganda - Goat order and 1 Indonesia - Breeding Programme order
+    ctx.addOrder({
+      order_ref: 'ORD-STD-UG',
+      full_name: 'Standard Buyer',
+      email: 'std@example.com',
+      contact_number: '+65 9222 1111',
+      programme: 'Uganda - Goat',
+      programme_id: 'prog-ug-goat',
+      programme_country: 'Uganda',
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      quantity: 1,
+      qurban_entries: [{ qurban_name_holder: 'Standard Holder' }],
+      total_amount: 165,
+      currency: 'SGD',
+    });
+
+    ctx = store.getState();
+    const animalsHtmlStandardOnly = store.renderScreen(<AnimalsPage />);
+    expect(animalsHtmlStandardOnly).toContain('Approx. Weight');
+    expect(animalsHtmlStandardOnly).toContain(defaultApproxWeight('Uganda - Goat', 'goat'));
+    expect(animalsHtmlStandardOnly).not.toContain('Weight Timeline');
+
+    // Now create Indonesia - Breeding Programme order with Installment & log weight update
+    ctx.addOrder({
+      order_ref: 'ORD-BREED-01',
+      full_name: 'Breeding Buyer',
+      email: 'breed@example.com',
+      contact_number: '+65 9333 2222',
+      programme: breedingProg.name,
+      programme_id: breedingProg.id,
+      programme_country: breedingProg.country,
+      service_type: 'qurban',
+      payment_method: 'installment',
+      quantity: 1,
+      qurban_entries: [{ qurban_name_holder: 'Breeding Holder' }],
+      total_amount: breedingProg.price_per_share,
+      currency: breedingProg.currency,
+    });
+
+    ctx = store.getState();
+    const breedingAnimal = ctx.animals.find(a => a.order_ref === 'ORD-BREED-01')!;
+    ctx.updateAnimal(breedingAnimal.id, { current_weight_kg: 28.5 });
+
+    const afterWeight = store.getState();
+    const updatedAnimal = afterWeight.animals.find(a => a.id === breedingAnimal.id)!;
+    expect(updatedAnimal.current_weight_kg).toBe(28.5);
+    expect(updatedAnimal.weight_history).toHaveLength(1);
+    expect(updatedAnimal.weight_history?.[0].weight_kg).toBe(28.5);
+
+    const animalsHtmlWithBreeding = store.renderScreen(<AnimalsPage />);
+    expect(animalsHtmlWithBreeding).toContain('Weight Timeline');
+    expect(animalsHtmlWithBreeding).toContain('28.5kg');
+  });
+
+  it('TEST 13: WhatsApp (+6585456783) primary + automatic Email fallback + one-time Email invoice + Portal Certificate PDF download', async () => {
+    expect(OFFICIAL_WHATSAPP_NUMBER).toBe('+6585456783');
+    expect(notificationService.officialWhatsAppSender).toBe('+6585456783');
+
+    const sentWhatsApps: Array<{ to: string; body: string }> = [];
+    const sentEmails: Array<{ to: string; subject: string; body: string }> = [];
+
+    // 1. Both WhatsApp and Email succeed -> WhatsApp primary used, no fallback needed
+    notificationService.setProviders({
+      whatsapp: {
+        name: 'test-whatsapp',
+        send: async p => {
+          sentWhatsApps.push({ to: p.recipient.phone ?? '', body: p.body });
+          return { success: true, channelUsed: 'whatsapp', providerRef: 'wa-ok-1' };
+        },
+      },
+      email: {
+        name: 'test-email',
+        send: async p => {
+          sentEmails.push({ to: p.recipient.email ?? '', subject: p.subject ?? '', body: p.body });
+          return { success: true, channelUsed: 'email', providerRef: 'em-ok-1' };
+        },
+      },
+    });
+
+    const primaryRes = await notificationService.notifyQurbanStatusUpdate({
+      recipient: { name: 'Ali', email: 'ali@example.com', phone: '+65 9876 5432' },
+      orderRef: 'ORD-WA-01',
+      programme: 'Uganda - Goat',
+      statusLabel: 'Animal Allocated',
+    });
+    expect(primaryRes.channelUsed).toBe('whatsapp');
+    expect(primaryRes.fallbackUsed).toBe(false);
+    expect(sentWhatsApps).toHaveLength(1);
+    expect(sentEmails).toHaveLength(0);
+
+    // 2. Simulate WhatsApp delivery failure -> automatic Email fallback triggers!
+    notificationService.setProviders({
+      whatsapp: {
+        name: 'test-whatsapp-fail',
+        send: async () => ({ success: false, error: 'Meta Cloud API timeout' }),
+      },
+      email: {
+        name: 'test-email',
+        send: async p => {
+          sentEmails.push({ to: p.recipient.email ?? '', subject: p.subject ?? '', body: p.body });
+          return { success: true, channelUsed: 'email', providerRef: 'em-fallback-1' };
+        },
+      },
+    });
+
+    const certFallbackRes = await notificationService.notifyCertificateReady({
+      recipient: { name: 'Ali', email: 'ali@example.com', phone: '+65 9876 5432' },
+      orderRef: 'ORD-WA-01',
+      certificateRef: 'CERT-2026-00001',
+      programme: 'Uganda - Goat',
+    });
+    expect(certFallbackRes.channelUsed).toBe('email');
+    expect(certFallbackRes.fallbackUsed).toBe(true);
+    expect(sentEmails).toHaveLength(1);
+    expect(sentEmails[0].body).toContain('/portal/certificates');
+
+    // 3. Order creation stamps confirmation_email_sent_at once & Portal screens render cleanly
+    const store = mountAppDataStore();
+    const ctx = store.getState();
+    const created = ctx.addOrder({
+      order_ref: 'ORD-INV-ONCE',
+      full_name: 'Mariam Salleh',
+      email: 'mariam@example.com',
+      contact_number: '+65 8111 9999',
+      programme: 'Uganda - Sheep',
+      programme_id: 'prog-ug-sheep',
+      programme_country: 'Uganda',
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      quantity: 1,
+      qurban_entries: [{ qurban_name_holder: 'Mariam Salleh' }],
+      total_amount: 165,
+      currency: 'SGD',
+    });
+    expect(created.confirmation_email_sent_at).toBeTruthy();
+
+    const portalOrdersHtml = store.renderScreen(<PortalOrdersPage />);
+    expect(portalOrdersHtml).toContain('My Orders');
+    const portalCertsHtml = store.renderScreen(<PortalCertificatesPage />);
+    expect(portalCertsHtml).toContain('My Certificates');
   });
 });

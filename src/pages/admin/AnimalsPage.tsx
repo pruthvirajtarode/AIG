@@ -3,7 +3,7 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, Plus, X, Weight, CheckCircle2, ClipboardCheck, RefreshCw } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import type { AnimalStatus, AnimalType } from '@/lib/database.types';
-import { formatDeliveryPortion, formatServiceType } from '@/lib/orderRules';
+import { defaultApproxWeight, formatDeliveryPortion, formatServiceType, isBreedingProgramme } from '@/lib/orderRules';
 import { useToast } from '@/contexts/ToastContext';
 import { ANIMAL_IMAGES } from '@/lib/animalImages';
 import { useAppData, nextRef, uid, type AppAnimal as Animal } from '@/contexts/AppDataContext';
@@ -202,6 +202,9 @@ function EditAnimalModal({ animal, onClose, onSave }: {
   const [gender, setGender] = useState(animal.gender || 'male');
   const [tagNumber, setTagNumber] = useState(clean(animal.tag_number));
   const [minWeight, setMinWeight] = useState(String(animal.min_weight_kg || ''));
+  const [approxWeight, setApproxWeight] = useState(
+    animal.approx_weight ?? defaultApproxWeight(animal.programme, animal.animal_type),
+  );
   const [location, setLocation] = useState(animal.location);
   const [supplier, setSupplier] = useState(clean(animal.supplier));
   const [qurbanHolder, setQurbanHolder] = useState(animal.qurban_name_holder ?? '');
@@ -228,6 +231,7 @@ function EditAnimalModal({ animal, onClose, onSave }: {
       gender,
       tag_number: tagNumber.trim() || 'Pending',
       min_weight_kg: Number(minWeight) || 0,
+      approx_weight: approxWeight.trim() || defaultApproxWeight(programmeName, animalType),
       location: location.trim(),
       supplier: supplier.trim() || 'To be assigned',
       ...(isOrderAnimal ? { qurban_name_holder: qurbanHolder.trim() } : {}),
@@ -290,6 +294,10 @@ function EditAnimalModal({ animal, onClose, onSave }: {
               <input className="form-input" placeholder="Pending" value={tagNumber} onChange={e => setTagNumber(e.target.value)} />
             </div>
             <div className="form-group">
+              <label className="form-label">Approx. Weight Label</label>
+              <input className="form-input" placeholder="e.g. Approx. 25–30 kg" value={approxWeight} onChange={e => setApproxWeight(e.target.value)} />
+            </div>
+            <div className="form-group">
               <label className="form-label">Min Weight Threshold (kg)</label>
               <input className="form-input" type="number" min="0" step="0.1" value={minWeight} onChange={e => setMinWeight(e.target.value)} />
             </div>
@@ -319,28 +327,39 @@ function EditAnimalModal({ animal, onClose, onSave }: {
 function LogWeightModal({ animal, onClose, onUpdate }: {
   animal: Animal;
   onClose: () => void;
-  onUpdate: (id: string, weight: number) => void;
+  onUpdate: (id: string, weight: number, notes?: string) => void;
 }) {
-  const [weight, setWeight] = useState(String(animal.current_weight_kg));
+  const [weight, setWeight] = useState(String(animal.current_weight_kg || ''));
+  const [notes, setNotes] = useState('');
   const { toast } = useToast();
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
         <div className="modal-header">
           <div className="heading-md">Log Weight Update</div>
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="modal-body">
           <div style={{ marginBottom: '1rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-            Animal: <strong style={{ color: 'var(--text-primary)' }}>{animal.animal_ref}</strong> — {animal.breed}
+            Animal: <strong style={{ color: 'var(--text-primary)' }}>{animal.animal_code || animal.animal_ref}</strong> — {animal.breed}
           </div>
           <div className="form-group">
-            <label className="form-label">Current Weight (kg)</label>
+            <label className="form-label">Current Weight (kg) *</label>
             <input
               className="form-input" type="number" min="0" step="0.1"
               value={weight} onChange={e => setWeight(e.target.value)}
+              placeholder="e.g. 28.5"
               autoFocus
+            />
+          </div>
+          <div className="form-group" style={{ marginTop: '0.75rem' }}>
+            <label className="form-label">Update Note (optional)</label>
+            <input
+              className="form-input"
+              placeholder="e.g. Monthly farm weigh-in — healthy growth"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
             />
           </div>
           <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
@@ -355,8 +374,8 @@ function LogWeightModal({ animal, onClose, onUpdate }: {
           <button className="btn btn-primary" onClick={() => {
             const w = Number(weight);
             if (!w || w <= 0) { toast('error', 'Invalid weight', 'Enter a valid weight'); return; }
-            onUpdate(animal.id, w);
-            toast('success', 'Weight logged!', `${animal.animal_ref}: ${w} kg recorded`);
+            onUpdate(animal.id, w, notes.trim() || undefined);
+            toast('success', 'Weight logged!', `${animal.animal_code || animal.animal_ref}: ${w} kg recorded`);
             onClose();
           }}>
             <Weight size={14} /> Save Weight
@@ -499,6 +518,12 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
   onStatusUpdate: (a: Animal) => void;
   onEdit: (a: Animal) => void;
 }) {
+  const { programmes } = useAppData();
+  const matchedProg = programmes.find(
+    p => (animal.programme_id && p.id === animal.programme_id) || p.name === animal.programme,
+  );
+  const supportsWeightTimeline = !animal.programme || isBreedingProgramme(animal.programme, matchedProg?.supports_weight_timeline);
+  const approxLabel = animal.approx_weight || matchedProg?.approx_weight_label || defaultApproxWeight(animal.programme, animal.animal_type);
   const weightPct = animal.min_weight_kg > 0 ? Math.min(100, Math.round((animal.current_weight_kg / animal.min_weight_kg) * 100)) : 100;
   const belowMin = animal.current_weight_kg < animal.min_weight_kg;
 
@@ -541,6 +566,7 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
                 ['Programme', animal.programme || '—'],
                 ['Service Type', formatServiceType(animal.service_type)],
                 ...(animal.delivery_portion ? [['Portion to be Delivered', formatDeliveryPortion(animal.delivery_portion)]] : []),
+                ['Approx. Weight', approxLabel],
                 ['Location', animal.location],
                 ['Tag Number', animal.tag_number],
                 ['Breed', animal.breed],
@@ -555,28 +581,61 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
               ))}
             </div>
             <div>
-              {/* Weight Progress */}
-              <div style={{ marginBottom: '1.25rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Weight Progress</span>
-                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: belowMin ? 'var(--danger)' : 'var(--success)' }}>
-                    {animal.current_weight_kg}kg / {animal.min_weight_kg}kg min
-                  </span>
-                </div>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{
-                    width: `${weightPct}%`,
-                    background: belowMin
-                      ? 'linear-gradient(90deg, var(--danger), #f97316)'
-                      : 'linear-gradient(90deg, var(--aig-green-600), var(--aig-green-400))',
-                  }} />
-                </div>
-                {belowMin && (
-                  <div style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: '0.375rem' }}>
-                    ⚠ Below minimum weight threshold
+              {supportsWeightTimeline ? (
+                <>
+                  {/* Weight Progress (Indonesia Breeding Programme / General Farm Stock) */}
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                      <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Weight Progress</span>
+                      <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: belowMin ? 'var(--danger)' : 'var(--success)' }}>
+                        {animal.current_weight_kg}kg / {animal.min_weight_kg}kg min
+                      </span>
+                    </div>
+                    <div className="progress-bar">
+                      <div className="progress-fill" style={{
+                        width: `${weightPct}%`,
+                        background: belowMin
+                          ? 'linear-gradient(90deg, var(--danger), #f97316)'
+                          : 'linear-gradient(90deg, var(--aig-green-600), var(--aig-green-400))',
+                      }} />
+                    </div>
+                    {belowMin && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: '0.375rem' }}>
+                        ⚠ Below minimum weight threshold
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+
+                  {/* Weight Update Timeline */}
+                  <div style={{ padding: '0.875rem', background: 'var(--surface-700)', borderRadius: 8, marginBottom: '1rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--aig-green-300)', marginBottom: '0.5rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Weight Update Timeline
+                    </div>
+                    {animal.weight_history && animal.weight_history.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: 140, overflowY: 'auto' }}>
+                        {animal.weight_history.map((entry, idx) => (
+                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', paddingBottom: '0.3rem', borderBottom: idx < animal.weight_history!.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                            <div>
+                              <strong style={{ color: 'var(--text-primary)' }}>{entry.weight_kg} kg</strong>
+                              {entry.notes && <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>· {entry.notes}</span>}
+                            </div>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{formatDate(entry.recorded_at)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        No weight updates logged yet. Click &ldquo;Log Weight Update&rdquo; below to record monthly breeding weight.
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div style={{ padding: '0.875rem', background: 'var(--surface-700)', borderRadius: 8, marginBottom: '1rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.35rem', fontWeight: 600 }}>Approx. Animal Weight</div>
+                  <div style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--aig-green-300)' }}>{approxLabel}</div>
+                </div>
+              )}
 
               {/* Status */}
               <div style={{ padding: '0.875rem', background: 'var(--surface-700)', borderRadius: 8, marginBottom: '1rem' }}>
@@ -597,14 +656,16 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
           </div>
         </div>
 
-        {/* Footer — all 3 buttons fully working */}
+        {/* Footer */}
         <div className="modal-footer" style={{ flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" onClick={() => onEdit(animal)} style={{ gap: '0.5rem' }}>
             Edit Details
           </button>
-          <button className="btn btn-secondary" onClick={() => onWeightLog(animal)} style={{ gap: '0.5rem' }}>
-            <Weight size={14} /> Log Weight Update
-          </button>
+          {supportsWeightTimeline && (
+            <button className="btn btn-secondary" onClick={() => onWeightLog(animal)} style={{ gap: '0.5rem' }}>
+              <Weight size={14} /> Log Weight Update
+            </button>
+          )}
           <button className="btn btn-outline-green" onClick={() => onInspection(animal)} style={{ gap: '0.5rem' }}>
             <ClipboardCheck size={14} /> Record Inspection
           </button>
@@ -646,9 +707,14 @@ export function AnimalsPage() {
   }, [ctxUpdateAnimal]);
 
 
-  const handleWeightUpdate = useCallback((id: string, weight: number) => {
-    updateAnimal(id, { current_weight_kg: weight });
-  }, [updateAnimal]);
+  const handleWeightUpdate = useCallback((id: string, weight: number, notes?: string) => {
+    const existing = animals.find(a => a.id === id);
+    const nextHistory = [
+      ...(existing?.weight_history ?? []),
+      { weight_kg: weight, recorded_at: new Date().toISOString(), ...(notes ? { notes } : {}) },
+    ];
+    updateAnimal(id, { current_weight_kg: weight, weight_history: nextHistory });
+  }, [animals, updateAnimal]);
 
   const handleStatusUpdate = useCallback((id: string, status: AnimalStatus) => {
     updateAnimal(id, { status });
@@ -792,6 +858,11 @@ export function AnimalsPage() {
       {/* Animal Grid — real photorealistic images */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
         {filtered.map(a => {
+          const matchedProg = programmes.find(
+            p => (a.programme_id && p.id === a.programme_id) || p.name === a.programme,
+          );
+          const supportsWeightTimeline = !a.programme || isBreedingProgramme(a.programme, matchedProg?.supports_weight_timeline);
+          const approxLabel = a.approx_weight || matchedProg?.approx_weight_label || defaultApproxWeight(a.programme, a.animal_type);
           const weightPct = a.min_weight_kg > 0 ? Math.min(100, Math.round((a.current_weight_kg / a.min_weight_kg) * 100)) : 100;
           const belowMin = a.current_weight_kg < a.min_weight_kg;
           const displayCode = a.animal_code || a.animal_ref;
@@ -888,25 +959,35 @@ export function AnimalsPage() {
                   </div>
                 )}
 
-                {/* Weight bar */}
-                <div style={{ marginBottom: '0.625rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <Weight size={11} /> Weight
-                    </span>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: belowMin ? 'var(--danger)' : 'var(--text-secondary)' }}>
-                      {a.current_weight_kg}kg / {a.min_weight_kg}kg
-                    </span>
+                {/* Weight bar (only for Breeding Programme / General Farm Stock) vs Approx. Weight */}
+                {supportsWeightTimeline ? (
+                  <div style={{ marginBottom: '0.625rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <Weight size={11} /> Weight Timeline
+                      </span>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: belowMin ? 'var(--danger)' : 'var(--text-secondary)' }}>
+                        {a.current_weight_kg}kg / {a.min_weight_kg}kg
+                        {a.weight_history?.length ? ` (${a.weight_history.length})` : ''}
+                      </span>
+                    </div>
+                    <div className="progress-bar">
+                      <div className="progress-fill" style={{
+                        width: `${weightPct}%`,
+                        background: belowMin
+                          ? 'linear-gradient(90deg, var(--danger), #f97316)'
+                          : 'linear-gradient(90deg, var(--aig-green-600), var(--aig-green-400))',
+                      }} />
+                    </div>
                   </div>
-                  <div className="progress-bar">
-                    <div className="progress-fill" style={{
-                      width: `${weightPct}%`,
-                      background: belowMin
-                        ? 'linear-gradient(90deg, var(--danger), #f97316)'
-                        : 'linear-gradient(90deg, var(--aig-green-600), var(--aig-green-400))',
-                    }} />
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.625rem', fontSize: '0.75rem' }}>
+                    <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <Weight size={11} /> Approx. Weight
+                    </span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{approxLabel}</span>
                   </div>
-                </div>
+                )}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   <span>📍 {a.location}</span>

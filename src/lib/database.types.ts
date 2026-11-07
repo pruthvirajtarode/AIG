@@ -115,6 +115,8 @@ export interface Programme {
   region: string | null;
   service_type: ServiceType;
   supports_portions: boolean;
+  approx_weight_label?: string | null;
+  supports_weight_timeline?: boolean;
   hijri_year: number | null;
   animal_type: AnimalType;
   animals_per_share: number;
@@ -216,6 +218,7 @@ export interface Order {
   special_requests: string | null;
   internal_notes: string | null;
   metadata: Json;
+  confirmation_email_sent_at?: string | null;
   confirmed_at: string | null;
   completed_at: string | null;
   cancelled_at: string | null;
@@ -321,6 +324,8 @@ export interface Animal {
   initial_weight_kg: number | null;
   current_weight_kg: number | null;
   min_weight_kg: number | null;
+  approx_weight?: string | null;
+  weight_history?: Json;
   notes: string | null;
   metadata: Json;
   slaughtered_at: string | null;

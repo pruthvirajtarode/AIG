@@ -7,6 +7,10 @@ export type OrderServiceType = 'qurban' | 'aqiqah' | 'nazar';
 export type OrderPaymentMethod = 'paynow' | 'cash' | 'installment' | 'bank_transfer';
 export type OrderDeliveryPortion = 'full' | 'one_third' | 'two_thirds' | 'nil';
 
+/** Official Al Ihsan Group WhatsApp Business number for AIGMS notifications. */
+export const OFFICIAL_WHATSAPP_NUMBER = '+6585456783';
+export const OFFICIAL_WHATSAPP_DISPLAY = '+65 8545 6783';
+
 export const ORDER_SERVICE_OPTIONS: ReadonlyArray<{ label: string; value: 'qurban' | 'aqiqah' }> = [
   { label: 'Qurban', value: 'qurban' },
   { label: 'Aqiqah', value: 'aqiqah' },
@@ -148,6 +152,39 @@ export function isAustraliaToSingaporeProgramme(
   return false;
 }
 
+/**
+ * True ONLY for breeding programmes (e.g. Indonesia - Breeding Programme) where
+ * ongoing weight updates / weight timeline are tracked and shown to the participant.
+ * All standard Qurban programmes display approximate weight only (no weight timeline).
+ */
+export function isBreedingProgramme(
+  programmeName?: string | null,
+  supportsWeightTimeline?: boolean | null,
+): boolean {
+  if (typeof supportsWeightTimeline === 'boolean') return supportsWeightTimeline;
+  return /\bbreeding\b/i.test(programmeName ?? '');
+}
+
+/**
+ * Default approximate weight label for standard Qurban programmes/animals.
+ */
+export function defaultApproxWeight(
+  programmeName?: string | null,
+  animalType?: string | null,
+): string {
+  const n = (programmeName ?? '').toLowerCase();
+  const t = (animalType ?? '').toLowerCase();
+  if (n.includes('breeding')) return 'Approx. 25–35 kg (monthly weight updates)';
+  if (n.includes('goat (xl)')) return 'Approx. 35–40 kg';
+  if (n.includes('goat (l)')) return 'Approx. 25–30 kg';
+  if (n.includes('goat (m)')) return 'Approx. 20–25 kg';
+  if (n.includes('cattle') || t === 'cow' || t === 'buffalo') return 'Approx. 300–350 kg (whole)';
+  if (n.includes('lamb') || t === 'lamb') return 'Approx. 18–22 kg';
+  if (n.includes('sheep') || t === 'sheep') return 'Approx. 25–30 kg';
+  if (t === 'camel') return 'Approx. 300–400 kg';
+  return 'Approx. 22–28 kg';
+}
+
 // ── Order Reference & Animal Code Generation ──────────────────
 
 /**
@@ -229,6 +266,27 @@ export function formatDeliveryPortion(portion?: string | null): string {
   }
 }
 
+/**
+ * Summarize per-Qurban delivery portions across an order's animals.
+ * If all animals share the same portion (or there is 1 Qurban), returns e.g. '2/3'.
+ * If multiple Qurbans have distinct portions, returns e.g. 'Qurban 1: 2/3 · Qurban 2: Full'.
+ */
+export function summarizeOrderPortions(
+  portions: Array<string | null | undefined>,
+  fallbackPortion?: string | null,
+): string {
+  const valid = portions.filter((p): p is string => Boolean(p && p.trim()));
+  if (valid.length === 0) {
+    return formatDeliveryPortion(fallbackPortion);
+  }
+  const formatted = valid.map(p => formatDeliveryPortion(p));
+  const unique = Array.from(new Set(formatted));
+  if (unique.length === 1) {
+    return unique[0];
+  }
+  return formatted.map((label, idx) => `Qurban ${idx + 1}: ${label}`).join(' · ');
+}
+
 // ── Order Input Validation ────────────────────────────────────
 
 export interface OrderValidationCandidate {
@@ -244,7 +302,10 @@ export interface OrderValidationCandidate {
   delivery_portion?: string | null;
   quantity: number;
   total_amount: number;
-  qurban_entries: Array<{ qurban_name_holder: string }>;
+  qurban_entries: Array<{
+    qurban_name_holder: string;
+    delivery_portion?: string | null;
+  }>;
 }
 
 export interface OrderValidationContext {
@@ -256,7 +317,13 @@ export interface OrderValidationContext {
 export function validateOrderCandidate(
   input: OrderValidationCandidate,
   ctx: OrderValidationContext = {},
-): { valid: true; normalizedPortion: OrderDeliveryPortion | null } | { valid: false; error: string } {
+):
+  | {
+      valid: true;
+      normalizedPortion: OrderDeliveryPortion | null;
+      normalizedPortions: Array<OrderDeliveryPortion | null>;
+    }
+  | { valid: false; error: string } {
   if (!input.full_name?.trim()) {
     return { valid: false, error: 'Full Name is required.' };
   }
@@ -350,15 +417,31 @@ export function validateOrderCandidate(
 
   const isAuSg = isAustraliaToSingaporeProgramme(progName, resolvedCountry);
   if (isAuSg) {
-    const dp = (input.delivery_portion ?? '').trim().toLowerCase();
-    if (!dp || !['full', 'one_third', 'two_thirds', 'nil'].includes(dp)) {
-      return {
-        valid: false,
-        error: 'Portion to be Delivered (Full, 1/3, 2/3, or NIL) is required for Australia → Singapore orders.',
-      };
+    const normalizedPortions: OrderDeliveryPortion[] = [];
+    for (let i = 0; i < input.qurban_entries.length; i++) {
+      const rawPortion = input.qurban_entries[i]?.delivery_portion ?? input.delivery_portion ?? '';
+      const dp = rawPortion.trim().toLowerCase();
+      if (!dp || !['full', 'one_third', 'two_thirds', 'nil'].includes(dp)) {
+        return {
+          valid: false,
+          error:
+            input.quantity > 1
+              ? `Portion to be Delivered (Full, 1/3, 2/3, or NIL) is required for Qurban ${i + 1} (Australia → Singapore).`
+              : 'Portion to be Delivered (Full, 1/3, 2/3, or NIL) is required for Australia → Singapore orders.',
+        };
+      }
+      normalizedPortions.push(dp as OrderDeliveryPortion);
     }
-    return { valid: true, normalizedPortion: dp as OrderDeliveryPortion };
+    return {
+      valid: true,
+      normalizedPortion: normalizedPortions[0] ?? null,
+      normalizedPortions,
+    };
   }
 
-  return { valid: true, normalizedPortion: null };
+  return {
+    valid: true,
+    normalizedPortion: null,
+    normalizedPortions: Array.from({ length: input.qurban_entries.length }, () => null),
+  };
 }

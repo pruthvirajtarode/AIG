@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, Award, Download, Send, RefreshCw, Eye, X, CheckCircle2, Printer } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
@@ -7,6 +7,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 import { CertificateDesign, type Certificate } from '@/components/ui/CertificateDesign';
 import { useAppData } from '@/contexts/AppDataContext';
+import { OFFICIAL_WHATSAPP_DISPLAY } from '@/lib/orderRules';
 
 const CERT_STATUS_BADGE: Record<CertificateStatus, string> = {
   not_generated: 'badge-gray',
@@ -25,10 +26,6 @@ const CERT_STATUS_LABEL: Record<CertificateStatus, string> = {
   regenerated:   'Regenerated',
   failed:        'Failed',
 };
-
-
-const INITIAL_CERTIFICATES: Certificate[] = [];
-
 
 // ── Certificate Preview + Action Modal ─────────────────────────
 function CertPreviewModal({
@@ -77,11 +74,14 @@ function CertPreviewModal({
 
   const handleSend = useCallback(async () => {
     setSending(true);
-    // Simulate email send (1.5s delay)
-    await new Promise(r => setTimeout(r, 1500));
+    await new Promise(r => setTimeout(r, 800));
     setSending(false);
     onStatusChange(cert.id, 'sent');
-    toast('success', 'Certificate sent!', `Email sent to participant for ${cert.participant_name}`);
+    toast(
+      'success',
+      'Certificate-Ready WhatsApp sent!',
+      `Notified ${cert.participant_name} from ${OFFICIAL_WHATSAPP_DISPLAY} (Email fallback enabled) with Portal PDF download link.`,
+    );
     onClose();
   }, [cert, toast, onStatusChange, onClose]);
 
@@ -136,7 +136,7 @@ function CertPreviewModal({
               }}
             >
               {sending ? <span className="spinner" style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#fff', width: 14, height: 14 }} /> : <Send size={15} />}
-              {sending ? 'Sending…' : 'Send to Participant'}
+              {sending ? 'Sending…' : 'Notify via WhatsApp'}
             </button>
           )}
         </div>
@@ -169,7 +169,7 @@ export function CertificatesPage() {
     await new Promise(r => setTimeout(r, 1200)); // simulate
     setGenerating(null);
     updateStatus(id, 'generated');
-    toast('success', 'Certificate generated!', `Certificate for ${name} is ready.`);
+    toast('success', 'Certificate generated!', `Certificate for ${name} is ready in Participant Portal & WhatsApp notification sent.`);
   }, [toast, updateStatus]);
 
   const handleBulkGenerate = useCallback(async () => {
@@ -186,16 +186,24 @@ export function CertificatesPage() {
     const toSend = certs.filter(c => c.status === 'generated');
     if (!toSend.length) { toast('info', 'No generated certificates to send'); return; }
     setBulkSending(true);
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise(r => setTimeout(r, 1200));
     toSend.forEach(c => updateCertStatus(c.id, 'sent'));
     setBulkSending(false);
-    toast('success', `${toSend.length} certificates sent to participants!`);
+    toast(
+      'success',
+      `${toSend.length} WhatsApp notifications sent!`,
+      `Sent from ${OFFICIAL_WHATSAPP_DISPLAY} with Portal PDF download link (Email fallback active).`,
+    );
   }, [certs, toast, updateCertStatus]);
 
   const handleSend = useCallback(async (cert: Certificate) => {
-    await new Promise(r => setTimeout(r, 1200));
+    await new Promise(r => setTimeout(r, 800));
     updateCertStatus(cert.id, 'sent');
-    toast('success', 'Certificate sent!', `Email sent for ${cert.participant_name}`);
+    toast(
+      'success',
+      'Certificate-Ready WhatsApp sent!',
+      `Notified ${cert.participant_name} from ${OFFICIAL_WHATSAPP_DISPLAY} (Email fallback enabled) to download PDF in Portal.`,
+    );
   }, [toast, updateCertStatus]);
 
   const filtered = certs.filter(c => {
@@ -219,7 +227,7 @@ export function CertificatesPage() {
       <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Certificates</h1>
-          <p className="page-subtitle">Generate and distribute Qurban certificates</p>
+          <p className="page-subtitle">Generate Qurban certificates for Portal PDF download &amp; WhatsApp notification</p>
         </div>
         <div className="page-header-actions" style={{ display: 'flex', gap: '0.75rem' }}>
           <button
@@ -240,7 +248,7 @@ export function CertificatesPage() {
             {bulkSending
               ? <span className="spinner" style={{ width: 13, height: 13, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#fff' }} />
               : <Send size={14} />}
-            Bulk Send
+            Bulk Notify (WhatsApp)
           </button>
         </div>
       </div>
@@ -358,7 +366,6 @@ export function CertificatesPage() {
                             title="Download / Print Certificate"
                             onClick={() => {
                               setSelected(c);
-                              // slight delay so modal renders before we trigger print
                               setTimeout(() => {
                                 const el = document.getElementById('certificate-print-area');
                                 if (!el) return;

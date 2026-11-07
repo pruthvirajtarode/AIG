@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { Settings, Bell, Shield, Database, Globe, CreditCard, Save, ChevronRight } from 'lucide-react';
+import { Settings, Bell, Shield, Globe, CreditCard, Save, ChevronRight } from 'lucide-react';
+import { useToast } from '@/contexts/ToastContext';
+import { OFFICIAL_WHATSAPP_DISPLAY, OFFICIAL_WHATSAPP_NUMBER } from '@/lib/orderRules';
 
 const TABS = [
   { id: 'general', label: 'General', icon: Settings },
@@ -74,32 +76,32 @@ function GeneralSettings() {
 
 function NotificationSettings() {
   const channels = [
-    { name: 'Email', key: 'email', enabled: true },
-    { name: 'WhatsApp', key: 'whatsapp', enabled: true },
-    { name: 'SMS', key: 'sms', enabled: false },
-    { name: 'In-App', key: 'in_app', enabled: true },
+    { name: `WhatsApp Business (Primary — ${OFFICIAL_WHATSAPP_DISPLAY})`, key: 'whatsapp', enabled: true, desc: 'Primary communication channel via Meta WhatsApp Cloud API' },
+    { name: 'Email (One-Time Invoice + Automatic Fallback)', key: 'email', enabled: true, desc: 'Sends Order Confirmation & Invoice once, and acts as automatic fallback if WhatsApp delivery fails' },
+    { name: 'Participant Portal (In-App + PDF Certificate Download)', key: 'in_app', enabled: true, desc: 'Participants view progress and download PDF Qurban Certificates directly from the portal' },
+    { name: 'SMS', key: 'sms', enabled: false, desc: 'Disabled' },
   ];
   const events = [
-    { event: 'Order Created', email: true, whatsapp: true, sms: false },
-    { event: 'Payment Submitted', email: true, whatsapp: true, sms: true },
-    { event: 'Payment Verified', email: true, whatsapp: true, sms: false },
-    { event: 'Payment Rejected', email: true, whatsapp: true, sms: true },
-    { event: 'Animal Allocated', email: false, whatsapp: true, sms: false },
-    { event: 'Qurban Complete', email: true, whatsapp: true, sms: false },
-    { event: 'Delivery Scheduled', email: false, whatsapp: true, sms: false },
-    { event: 'Certificate Ready', email: true, whatsapp: true, sms: false },
+    { event: 'Order Confirmation & Invoice (Sent Once)', email: true, whatsapp: true, rule: 'Email (once) + WhatsApp' },
+    { event: 'Payment Notifications (Verified / Rejected)', email: false, whatsapp: true, rule: 'WhatsApp primary (Email fallback)' },
+    { event: 'Qurban Status Updates (Allocated / Complete / Delivery)', email: false, whatsapp: true, rule: 'WhatsApp primary (Email fallback)' },
+    { event: 'Indonesia Breeding Weight Updates', email: false, whatsapp: true, rule: 'WhatsApp primary (Email fallback)' },
+    { event: 'Certificate-Ready Notification (Portal PDF Download Link)', email: false, whatsapp: true, rule: 'WhatsApp primary (Email fallback)' },
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <div className="card">
-        <div className="heading-md" style={{ marginBottom: '1.25rem' }}>Channel Configuration</div>
+        <div className="heading-md" style={{ marginBottom: '0.5rem' }}>Channel Priority & Fallback Policy</div>
+        <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+          WhatsApp (<strong>{OFFICIAL_WHATSAPP_DISPLAY}</strong>) is configured as the primary channel, with automatic Email fallback whenever WhatsApp delivery fails. Order Confirmation &amp; Invoice is emailed once upon order creation.
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {channels.map(c => (
             <div key={c.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.875rem 1rem', background: 'var(--surface-700)', borderRadius: 8 }}>
               <div>
                 <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{c.name}</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  {c.enabled ? 'Enabled — click to configure' : 'Disabled'}
+                  {c.desc}
                 </div>
               </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
@@ -111,24 +113,24 @@ function NotificationSettings() {
         </div>
       </div>
       <div className="card">
-        <div className="heading-md" style={{ marginBottom: '1.25rem' }}>Notification Events</div>
+        <div className="heading-md" style={{ marginBottom: '1.25rem' }}>Notification Routing Matrix</div>
         <div className="table-container" style={{ border: '1px solid var(--border-subtle)' }}>
           <table className="table">
             <thead>
               <tr>
                 <th>Event</th>
-                <th style={{ textAlign: 'center' }}>Email</th>
-                <th style={{ textAlign: 'center' }}>WhatsApp</th>
-                <th style={{ textAlign: 'center' }}>SMS</th>
+                <th style={{ textAlign: 'center' }}>WhatsApp (Primary)</th>
+                <th style={{ textAlign: 'center' }}>Direct Email</th>
+                <th>Delivery Rule</th>
               </tr>
             </thead>
             <tbody>
               {events.map(e => (
                 <tr key={e.event}>
                   <td style={{ fontWeight: 500 }}>{e.event}</td>
-                  <td style={{ textAlign: 'center' }}><input type="checkbox" defaultChecked={e.email} /></td>
                   <td style={{ textAlign: 'center' }}><input type="checkbox" defaultChecked={e.whatsapp} /></td>
-                  <td style={{ textAlign: 'center' }}><input type="checkbox" defaultChecked={e.sms} /></td>
+                  <td style={{ textAlign: 'center' }}><input type="checkbox" defaultChecked={e.email} /></td>
+                  <td style={{ fontSize: '0.78rem', color: 'var(--aig-green-300)' }}>{e.rule}</td>
                 </tr>
               ))}
             </tbody>
@@ -183,8 +185,61 @@ function PlaceholderSettings({ title }: { title: string }) {
   );
 }
 
+function IntegrationsSettings() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <div className="card">
+        <div className="heading-md" style={{ marginBottom: '0.35rem' }}>Meta WhatsApp Cloud API</div>
+        <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+          Official Al Ihsan Group WhatsApp Business sender configured for primary notifications (with Email fallback). API tokens are stored server-side via environment secrets only.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="settings-grid-2">
+          <div className="form-group">
+            <label className="form-label">Official Business Phone Number</label>
+            <input className="form-input" defaultValue={OFFICIAL_WHATSAPP_NUMBER} style={{ fontFamily: 'monospace' }} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Connection Mode</label>
+            <select className="form-input form-select" defaultValue="coexistence">
+              <option value="coexistence">Meta Coexistence (WhatsApp Business App + Cloud API)</option>
+              <option value="cloud_only">Dedicated Meta WhatsApp Cloud API</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Meta WhatsApp Business Account (WABA) ID</label>
+            <input className="form-input" placeholder="e.g. 102938475610293" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Meta Phone Number ID</label>
+            <input className="form-input" placeholder="e.g. 109283746501928" />
+          </div>
+          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label">Portal Certificate Download Path</label>
+            <input className="form-input" defaultValue="/portal/certificates" style={{ fontFamily: 'monospace' }} />
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="heading-md" style={{ marginBottom: '1rem' }}>Email Provider (One-Time Invoice + WhatsApp Fallback)</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="settings-grid-2">
+          <div className="form-group">
+            <label className="form-label">Sender Address</label>
+            <input className="form-input" defaultValue="noreply@alihsangroup.sg" type="email" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Fallback Policy</label>
+            <input className="form-input" defaultValue="Automatic on WhatsApp delivery error" readOnly />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsPage() {
   usePageTitle('Settings');
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('general');
 
   return (
@@ -194,7 +249,7 @@ export function SettingsPage() {
           <h1 className="page-title">Settings</h1>
           <p className="page-subtitle">System configuration and preferences</p>
         </div>
-        <button className="btn btn-primary">
+        <button className="btn btn-primary" onClick={() => toast('success', 'Settings saved', 'Communication and system preferences updated.')}>
           <Save size={16} />
           Save Changes
         </button>
@@ -225,7 +280,7 @@ export function SettingsPage() {
           {activeTab === 'general' && <GeneralSettings />}
           {activeTab === 'notifications' && <NotificationSettings />}
           {activeTab === 'security' && <SecuritySettings />}
-          {activeTab === 'integrations' && <PlaceholderSettings title="Integrations" />}
+          {activeTab === 'integrations' && <IntegrationsSettings />}
           {activeTab === 'billing' && <PlaceholderSettings title="Billing & Subscriptions" />}
         </div>
       </div>

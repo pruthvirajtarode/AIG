@@ -13,7 +13,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useToast } from '@/contexts/ToastContext';
 import { useAppData } from '@/contexts/AppDataContext';
-import { formatDeliveryPortion, formatPaymentMethod, formatServiceType } from '@/lib/orderRules';
+import { formatDeliveryPortion, formatPaymentMethod, formatServiceType, summarizeOrderPortions } from '@/lib/orderRules';
 
 // ── Mock data ────────────────────────────────────────────────
 const REVENUE_DATA = [
@@ -199,6 +199,10 @@ export function DashboardPage() {
       ['Order Ref', 'Participant', 'Contact', 'Email', 'Programme', 'Service Type', 'No. of Qurbans', 'Payment Method', 'Payment Status', 'Delivery Portion', 'Amount', 'Order Status', 'Created Date'],
       ...orders.map(o => {
         const pay = payments.find(p => p.order_ref === o.order_ref);
+        const orderPortions = summarizeOrderPortions(
+          animals.filter(a => a.order_ref === o.order_ref).map(a => a.delivery_portion),
+          o.delivery_portion,
+        );
         return [
           o.order_ref,
           o.participant,
@@ -209,7 +213,7 @@ export function DashboardPage() {
           o.quantity,
           formatPaymentMethod(o.payment_method ?? 'paynow'),
           pay?.status ?? 'pending',
-          formatDeliveryPortion(o.delivery_portion),
+          orderPortions,
           `${o.currency} ${o.total_amount}`,
           o.status,
           o.created_at,

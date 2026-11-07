@@ -6,6 +6,7 @@ import type { AnimalType, DistributionMethod } from '@/lib/database.types';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 import { useToast } from '@/contexts/ToastContext';
 import { useAppData, uid, type AppProgramme } from '@/contexts/AppDataContext';
+import { defaultApproxWeight, isBreedingProgramme } from '@/lib/orderRules';
 
 const DISTRIBUTION_LABEL: Record<DistributionMethod, string> = {
   local_distribution: 'Local Distribution',
@@ -32,6 +33,10 @@ function ProgrammeModal({ programme, onClose }: { programme?: AppProgramme; onCl
   const [minQty, setMinQty] = useState(String(programme?.min_quantity ?? 1));
   const [qurbanDate, setQurbanDate] = useState(programme?.qurban_date ?? '');
   const [distribution, setDistribution] = useState<DistributionMethod>(programme?.distribution_method ?? 'local_distribution');
+  const [approxWeight, setApproxWeight] = useState(programme?.approx_weight_label ?? '');
+  const [supportsWeightTimeline, setSupportsWeightTimeline] = useState(
+    programme?.supports_weight_timeline ?? isBreedingProgramme(programme?.name),
+  );
   const [isActive, setIsActive] = useState(programme?.is_active ?? true);
 
   const handleSave = () => {
@@ -58,6 +63,8 @@ function ProgrammeModal({ programme, onClose }: { programme?: AppProgramme; onCl
       is_active: isActive,
       qurban_date: qurbanDate,
       orders_count: programme?.orders_count ?? 0,
+      approx_weight_label: approxWeight.trim() || defaultApproxWeight(name.trim(), animalType),
+      supports_weight_timeline: supportsWeightTimeline,
     };
     if (isNew) addProgramme(data); else updateProgramme(data);
     toast('success', isNew ? 'Programme created' : 'Programme updated', data.name);
@@ -118,7 +125,20 @@ function ProgrammeModal({ programme, onClose }: { programme?: AppProgramme; onCl
                   ))}
                 </select>
               </div>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label className="form-label">Approx. Animal Weight Label</label>
+                <input
+                  className="form-input"
+                  value={approxWeight}
+                  onChange={e => setApproxWeight(e.target.value)}
+                  placeholder="e.g. Approx. 25–30 kg"
+                />
+              </div>
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={supportsWeightTimeline} onChange={e => setSupportsWeightTimeline(e.target.checked)} />
+              Enable Weight Update Timeline (Breeding Programme — shows monthly weight updates instead of static approx. weight only)
+            </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer' }}>
               <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)} />
               Active (available for new orders)
@@ -219,6 +239,17 @@ export function ProgrammesPage() {
                 <div>
                   <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Orders</div>
                   <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{p.orders_count}</div>
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Weight Info</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: 2 }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>
+                      {p.approx_weight_label || defaultApproxWeight(p.name, p.animal_type)}
+                    </span>
+                    {isBreedingProgramme(p.name, p.supports_weight_timeline) && (
+                      <span className="badge badge-teal" style={{ fontSize: '0.65rem' }}>Weight Timeline</span>
+                    )}
+                  </div>
                 </div>
               </div>
 

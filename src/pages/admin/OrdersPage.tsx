@@ -13,14 +13,17 @@ import {
   ORDER_PAYMENT_OPTIONS,
   ORDER_SERVICE_OPTIONS,
   animalCodeForOrder,
+  defaultApproxWeight,
   formatDeliveryPortion,
   formatPaymentMethod,
   formatServiceType,
   isAustraliaToSingaporeProgramme,
+  isBreedingProgramme,
   isIndonesiaProgramme,
   nextOrderRef,
   normaliseOrderRef,
   participantsMatch,
+  summarizeOrderPortions,
   validateOrderCandidate,
   type OrderDeliveryPortion,
 } from '@/lib/orderRules';
@@ -133,7 +136,7 @@ function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel }: 
   onStatusChange: (id: string, next: OrderStatus) => void;
   onCancel: (id: string) => void;
 }) {
-  const { animals, payments } = useAppData();
+  const { animals, payments, programmes } = useAppData();
   const nextStatus = NEXT_STATUSES[order.status];
   const isCancellable = !['completed', 'cancelled', 'certificate_generated', 'delivered'].includes(order.status);
   const orderAnimals = useMemo(
@@ -146,6 +149,9 @@ function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel }: 
   const linkedPayment = payments.find(p => p.order_ref === order.order_ref);
   const payStatus = derivePaymentStatus(order, linkedPayment);
   const isAuSg = isAustraliaToSingaporeProgramme(order.programme, order.programme_country);
+  const matchedProg = programmes.find(p => (order.programme_id && p.id === order.programme_id) || p.name === order.programme);
+  const isBreeding = isBreedingProgramme(order.programme, matchedProg?.supports_weight_timeline);
+  const portionSummary = summarizeOrderPortions(orderAnimals.map(a => a.delivery_portion), order.delivery_portion);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -216,11 +222,11 @@ function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel }: 
                 <div className="detail-key">Total Amount</div>
                 <div className="detail-val" style={{ fontWeight: 700 }}>{formatCurrency(order.total_amount, order.currency)}</div>
               </div>
-              {(isAuSg || order.delivery_portion) && (
+              {(isAuSg || portionSummary !== '—') && (
                 <div className="detail-row" style={{ gridColumn: '1 / -1' }}>
                   <div className="detail-key">Portion to be Delivered (Australia → Singapore)</div>
                   <div className="detail-val" style={{ fontWeight: 600, color: 'var(--aig-green-300)' }}>
-                    {formatDeliveryPortion(order.delivery_portion)}
+                    {portionSummary}
                   </div>
                 </div>
               )}
@@ -270,6 +276,7 @@ function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel }: 
                 {orderAnimals.map((a, i) => {
                   const code = a.animal_code || a.animal_ref;
                   const portion = a.delivery_portion ?? order.delivery_portion;
+                  const approxLabel = a.approx_weight || matchedProg?.approx_weight_label || defaultApproxWeight(a.programme || order.programme, a.animal_type);
                   return (
                     <div
                       key={a.id}
@@ -318,8 +325,18 @@ function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel }: 
                           <span style={{ color: 'var(--text-muted)' }}>Animal / Location: </span>
                           <span style={{ color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{a.animal_type} · {a.location}</span>
                         </div>
+                        <div>
+                          <span style={{ color: 'var(--text-muted)' }}>{isBreeding ? 'Weight Updates: ' : 'Approx. Weight: '}</span>
+                          <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
+                            {isBreeding
+                              ? (a.current_weight_kg > 0
+                                  ? `${a.current_weight_kg} kg${a.weight_history?.length ? ` (${a.weight_history.length} update${a.weight_history.length === 1 ? '' : 's'})` : ''}`
+                                  : approxLabel)
+                              : approxLabel}
+                          </span>
+                        </div>
                         {(isAuSg || portion) && (
-                          <div style={{ gridColumn: '1 / -1' }}>
+                          <div>
                             <span style={{ color: 'var(--text-muted)' }}>Portion to be Delivered: </span>
                             <span style={{ color: 'var(--aig-green-300)', fontWeight: 600 }}>{formatDeliveryPortion(portion)}</span>
                           </div>
@@ -409,12 +426,11 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
   const [numQurbansInput, setNumQurbansInput] = useState('1');
   const [price,           setPrice]           = useState('');
   const [notes,           setNotes]           = useState('');
-  const [deliveryPortion, setDeliveryPortion] = useState<OrderDeliveryPortion | ''>('');
   const [initialStatus,   setInitialStatus]   = useState<OrderStatus>('pending_payment');
   const [formError,       setFormError]       = useState<string | null>(null);
 
-  // ── Dynamic qurban entries ───────────────────────────────
-  const [qurbanEntries, setQurbanEntries] = useState<QurbanEntry[]>([{ qurban_name_holder: '' }]);
+  // ── Dynamic qurban entries (each carries its own Qurban Name Holder + optional Portion) ──
+  const [qurbanEntries, setQurbanEntries] = useState<QurbanEntry[]>([{ qurban_name_holder: '', delivery_portion: null }]);
   const submittingRef = useRef(false);
 
   const selectedProg = activeProgrammes.find(p => p.id === programmeId);
@@ -442,7 +458,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
       if (count > prev.length) {
         return [
           ...prev,
-          ...Array.from({ length: count - prev.length }, () => ({ qurban_name_holder: '' })),
+          ...Array.from({ length: count - prev.length }, () => ({ qurban_name_holder: '', delivery_portion: null })),
         ];
       }
       return prev.slice(0, count);
@@ -459,7 +475,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
         if (clamped > prev.length) {
           return [
             ...prev,
-            ...Array.from({ length: clamped - prev.length }, () => ({ qurban_name_holder: '' })),
+            ...Array.from({ length: clamped - prev.length }, () => ({ qurban_name_holder: '', delivery_portion: null })),
           ];
         }
         return prev.slice(0, clamped);
@@ -473,7 +489,11 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
   };
 
   const updateQurbanEntry = (idx: number, name: string) => {
-    setQurbanEntries(prev => prev.map((e, i) => (i === idx ? { qurban_name_holder: name } : e)));
+    setQurbanEntries(prev => prev.map((e, i) => (i === idx ? { ...e, qurban_name_holder: name } : e)));
+  };
+
+  const updateQurbanPortion = (idx: number, portion: OrderDeliveryPortion) => {
+    setQurbanEntries(prev => prev.map((e, i) => (i === idx ? { ...e, delivery_portion: portion } : e)));
   };
 
   const handleProgrammeChange = (id: string) => {
@@ -489,7 +509,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
     }
     const nextSupportsPortions = prog ? isAustraliaToSingaporeProgramme(prog.name, prog.country) : false;
     if (!nextSupportsPortions) {
-      setDeliveryPortion('');
+      setQurbanEntries(prev => prev.map(e => ({ ...e, delivery_portion: null })));
     }
   };
 
@@ -530,6 +550,11 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
       return;
     }
 
+    const preparedEntries: QurbanEntry[] = qurbanEntries.map(q => ({
+      qurban_name_holder: q.qurban_name_holder.trim(),
+      delivery_portion: supportsPortions ? (q.delivery_portion ?? null) : null,
+    }));
+
     const validation = validateOrderCandidate(
       {
         order_ref: effectiveOrderRef,
@@ -541,10 +566,10 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
         programme_country: prog.country,
         service_type: serviceType,
         payment_method: paymentMethod,
-        delivery_portion: supportsPortions ? deliveryPortion : null,
+        delivery_portion: supportsPortions ? (preparedEntries[0]?.delivery_portion ?? null) : null,
         quantity: parsedQty,
         total_amount: unitPrice * parsedQty,
-        qurban_entries: qurbanEntries,
+        qurban_entries: preparedEntries,
       },
       {
         existingOrderRefs: orders.map(o => o.order_ref),
@@ -577,7 +602,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
         currency: prog.currency ?? 'SGD',
         notes,
         status: initialStatus,
-        qurban_entries: qurbanEntries.map(q => ({ qurban_name_holder: q.qurban_name_holder.trim() })),
+        qurban_entries: preparedEntries,
       });
       toast(
         'success',
@@ -706,6 +731,8 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
                   {selectedProg && (
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.375rem' }}>
                       {selectedProg.country} · {selectedProg.currency} {selectedProg.price_per_share} per share · {selectedProg.animal_type}
+                      {' · '}
+                      {selectedProg.approx_weight_label || defaultApproxWeight(selectedProg.name, selectedProg.animal_type)}
                     </div>
                   )}
                 </div>
@@ -805,33 +832,6 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
                   />
                 </div>
 
-                {/* Australia → Singapore Portion */}
-                {supportsPortions && (
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                    <label className="form-label">
-                      Portion to be Delivered * <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Australia → Singapore)</span>
-                    </label>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      {AUSTRALIA_SINGAPORE_PORTION_OPTIONS.map(dp => (
-                        <button
-                          key={dp.value}
-                          type="button"
-                          onClick={() => setDeliveryPortion(dp.value)}
-                          style={{
-                            flex: 1, padding: '0.5rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.8125rem',
-                            border: deliveryPortion === dp.value ? '1px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
-                            background: deliveryPortion === dp.value ? 'rgba(47,168,118,0.15)' : 'var(--surface-900)',
-                            color: deliveryPortion === dp.value ? 'var(--aig-green-200)' : 'var(--text-muted)',
-                            fontWeight: deliveryPortion === dp.value ? 600 : 400,
-                          }}
-                        >
-                          {dp.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {/* Notes */}
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <label className="form-label" htmlFor="order-notes">Special Requests / Notes</label>
@@ -891,6 +891,38 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
                           onChange={e => updateQurbanEntry(i, e.target.value)}
                         />
                       </div>
+                      {supportsPortions && (
+                        <div className="form-group" style={{ margin: '0.625rem 0 0' }}>
+                          <label className="form-label" style={{ fontSize: '0.75rem' }}>
+                            Portion to be Delivered * <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Australia → Singapore)</span>
+                          </label>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            {AUSTRALIA_SINGAPORE_PORTION_OPTIONS.map(dp => {
+                              const active = entry.delivery_portion === dp.value;
+                              return (
+                                <button
+                                  key={dp.value}
+                                  type="button"
+                                  onClick={() => updateQurbanPortion(i, dp.value)}
+                                  style={{
+                                    flex: 1,
+                                    padding: '0.45rem 0.5rem',
+                                    borderRadius: 8,
+                                    cursor: 'pointer',
+                                    fontSize: '0.8125rem',
+                                    border: active ? '1px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+                                    background: active ? 'rgba(47,168,118,0.15)' : 'var(--surface-900)',
+                                    color: active ? 'var(--aig-green-200)' : 'var(--text-muted)',
+                                    fontWeight: active ? 600 : 400,
+                                  }}
+                                >
+                                  {dp.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -954,11 +986,11 @@ function EditOrderModal({ order, onClose, onSave }: {
   const [unitPrice, setUnitPrice] = useState(
     String(order.quantity > 0 ? Number((order.total_amount / order.quantity).toFixed(2)) : initialProg?.price_per_share ?? 0),
   );
-  const [deliveryPortion, setDeliveryPortion] = useState<string>(order.delivery_portion ?? '');
   const [notes, setNotes] = useState(order.notes ?? '');
   const [qurbanEntries, setQurbanEntries] = useState<QurbanEntry[]>(() =>
     Array.from({ length: order.quantity }, (_, i) => ({
       qurban_name_holder: existingAnimals[i]?.qurban_name_holder ?? order.participant,
+      delivery_portion: existingAnimals[i]?.delivery_portion ?? order.delivery_portion ?? null,
     })),
   );
   const [formError, setFormError] = useState<string | null>(null);
@@ -977,7 +1009,7 @@ function EditOrderModal({ order, onClose, onSave }: {
       if (count > prev.length) {
         return [
           ...prev,
-          ...Array.from({ length: count - prev.length }, () => ({ qurban_name_holder: '' })),
+          ...Array.from({ length: count - prev.length }, () => ({ qurban_name_holder: '', delivery_portion: null })),
         ];
       }
       return prev.slice(0, count);
@@ -993,7 +1025,7 @@ function EditOrderModal({ order, onClose, onSave }: {
         setPaymentMethod('paynow');
       }
       if (!isAustraliaToSingaporeProgramme(prog.name, prog.country)) {
-        setDeliveryPortion('');
+        setQurbanEntries(prev => prev.map(e => ({ ...e, delivery_portion: null })));
       }
     }
   };
@@ -1022,6 +1054,11 @@ function EditOrderModal({ order, onClose, onSave }: {
       return;
     }
 
+    const preparedEntries: QurbanEntry[] = qurbanEntries.map(q => ({
+      qurban_name_holder: q.qurban_name_holder.trim(),
+      delivery_portion: supportsPortions ? (q.delivery_portion ?? null) : null,
+    }));
+
     try {
       const updated = onSave(order.id, {
         full_name: fullName.trim(),
@@ -1032,12 +1069,12 @@ function EditOrderModal({ order, onClose, onSave }: {
         programme_country: progCountry,
         service_type: serviceType,
         payment_method: paymentMethod,
-        delivery_portion: supportsPortions ? (deliveryPortion as OrderDeliveryPortion) : null,
+        delivery_portion: supportsPortions ? (preparedEntries[0]?.delivery_portion ?? null) : null,
         quantity: parsedQty,
         total_amount: priceNum * parsedQty,
         currency: selectedProg?.currency ?? order.currency,
         notes,
-        qurban_entries: qurbanEntries.map(q => ({ qurban_name_holder: q.qurban_name_holder.trim() })),
+        qurban_entries: preparedEntries,
       });
       toast('success', 'Order updated', `${updated.order_ref} saved and synced with Animal Stock.`);
       onClose();
@@ -1158,30 +1195,6 @@ function EditOrderModal({ order, onClose, onSave }: {
                 <input className="form-input" type="number" min="0" step="0.01" value={unitPrice} onChange={e => setUnitPrice(e.target.value)} />
               </div>
 
-              {supportsPortions && (
-                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label className="form-label">Portion to be Delivered * (Australia → Singapore)</label>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    {AUSTRALIA_SINGAPORE_PORTION_OPTIONS.map(dp => (
-                      <button
-                        key={dp.value}
-                        type="button"
-                        onClick={() => setDeliveryPortion(dp.value)}
-                        style={{
-                          flex: 1, padding: '0.5rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.8125rem',
-                          border: deliveryPortion === dp.value ? '1px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
-                          background: deliveryPortion === dp.value ? 'rgba(47,168,118,0.15)' : 'var(--surface-900)',
-                          color: deliveryPortion === dp.value ? 'var(--aig-green-200)' : 'var(--text-muted)',
-                          fontWeight: deliveryPortion === dp.value ? 600 : 400,
-                        }}
-                      >
-                        {dp.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label className="form-label">Notes</label>
                 <textarea className="form-input" rows={2} value={notes} onChange={e => setNotes(e.target.value)} />
@@ -1205,8 +1218,44 @@ function EditOrderModal({ order, onClose, onSave }: {
                         className="form-input"
                         placeholder={`Qurban Name Holder ${i + 1} *`}
                         value={entry.qurban_name_holder}
-                        onChange={e => setQurbanEntries(prev => prev.map((x, idx) => (idx === i ? { qurban_name_holder: e.target.value } : x)))}
+                        onChange={e => setQurbanEntries(prev => prev.map((x, idx) => (idx === i ? { ...x, qurban_name_holder: e.target.value } : x)))}
                       />
+                      {supportsPortions && (
+                        <div style={{ marginTop: '0.5rem' }}>
+                          <label className="form-label" style={{ fontSize: '0.75rem' }}>
+                            Portion to be Delivered * <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Australia → Singapore)</span>
+                          </label>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            {AUSTRALIA_SINGAPORE_PORTION_OPTIONS.map(dp => {
+                              const active = entry.delivery_portion === dp.value;
+                              return (
+                                <button
+                                  key={dp.value}
+                                  type="button"
+                                  onClick={() =>
+                                    setQurbanEntries(prev =>
+                                      prev.map((x, idx) => (idx === i ? { ...x, delivery_portion: dp.value } : x)),
+                                    )
+                                  }
+                                  style={{
+                                    flex: 1,
+                                    padding: '0.45rem 0.5rem',
+                                    borderRadius: 8,
+                                    cursor: 'pointer',
+                                    fontSize: '0.8125rem',
+                                    border: active ? '1px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+                                    background: active ? 'rgba(47,168,118,0.15)' : 'var(--surface-900)',
+                                    color: active ? 'var(--aig-green-200)' : 'var(--text-muted)',
+                                    fontWeight: active ? 600 : 400,
+                                  }}
+                                >
+                                  {dp.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1491,6 +1540,7 @@ export function OrdersPage() {
                 const orderAnimals = animalsByOrderRef.get(o.order_ref) ?? [];
                 const linkedPay = paymentByOrderRef.get(o.order_ref);
                 const payStatus = derivePaymentStatus(o, linkedPay);
+                const portionSummary = summarizeOrderPortions(orderAnimals.map(a => a.delivery_portion), o.delivery_portion);
                 return (
                   <React.Fragment key={o.id}>
                     <tr style={{ opacity: o.status === 'cancelled' ? 0.55 : 1 }}>
@@ -1513,9 +1563,9 @@ export function OrdersPage() {
                       </td>
                       <td style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>
                         <div>{o.programme}</div>
-                        {o.delivery_portion && (
+                        {portionSummary !== '—' && (
                           <div style={{ fontSize: '0.7rem', color: 'var(--aig-green-300)' }}>
-                            Portion: {formatDeliveryPortion(o.delivery_portion)}
+                            Portion: {portionSummary}
                           </div>
                         )}
                       </td>
@@ -1579,11 +1629,11 @@ export function OrdersPage() {
                                 {formatPaymentMethod(o.payment_method)} · {payStatus.text}
                               </div>
                             </div>
-                            {o.delivery_portion && (
+                            {portionSummary !== '—' && (
                               <div>
                                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>Portion to be Delivered</div>
                                 <div style={{ fontSize: '0.8125rem', color: 'var(--aig-green-300)', fontWeight: 600 }}>
-                                  {formatDeliveryPortion(o.delivery_portion)}
+                                  {portionSummary}
                                 </div>
                               </div>
                             )}
@@ -1616,6 +1666,11 @@ export function OrdersPage() {
                                     <span style={{ color: 'var(--text-primary)' }}>
                                       {a.qurban_name_holder || '—'}
                                     </span>
+                                    {a.delivery_portion && (
+                                      <span className="badge badge-teal" style={{ fontSize: '0.65rem' }}>
+                                        {formatDeliveryPortion(a.delivery_portion)}
+                                      </span>
+                                    )}
                                   </div>
                                 ))}
                               </div>
