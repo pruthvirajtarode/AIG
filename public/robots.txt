@@ -1,6 +1,7 @@
 User-agent: *
 Allow: /
 Allow: /login
+Allow: /verify
 Disallow: /admin
 Disallow: /admin/
 Disallow: /portal

@@ -7,7 +7,8 @@ import { useToast } from '@/contexts/ToastContext';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 import { CertificateDesign, printCertificate, type Certificate } from '@/components/ui/CertificateDesign';
 import { useAppData } from '@/contexts/AppDataContext';
-import { OFFICIAL_WHATSAPP_DISPLAY } from '@/lib/orderRules';
+import { OFFICIAL_WHATSAPP_DISPLAY, selectCertificateTemplate } from '@/lib/orderRules';
+import { notificationService } from '@/services/notificationService';
 
 const CERT_STATUS_BADGE: Record<CertificateStatus, string> = {
   not_generated: 'badge-gray',
@@ -53,10 +54,14 @@ function CertPreviewModal({
     await new Promise(r => setTimeout(r, 800));
     setSending(false);
     onStatusChange(cert.id, 'sent');
+    const conn = notificationService.getDiagnostics().whatsappConnectionStatus;
+    const isLive = conn === 'connected' || conn === 'edge_function_configured';
     toast(
-      'success',
-      'Certificate-Ready WhatsApp sent!',
-      `Notified ${cert.participant_name} from ${OFFICIAL_WHATSAPP_DISPLAY} (Email fallback enabled) with Portal PDF download link.`,
+      isLive ? 'success' : 'info',
+      isLive ? 'Certificate-Ready WhatsApp sent!' : 'Certificate Marked Sent (WhatsApp Sandbox Mode)',
+      isLive
+        ? `Notified ${cert.qurban_name_holder || cert.participant_name} from ${OFFICIAL_WHATSAPP_DISPLAY} (Email fallback enabled) with Portal PDF link.`
+        : `WhatsApp provider is not connected live yet — logged sandbox dispatch for ${cert.qurban_name_holder || cert.participant_name}.`,
     );
     onClose();
   }, [cert, toast, onStatusChange, onClose]);
@@ -167,26 +172,40 @@ export function CertificatesPage() {
     await new Promise(r => setTimeout(r, 1200));
     toSend.forEach(c => updateCertStatus(c.id, 'sent'));
     setBulkSending(false);
+    const conn = notificationService.getDiagnostics().whatsappConnectionStatus;
+    const isLive = conn === 'connected' || conn === 'edge_function_configured';
     toast(
-      'success',
-      `${toSend.length} WhatsApp notifications sent!`,
-      `Sent from ${OFFICIAL_WHATSAPP_DISPLAY} with Portal PDF download link (Email fallback active).`,
+      isLive ? 'success' : 'info',
+      isLive
+        ? `${toSend.length} WhatsApp notifications sent!`
+        : `${toSend.length} certificates marked sent (WhatsApp Sandbox Mode)`,
+      isLive
+        ? `Sent from ${OFFICIAL_WHATSAPP_DISPLAY} with Portal PDF download link (Email fallback active).`
+        : 'Configure the WhatsApp Cloud API Edge Function secrets to enable live Meta delivery.',
     );
   }, [certs, toast, updateCertStatus]);
 
   const handleSend = useCallback(async (cert: Certificate) => {
     await new Promise(r => setTimeout(r, 800));
     updateCertStatus(cert.id, 'sent');
+    const conn = notificationService.getDiagnostics().whatsappConnectionStatus;
+    const isLive = conn === 'connected' || conn === 'edge_function_configured';
     toast(
-      'success',
-      'Certificate-Ready WhatsApp sent!',
-      `Notified ${cert.participant_name} from ${OFFICIAL_WHATSAPP_DISPLAY} (Email fallback enabled) to download PDF in Portal.`,
+      isLive ? 'success' : 'info',
+      isLive ? 'Certificate-Ready WhatsApp sent!' : 'Certificate Marked Sent (WhatsApp Sandbox Mode)',
+      isLive
+        ? `Notified ${cert.qurban_name_holder || cert.participant_name} from ${OFFICIAL_WHATSAPP_DISPLAY} (Email fallback enabled) to download PDF in Portal.`
+        : `WhatsApp provider is not connected live yet — logged sandbox dispatch for ${cert.qurban_name_holder || cert.participant_name}.`,
     );
   }, [toast, updateCertStatus]);
 
   const filtered = certs.filter(c => {
     const q = search.toLowerCase();
-    const matchSearch = c.certificate_ref.toLowerCase().includes(q) || c.participant_name.toLowerCase().includes(q);
+    const matchSearch =
+      c.certificate_ref.toLowerCase().includes(q) ||
+      c.participant_name.toLowerCase().includes(q) ||
+      (c.qurban_name_holder ?? '').toLowerCase().includes(q) ||
+      c.order_ref.toLowerCase().includes(q);
     const matchStatus = !statusFilter || c.status === statusFilter;
     return matchSearch && matchStatus;
   });
@@ -283,8 +302,8 @@ export function CertificatesPage() {
             <thead>
               <tr>
                 <th>Certificate Ref</th>
-                <th>Participant</th>
-                <th>Programme</th>
+                <th>Qurban Holder / Participant</th>
+                <th>Programme &amp; Template</th>
                 <th>Animal</th>
                 <th>Qurban Date</th>
                 <th>Status</th>
@@ -302,15 +321,35 @@ export function CertificatesPage() {
                     </div>
                   </td>
                 </tr>
-              ) : filtered.map(c => (
+              ) : filtered.map(c => {
+                const tplType = c.template_type ?? selectCertificateTemplate(c.programme_name, c.programme_id);
+                return (
                 <tr key={c.id}>
                   <td>
                     <span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--gold-400)' }}>
                       {c.certificate_ref}
                     </span>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{c.order_ref}</div>
                   </td>
-                  <td style={{ fontWeight: 500 }}>{c.participant_name}</td>
-                  <td style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>{c.programme_name}</td>
+                  <td>
+                    <div style={{ fontWeight: 500 }}>{c.qurban_name_holder || c.participant_name}</div>
+                    {c.qurban_name_holder && c.qurban_name_holder !== c.participant_name && (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Buyer: {c.participant_name}</div>
+                    )}
+                  </td>
+                  <td style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
+                    <div>{c.programme_name}</div>
+                    <div style={{ display: 'flex', gap: '0.35rem', marginTop: 3, flexWrap: 'wrap' }}>
+                      <span className={`badge ${tplType === 'breeding_programme' ? 'badge-teal' : 'badge-gold'}`} style={{ fontSize: '0.65rem' }}>
+                        {tplType === 'breeding_programme' ? 'Breeding Template' : 'Standard Template'}
+                      </span>
+                      {c.service_type && (
+                        <span className="badge badge-info" style={{ fontSize: '0.65rem', textTransform: 'capitalize' }}>
+                          {c.service_type}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
                       <AnimalPhoto type={c.animal_type} size={32} radius={8} />
@@ -397,7 +436,8 @@ export function CertificatesPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -5,6 +5,7 @@ import { formatDate } from '@/lib/utils';
 import type { DeliveryStatus } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
 import { useAppData, type AppDelivery as Delivery } from '@/contexts/AppDataContext';
+import { formatDeliveryPortion } from '@/lib/orderRules';
 
 const DELIVERY_STATUS_BADGE: Record<DeliveryStatus, string> = {
   pending:         'badge-gray',
@@ -162,10 +163,21 @@ function DeliveryModal({ delivery, onClose, onUpdateStatus, onUpdate }: {
 export function DeliveriesPage() {
   usePageTitle('Deliveries');
   const { toast } = useToast();
-  const { deliveries, updateDeliveryStatus: ctxUpdateStatus, updateDelivery } = useAppData();
+  const { deliveries, orders, animals, updateDeliveryStatus: ctxUpdateStatus, updateDelivery } = useAppData();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<Delivery | null>(null);
+
+  const portionsForOrder = (orderRef: string): string => {
+    const orderAnimals = animals.filter(a => a.order_ref === orderRef && a.delivery_portion);
+    if (orderAnimals.length > 0) {
+      return orderAnimals
+        .map((a, idx) => `${orderAnimals.length > 1 ? `Q${idx + 1}: ` : ''}${formatDeliveryPortion(a.delivery_portion)}`)
+        .join(' · ');
+    }
+    const order = orders.find(o => o.order_ref === orderRef);
+    return order?.delivery_portion ? formatDeliveryPortion(order.delivery_portion) : '—';
+  };
 
   const updateStatus = (id: string, status: DeliveryStatus) => {
     ctxUpdateStatus(id, status);
@@ -248,7 +260,7 @@ export function DeliveriesPage() {
               <tr>
                 <th>Delivery Ref</th>
                 <th>Recipient</th>
-                <th>Order</th>
+                <th>Order &amp; Portion</th>
                 <th>Driver</th>
                 <th>Scheduled</th>
                 <th>Status</th>
@@ -273,7 +285,14 @@ export function DeliveriesPage() {
                     <div style={{ fontWeight: 500 }}>{d.participant}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{d.contact_phone}</div>
                   </td>
-                  <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>{d.order_ref}</td>
+                  <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                    <div style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)', fontWeight: 600 }}>{d.order_ref}</div>
+                    {portionsForOrder(d.order_ref) !== '—' && (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--gold-400)', marginTop: 2 }}>
+                        {portionsForOrder(d.order_ref)}
+                      </div>
+                    )}
+                  </td>
                   <td style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>{d.driver || '—'}</td>
                   <td style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
                     {d.scheduled_date ? formatDate(d.scheduled_date) : '—'}

@@ -16,6 +16,19 @@ export const ORDER_SERVICE_OPTIONS: ReadonlyArray<{ label: string; value: 'qurba
   { label: 'Aqiqah', value: 'aqiqah' },
 ];
 
+export type CertificateTemplateType = 'breeding_programme' | 'standard';
+
+export interface ParticipantIdentityConflict {
+  existingParticipantId: string;
+  existingParticipantRef: string;
+  existingFullName: string;
+  existingEmail: string;
+  existingPhone: string;
+  matchedFields: Array<'name' | 'email' | 'phone'>;
+  differingFields: Array<'name' | 'email' | 'phone'>;
+  summary: string;
+}
+
 export const ORDER_PAYMENT_OPTIONS: ReadonlyArray<{
   label: string;
   value: 'paynow' | 'cash' | 'installment';
@@ -60,6 +73,34 @@ export function normalisePhone(value?: string | null): string {
     return `65${digits}`;
   }
   return digits;
+}
+
+/**
+ * Normalize and validate a recipient phone number to strict E.164 format (+<country><number>, 8–15 digits)
+ * for Meta WhatsApp Cloud API delivery.
+ */
+export function normaliseWhatsAppPhoneE164(
+  value?: string | null,
+): { valid: true; e164: string; digits: string } | { valid: false; error: string } {
+  const raw = (value ?? '').trim();
+  if (!raw) {
+    return { valid: false, error: 'Recipient phone number is empty.' };
+  }
+  if (/[a-zA-Z]/.test(raw)) {
+    return { valid: false, error: `Invalid characters in phone number "${raw}".` };
+  }
+  const digits = normalisePhone(raw);
+  if (!/^[1-9]\d{7,14}$/.test(digits)) {
+    return {
+      valid: false,
+      error: `Phone number "${raw}" is not a valid international E.164 number (8–15 digits required).`,
+    };
+  }
+  return {
+    valid: true,
+    e164: `+${digits}`,
+    digits,
+  };
 }
 
 export function splitFullName(rawFullName: string): {
@@ -118,7 +159,143 @@ export function participantsMatch(
   return inName === exName && inEmail === exEmail && inPhone === exPhone;
 }
 
-// ── Programme Route Helpers ───────────────────────────────────
+/**
+ * Detect ambiguous participant identity conflicts when the 3-field combination
+ * (Full Name + Email Address + Contact Number) does NOT match an existing participant,
+ * but the incoming Email Address or Contact Number belongs to an existing participant
+ * with a different name/contact (or same name with 1 matching + 1 differing contact field).
+ *
+ * Used to flag an operational Exception for staff review without silently merging or overwriting.
+ */
+export function detectParticipantIdentityConflicts(
+  incoming: { full_name: string; email: string; contact_number: string },
+  existingParticipants: ReadonlyArray<{
+    id: string;
+    participant_ref?: string | null;
+    full_name?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    email: string;
+    phone?: string | null;
+    contact_number?: string | null;
+  }>,
+  excludeParticipantId?: string,
+): ParticipantIdentityConflict[] {
+  const inName = normaliseName(incoming.full_name);
+  const inEmail = normaliseEmail(incoming.email);
+  const inPhone = normalisePhone(incoming.contact_number);
+  if (!inName && !inEmail && !inPhone) return [];
+
+  const conflicts: ParticipantIdentityConflict[] = [];
+  for (const p of existingParticipants) {
+    if (excludeParticipantId && p.id === excludeParticipantId) continue;
+    if (participantsMatch(incoming, p)) continue;
+
+    const exFullName = participantFullName(p);
+    const exName = normaliseName(exFullName);
+    const exEmail = normaliseEmail(p.email);
+    const exPhone = normalisePhone(p.phone || p.contact_number || '');
+
+    const sameName = Boolean(inName && exName && inName === exName);
+    const sameEmail = Boolean(inEmail && exEmail && inEmail === exEmail);
+    const samePhone = Boolean(inPhone && exPhone && inPhone === exPhone);
+
+    // Flag conflict if email or phone matches a differently named/contacted participant
+    if (!sameEmail && !samePhone) continue;
+
+    const matchedFields: Array<'name' | 'email' | 'phone'> = [];
+    const differingFields: Array<'name' | 'email' | 'phone'> = [];
+    if (sameName) matchedFields.push('name');
+    else differingFields.push('name');
+    if (sameEmail) matchedFields.push('email');
+    else differingFields.push('email');
+    if (samePhone) matchedFields.push('phone');
+    else differingFields.push('phone');
+
+    const ref = p.participant_ref || p.id;
+    const summary = `Incoming (${incoming.full_name.trim()} / ${incoming.email.trim()} / ${incoming.contact_number.trim()}) shares ${matchedFields.join(' & ')} with existing participant ${ref} (${exFullName} / ${p.email} / ${p.phone || p.contact_number || '—'}) but differs on ${differingFields.join(' & ')}.`;
+
+    conflicts.push({
+      existingParticipantId: p.id,
+      existingParticipantRef: ref,
+      existingFullName: exFullName,
+      existingEmail: p.email,
+      existingPhone: p.phone || p.contact_number || '',
+      matchedFields,
+      differingFields,
+      summary,
+    });
+  }
+  return conflicts;
+}
+
+// ── Programme Route & Share Helpers ───────────────────────────
+
+/**
+ * Select the certificate template according to confirmed client rules:
+ * - 'breeding_programme': ONLY for the Indonesia Breeding Programme (prog-id-breeding / supports_weight_timeline).
+ * - 'standard': for ALL other programmes, including Indonesia - Goat (XL).
+ * Never select the template solely based on country === 'Indonesia'.
+ */
+export function selectCertificateTemplate(
+  programmeName?: string | null,
+  programmeId?: string | null,
+  supportsWeightTimeline?: boolean | null,
+): CertificateTemplateType {
+  if (programmeId === 'prog-id-breeding') return 'breeding_programme';
+  if (isBreedingProgramme(programmeName, supportsWeightTimeline)) return 'breeding_programme';
+  return 'standard';
+}
+
+/**
+ * Distinguish whole-animal allocations (1/1) from fractional cattle shares (1/7).
+ * Do not assume every purchased cattle share requires a separate physical cow.
+ */
+export function getProgrammeShareMetadata(
+  programmeName?: string | null,
+  animalsPerShare?: number | null,
+): {
+  animals_per_share: number;
+  share_ratio: '1/1' | '1/7' | string;
+  is_fractional_share: boolean;
+  label: string;
+} {
+  const n = (programmeName ?? '').toLowerCase();
+  const resolved =
+    typeof animalsPerShare === 'number' && animalsPerShare > 1
+      ? animalsPerShare
+      : n.includes('1/7') || n.includes('cattle (1/7)') || n.includes('cow share')
+        ? 7
+        : 1;
+  if (resolved > 1) {
+    return {
+      animals_per_share: resolved,
+      share_ratio: `1/${resolved}`,
+      is_fractional_share: true,
+      label: `1/${resolved} Cattle Share`,
+    };
+  }
+  return {
+    animals_per_share: 1,
+    share_ratio: '1/1',
+    is_fractional_share: false,
+    label: 'Whole Animal (1/1)',
+  };
+}
+
+/**
+ * Compute how many physical animals are required for a given number of allocated shares.
+ * For example, 7 purchased shares in a 1/7 cattle programme = 1 physical cow;
+ * 8 purchased shares = 2 physical cows.
+ */
+export function calculatePhysicalAnimalsNeeded(
+  allocatedSharesCount: number,
+  animalsPerShare = 1,
+): number {
+  if (allocatedSharesCount <= 0) return 0;
+  const divisor = Math.max(1, Math.floor(animalsPerShare || 1));
+  return Math.ceil(allocatedSharesCount / divisor);
+}
 
 export function isIndonesiaProgramme(programmeName: string, country?: string | null): boolean {
   const c = (country ?? '').trim().toLowerCase();

@@ -3,7 +3,14 @@ import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, Plus, X, Weight, CheckCircle2, ClipboardCheck, RefreshCw } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import type { AnimalStatus, AnimalType } from '@/lib/database.types';
-import { defaultApproxWeight, formatDeliveryPortion, formatServiceType, isBreedingProgramme } from '@/lib/orderRules';
+import {
+  calculatePhysicalAnimalsNeeded,
+  defaultApproxWeight,
+  formatDeliveryPortion,
+  formatServiceType,
+  getProgrammeShareMetadata,
+  isBreedingProgramme,
+} from '@/lib/orderRules';
 import { useToast } from '@/contexts/ToastContext';
 import { ANIMAL_IMAGES } from '@/lib/animalImages';
 import { useAppData, nextRef, uid, type AppAnimal as Animal } from '@/contexts/AppDataContext';
@@ -804,21 +811,27 @@ export function AnimalsPage() {
       </div>
 
       {/* Stats */}
-      <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
-        {[
-          { label: 'Total Animals', value: String(animals.length),                                            color: 'var(--aig-green-400)' },
-          { label: 'Available',     value: String(animals.filter(a => a.status === 'available').length),       color: 'var(--success)' },
-          { label: 'Reserved',      value: String(animals.filter(a => a.status === 'reserved').length),        color: 'var(--info)' },
-          { label: 'Allocated',     value: String(animals.filter(a => a.status === 'allocated').length),       color: 'var(--purple, #a855f7)' },
-          { label: 'Qurban Ready',  value: String(animals.filter(a => a.status === 'qurban_ready').length),    color: '#10b981' },
-          { label: 'Exceptions',    value: String(animals.filter(a => ['rejected','inspection_pending'].includes(a.status)).length), color: 'var(--danger)' },
-        ].map(s => (
-          <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
-            <div className="stat-value" style={{ fontSize: '1.375rem', color: s.color }}>{s.value}</div>
-            <div className="stat-label">{s.label}</div>
+      {(() => {
+        const cattleShares = animals.filter(a => (a.animals_per_share ?? getProgrammeShareMetadata(a.programme).animals_per_share) === 7).length;
+        const physicalCattleEquiv = calculatePhysicalAnimalsNeeded(cattleShares, 7);
+        return (
+          <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
+            {[
+              { label: 'Total Allocations', value: String(animals.length), color: 'var(--aig-green-400)' },
+              { label: '1/7 Cattle Shares', value: cattleShares > 0 ? `${cattleShares} (${physicalCattleEquiv} cow${physicalCattleEquiv === 1 ? '' : 's'})` : '0', color: 'var(--gold-400)' },
+              { label: 'Available', value: String(animals.filter(a => a.status === 'available').length), color: 'var(--success)' },
+              { label: 'Reserved', value: String(animals.filter(a => a.status === 'reserved').length), color: 'var(--info)' },
+              { label: 'Allocated', value: String(animals.filter(a => a.status === 'allocated').length), color: 'var(--purple, #a855f7)' },
+              { label: 'Exceptions', value: String(animals.filter(a => ['rejected','inspection_pending'].includes(a.status)).length), color: 'var(--danger)' },
+            ].map(s => (
+              <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
+                <div className="stat-value" style={{ fontSize: '1.25rem', color: s.color }}>{s.value}</div>
+                <div className="stat-label">{s.label}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       {/* Filters */}
       <div className="filter-bar">
@@ -862,6 +875,7 @@ export function AnimalsPage() {
             p => (a.programme_id && p.id === a.programme_id) || p.name === a.programme,
           );
           const supportsWeightTimeline = !a.programme || isBreedingProgramme(a.programme, matchedProg?.supports_weight_timeline);
+          const shareMeta = getProgrammeShareMetadata(a.programme, a.animals_per_share ?? matchedProg?.animals_per_share);
           const approxLabel = a.approx_weight || matchedProg?.approx_weight_label || defaultApproxWeight(a.programme, a.animal_type);
           const weightPct = a.min_weight_kg > 0 ? Math.min(100, Math.round((a.current_weight_kg / a.min_weight_kg) * 100)) : 100;
           const belowMin = a.current_weight_kg < a.min_weight_kg;
@@ -950,6 +964,12 @@ export function AnimalsPage() {
                         </span>
                       </div>
                     )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Share Allocation</span>
+                      <span style={{ color: shareMeta.animals_per_share === 7 ? 'var(--gold-400)' : 'var(--text-secondary)', fontWeight: 600 }}>
+                        {shareMeta.label}
+                      </span>
+                    </div>
                     {a.delivery_portion && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: 'var(--text-muted)' }}>Portion</span>

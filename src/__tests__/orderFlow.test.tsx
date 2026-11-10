@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
@@ -12,26 +12,42 @@ import {
   ORDER_PAYMENT_OPTIONS,
   ORDER_SERVICE_OPTIONS,
   animalCodeForOrder,
+  calculatePhysicalAnimalsNeeded,
   defaultApproxWeight,
+  detectParticipantIdentityConflicts,
   formatDeliveryPortion,
   formatPaymentMethod,
   formatServiceType,
+  getProgrammeShareMetadata,
   isAustraliaToSingaporeProgramme,
   isBreedingProgramme,
   isIndonesiaProgramme,
   normaliseEmail,
   normaliseName,
   normalisePhone,
+  normaliseWhatsAppPhoneE164,
   participantsMatch,
+  selectCertificateTemplate,
   summarizeOrderPortions,
   validateOrderCandidate,
 } from '@/lib/orderRules';
-import { notificationService } from '@/services/notificationService';
+import {
+  notificationService,
+  verifyMetaWebhookSignature,
+  WHATSAPP_TEMPLATE_REGISTRY,
+  validateWhatsAppTemplate,
+} from '@/services/notificationService';
+import { paymentProvider } from '@/services/paymentService';
+import { validateMediaAuthorization } from '@/services/mediaService';
+import { generateCertificatePdf, getCertificateVerificationUrl } from '@/services/certificateService';
+import { CertificateDesign } from '@/components/ui/CertificateDesign';
+import { CertificateVerifyPage } from '@/App';
 import { OrdersPage } from '@/pages/admin/OrdersPage';
 import { AnimalsPage } from '@/pages/admin/AnimalsPage';
 import { ParticipantsPage } from '@/pages/admin/ParticipantsPage';
 import { PaymentsPage } from '@/pages/admin/PaymentsPage';
 import { DashboardPage } from '@/pages/admin/DashboardPage';
+import { SettingsPage } from '@/pages/admin/SettingsPage';
 import { PortalOrdersPage } from '@/pages/portal/PortalOrdersPage';
 import { PortalCertificatesPage } from '@/pages/portal/PortalCertificatesPage';
 
@@ -960,11 +976,11 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
     expect(sentEmails).toHaveLength(1);
     expect(sentEmails[0].body).toContain('/portal/certificates');
 
-    // 3. Order creation stamps confirmation_email_sent_at once & Portal screens render cleanly
+    // 3. Phase 4.8: confirmation_email_sent_at is NOT stamped prematurely when simulated; only when live email succeeds
     const store = mountAppDataStore();
-    const ctx = store.getState();
-    const created = ctx.addOrder({
-      order_ref: 'ORD-INV-ONCE',
+    let ctx = store.getState();
+    const createdSim = ctx.addOrder({
+      order_ref: 'ORD-INV-SIM',
       full_name: 'Mariam Salleh',
       email: 'mariam@example.com',
       contact_number: '+65 8111 9999',
@@ -978,11 +994,486 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
       total_amount: 165,
       currency: 'SGD',
     });
-    expect(created.confirmation_email_sent_at).toBeTruthy();
+    // Synchronous order creation leaves confirmation_email_sent_at null until real provider accepts
+    expect(createdSim.confirmation_email_sent_at).toBeNull();
+    expect(createdSim.confirmation_email_status).toBe('queued');
+
+    // Also test direct notifyOrderCreatedAndInvoice honest vs simulated behavior:
+    notificationService.resetProviders();
+    const simInvoiceRes = await notificationService.notifyOrderCreatedAndInvoice({
+      recipient: { name: 'Mariam Salleh', email: 'mariam@example.com', phone: '+65 8111 9999' },
+      orderRef: 'ORD-INV-SIM-2',
+      programme: 'Uganda - Sheep',
+      serviceTypeLabel: 'Qurban',
+      quantity: 1,
+      totalFormatted: 'SGD 165',
+      paymentMethodLabel: 'PayNow',
+      alreadySentEmail: false,
+    });
+    expect(simInvoiceRes.emailTrulySubmitted).toBe(false);
+    expect(simInvoiceRes.emailDeliveryState).toBe('simulated');
 
     const portalOrdersHtml = store.renderScreen(<PortalOrdersPage />);
     expect(portalOrdersHtml).toContain('My Orders');
     const portalCertsHtml = store.renderScreen(<PortalCertificatesPage />);
     expect(portalCertsHtml).toContain('My Certificates');
+  });
+
+  it('TEST 14: Ambiguous participant identity conflicts flag an Exception without silent merge + fractional 1/7 Cattle share tracking', () => {
+    const store = mountAppDataStore();
+    let ctx = store.getState();
+
+    ctx.addOrder({
+      order_ref: 'ORD-ID-01',
+      full_name: 'Ahmad Rizal',
+      email: 'ahmad@example.sg',
+      contact_number: '+65 9111 2222',
+      programme: 'Australia to Singapore - Cattle (1/7)',
+      programme_id: 'prog-au-sg-cattle',
+      programme_country: 'Australia to Singapore',
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      delivery_portion: 'full',
+      quantity: 7,
+      qurban_entries: Array.from({ length: 7 }, (_, idx) => ({
+        qurban_name_holder: `Holder ${idx + 1}`,
+        delivery_portion: 'full',
+      })),
+      total_amount: 2135,
+      currency: 'SGD',
+    });
+
+    ctx = store.getState();
+    const cattleAnimals = ctx.animals.filter(a => a.order_ref === 'ORD-ID-01');
+    expect(cattleAnimals).toHaveLength(7);
+    expect(cattleAnimals[0].animals_per_share).toBe(7);
+    expect(cattleAnimals[0].share_ratio).toBe('1/7');
+    expect(calculatePhysicalAnimalsNeeded(7, 7)).toBe(1);
+    expect(calculatePhysicalAnimalsNeeded(8, 7)).toBe(2);
+    expect(getProgrammeShareMetadata('Australia to Singapore - Cattle (1/7)').label).toContain('1/7 Cattle Share');
+
+    // Different name using same email -> must create separate participant AND raise identity conflict exception
+    ctx.addOrder({
+      order_ref: 'ORD-ID-02',
+      full_name: 'Fatimah Rizal',
+      email: 'ahmad@example.sg',
+      contact_number: '+65 9333 4444',
+      programme: 'Uganda - Goat',
+      programme_id: 'prog-ug-goat',
+      programme_country: 'Uganda',
+      service_type: 'aqiqah',
+      payment_method: 'cash',
+      quantity: 1,
+      qurban_entries: [{ qurban_name_holder: 'Baby Yusuf' }],
+      total_amount: 145,
+      currency: 'SGD',
+    });
+
+    ctx = store.getState();
+    expect(ctx.participants).toHaveLength(2);
+    const conflictEx = ctx.exceptions.find(e => e.category === 'Participant' && e.title.includes('ORD-ID-02'));
+    expect(conflictEx).toBeDefined();
+    expect(conflictEx?.status).toBe('open');
+
+    const conflictsDirect = detectParticipantIdentityConflicts(
+      { full_name: 'Fatimah Rizal', email: 'ahmad@example.sg', contact_number: '+65 9333 4444' },
+      ctx.participants.filter(p => p.first_name === 'Ahmad'),
+    );
+    expect(conflictsDirect.length).toBeGreaterThan(0);
+
+    // Weight timeline updates must be stripped on non-breeding order animals
+    const ugGoat = ctx.animals.find(a => a.order_ref === 'ORD-ID-02')!;
+    ctx.updateAnimal(ugGoat.id, { current_weight_kg: 22 });
+    const afterNonBreedingUpdate = store.getState().animals.find(a => a.id === ugGoat.id)!;
+    expect(afterNonBreedingUpdate.weight_history).toEqual([]);
+  });
+
+  it('TEST 15: WhatsApp production hardening — E.164 normalization, approved Utility Templates, retry, duplicate suppression, HMAC webhook & Settings diagnostics', async () => {
+    notificationService.resetProviders();
+    notificationService.resetState();
+
+    // 1. E.164 normalization handles SG 8-digit numbers, spaced numbers, and rejects malformed ones
+    const norm1 = normaliseWhatsAppPhoneE164('8545 6783');
+    expect(norm1.valid && norm1.e164).toBe('+6585456783');
+    const norm2 = normaliseWhatsAppPhoneE164('+65 9123-4567');
+    expect(norm2.valid && norm2.e164).toBe('+6591234567');
+    expect(normaliseWhatsAppPhoneE164('123').valid).toBe(false);
+
+    // 2. Approved Meta WhatsApp template registry covers all events & validates required variables cleanly
+    expect(Object.keys(WHATSAPP_TEMPLATE_REGISTRY).length).toBeGreaterThanOrEqual(11);
+    const validTpl = validateWhatsAppTemplate('certificate.ready', {
+      participant_name: 'Zainab',
+      order_ref: 'ORD-50001',
+      certificate_ref: 'CERT-2026-0001',
+      programme: 'Uganda - Goat',
+    });
+    expect(validTpl.valid).toBe(true);
+    const invalidTpl = validateWhatsAppTemplate('certificate.ready', { participant_name: 'Zainab' });
+    expect(invalidTpl.valid).toBe(false);
+
+    // 3. Transient failure triggers automatic retry, then succeeds; duplicate idempotencyKey suppresses repeat send
+    let callCount = 0;
+    notificationService.setProviders({
+      whatsapp: {
+        name: 'flaky-wa',
+        isSimulated: false,
+        send: async () => {
+          callCount += 1;
+          if (callCount === 1) return { success: false, error: '503 upstream timeout' };
+          return { success: true, channelUsed: 'whatsapp', providerRef: 'wamid.test.retry.ok' };
+        },
+      },
+      email: {
+        name: 'live-email',
+        isSimulated: false,
+        send: async () => ({ success: true, channelUsed: 'email', providerRef: 'email-fallback-1' }),
+      },
+    });
+
+    const retriedRes = await notificationService.sendWhatsAppWithEmailFallback({
+      recipient: { name: 'Hassan', email: 'hassan@example.sg', phone: '+6591234567' },
+      subject: 'Order Status',
+      body: 'Your Qurban is Complete.',
+      eventType: 'qurban.completed',
+      idempotencyKey: 'qurban_completed:ORD-RETRY-1',
+    });
+    expect(retriedRes.success).toBe(true);
+    expect(retriedRes.deliveryState).toBe('accepted_by_provider');
+    expect(callCount).toBe(2);
+
+    // Duplicate send with same idempotencyKey returns cached success without invoking provider again
+    const dupRes = await notificationService.sendWhatsAppWithEmailFallback({
+      recipient: { name: 'Hassan', email: 'hassan@example.sg', phone: '+6591234567' },
+      subject: 'Order Status',
+      body: 'Your Qurban is Complete.',
+      eventType: 'qurban.completed',
+      idempotencyKey: 'qurban_completed:ORD-RETRY-1',
+    });
+    expect(dupRes.success).toBe(true);
+    expect(dupRes.idempotentReplay).toBe(true);
+    expect(callCount).toBe(2);
+
+    // 4. Async webhook failure advances log -> failed AND initiates Email fallback
+    const webhookUpdate = await notificationService.applyWebhookStatusUpdate({
+      providerRef: 'wamid.test.retry.ok',
+      status: 'failed',
+      errorMessage: '131026 Undeliverable',
+    });
+    expect(webhookUpdate.updated).toBe(true);
+    expect(webhookUpdate.fallbackTriggered).toBe(true);
+    expect(webhookUpdate.fallbackResult?.success).toBe(true);
+    expect(webhookUpdate.deliveryState).toBe('fallback_completed');
+
+    // 5. Webhook HMAC-SHA256 verification checks real crypto signature
+    const payload = JSON.stringify({ entry: [{ id: 'waba-1' }] });
+    const secret = 'test-meta-app-secret';
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+    const sigHeader = 'sha256=' + Array.from(new Uint8Array(mac)).map(b => b.toString(16).padStart(2, '0')).join('');
+    expect(await verifyMetaWebhookSignature(payload, sigHeader, secret)).toBe(true);
+    expect(await verifyMetaWebhookSignature(payload, 'sha256=deadbeef', secret)).toBe(false);
+
+    // 6. Reset to default sandbox -> SettingsPage renders honest Setup Required status
+    notificationService.resetProviders();
+    const store = mountAppDataStore();
+    const settingsHtml = renderToStaticMarkup(
+      <MemoryRouter initialEntries={['/admin/settings']}>
+        <AuthProvider>
+          <ToastProvider>
+            <AppDataProvider>
+              <SettingsPage />
+            </AppDataProvider>
+          </ToastProvider>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+    expect(settingsHtml).toContain('Settings');
+    expect(notificationService.getDiagnostics().whatsappConnectionStatus).toBe('setup_required');
+    void store;
+  });
+
+  it('TEST 16: Dual Certificate Templates (Breeding cert-sample-1 vs Standard cert-sample-2 including Indonesia Goat XL), multi-Qurban certs, PDF & /verify/:code', async () => {
+    // 1. Template selection rules: Breeding ONLY for Indonesia Breeding Programme, Standard for all others incl. Indonesia Goat XL
+    expect(selectCertificateTemplate('Indonesia - Breeding Programme', 'prog-id-breeding', true)).toBe('breeding_programme');
+    expect(selectCertificateTemplate('Indonesia - Goat (XL)', 'prog-id-goat-xl', false)).toBe('standard');
+    expect(selectCertificateTemplate('Australia to Singapore - Lamb', 'prog-au-sg-lamb', false)).toBe('standard');
+    expect(selectCertificateTemplate('Uganda - Cow', 'prog-ug-cow', false)).toBe('standard');
+
+    // 2. Breeding certificate renders framed animal photo inset; Standard renders Gold Rosette Seal & star border
+    const store = mountAppDataStore();
+    let ctx = store.getState();
+
+    const breedProg = ctx.programmes.find(p => p.id === 'prog-id-breeding')!;
+    const breedingOrder = ctx.addOrder({
+      order_ref: 'ORD-CERT-BREED',
+      full_name: 'Kathija Nachiar',
+      email: 'kathija@example.sg',
+      contact_number: '+65 9222 1111',
+      programme: breedProg.name,
+      programme_id: breedProg.id,
+      programme_country: breedProg.country,
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      quantity: 1,
+      qurban_entries: [{ qurban_name_holder: 'Kathija Nachiar' }],
+      total_amount: breedProg.price_per_share,
+      currency: 'SGD',
+    });
+    ctx = store.getState();
+    ctx.updateOrderStatus(breedingOrder.id, 'certificate_generated');
+
+    // Standard Multi-Qurban Aqiqah order (2 holders on Indonesia - Goat XL -> 2 unique standard certificates!)
+    const idGoatProg = ctx.programmes.find(p => p.id === 'prog-id-goat-xl')!;
+    const multiAqiqahOrder = ctx.addOrder({
+      order_ref: 'ORD-CERT-MULTI',
+      full_name: 'Haji Ismail',
+      email: 'ismail@example.sg',
+      contact_number: '+65 9444 5555',
+      programme: idGoatProg.name,
+      programme_id: idGoatProg.id,
+      programme_country: idGoatProg.country,
+      service_type: 'aqiqah',
+      payment_method: 'paynow',
+      quantity: 2,
+      qurban_entries: [
+        { qurban_name_holder: 'Nael bin Ismail' },
+        { qurban_name_holder: 'Maryam binte Ismail' },
+      ],
+      total_amount: idGoatProg.price_per_share * 2,
+      currency: 'SGD',
+    });
+    ctx = store.getState();
+    ctx.updateOrderStatus(multiAqiqahOrder.id, 'certificate_generated');
+
+    ctx = store.getState();
+    const breedingCert = ctx.certificates.find(c => c.order_ref === 'ORD-CERT-BREED')!;
+    expect(breedingCert.template_type).toBe('breeding_programme');
+    const breedingHtml = renderToStaticMarkup(<CertificateDesign cert={breedingCert} />);
+    expect(breedingHtml).toContain('data-template-type="breeding_programme"');
+    expect(breedingHtml).toContain('certificate-breeding-photo-inset');
+    expect(breedingHtml).toContain('Kathija Nachiar');
+
+    const multiCerts = ctx.certificates.filter(c => c.order_ref === 'ORD-CERT-MULTI');
+    expect(multiCerts).toHaveLength(2);
+    expect(multiCerts.every(c => c.template_type === 'standard')).toBe(true);
+    expect(multiCerts.every(c => c.service_type === 'aqiqah')).toBe(true);
+    expect(new Set(multiCerts.map(c => c.certificate_ref)).size).toBe(2);
+    expect(multiCerts.map(c => c.qurban_name_holder)).toEqual(expect.arrayContaining(['Nael bin Ismail', 'Maryam binte Ismail']));
+
+    const standardHtml = renderToStaticMarkup(<CertificateDesign cert={multiCerts[0]} />);
+    expect(standardHtml).toContain('data-template-type="standard"');
+    expect(standardHtml).toContain('AQIQAH');
+    expect(standardHtml).toContain('certificate-gold-rosette-seal');
+    expect(standardHtml).toContain('certificate-standard-bottom-border');
+
+    // 3. PDF Generation & Verification URL check
+    expect(getCertificateVerificationUrl(multiCerts[0].verification_code)).toBe(
+      `https://www.aigsuite.com/verify/${multiCerts[0].verification_code}`,
+    );
+    const pdfBlob = await generateCertificatePdf({
+      certificate: {
+        id: multiCerts[0].id,
+        tenant_id: 'al-ihsan',
+        order_id: multiAqiqahOrder.id,
+        participant_id: multiAqiqahOrder.participant_id ?? '',
+        certificate_ref: multiCerts[0].certificate_ref,
+        status: multiCerts[0].status,
+        programme_name: idGoatProg.name,
+        participant_name: multiCerts[0].participant_name,
+        qurban_name_holder: multiCerts[0].qurban_name_holder,
+        service_type: 'aqiqah',
+        country: idGoatProg.country,
+        hijri_year: 1447,
+        gregorian_year: 2026,
+        serial_number: null,
+        qurban_date: idGoatProg.qurban_date,
+        animal_ref: multiCerts[0].animal_ref,
+        animal_type: idGoatProg.animal_type,
+        animal_label: multiCerts[0].animal_label,
+        storage_key: null,
+        public_url: null,
+        verification_code: multiCerts[0].verification_code,
+        generated_at: multiCerts[0].generated_at,
+        generated_by: null,
+        sent_at: null,
+        metadata: {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        template_type: 'standard',
+      },
+      order: {
+        id: multiAqiqahOrder.id,
+        tenant_id: 'al-ihsan',
+        order_ref: multiAqiqahOrder.order_ref,
+        participant_id: multiAqiqahOrder.participant_id ?? '',
+        programme_id: idGoatProg.id,
+        status: 'certificate_generated',
+        quantity: 2,
+        unit_price: idGoatProg.price_per_share,
+        total_amount: idGoatProg.price_per_share * 2,
+        currency: 'SGD',
+        service_type: 'aqiqah',
+        qurban_name: null,
+        qurban_phone: null,
+        qurban_email: null,
+        preferred_animal: null,
+        delivery_portion: null,
+        hijri_year: 1447,
+        supplier_id: null,
+        legacy_ref: null,
+        is_returning_customer: null,
+        would_recommend: null,
+        feedback: null,
+        recipient_name: null,
+        recipient_notes: null,
+        delivery_address: null,
+        special_requests: null,
+        internal_notes: null,
+        metadata: {},
+        confirmed_at: null,
+        completed_at: null,
+        cancelled_at: null,
+        cancel_reason: null,
+        created_by: null,
+        updated_by: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        deleted_at: null,
+      },
+      participant: {
+        id: multiAqiqahOrder.participant_id ?? '',
+        tenant_id: 'al-ihsan',
+        profile_id: null,
+        participant_ref: 'PRT-001',
+        first_name: 'Haji',
+        last_name: 'Ismail',
+        email: 'ismail@example.sg',
+        phone: '+65 9444 5555',
+        country: 'Singapore',
+        nationality: null,
+        metadata: {},
+        ic_number: null,
+        notes: null,
+        portal_access: true,
+        is_active: true,
+        created_by: null,
+        updated_by: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        deleted_at: null,
+      },
+      programme: {
+        id: idGoatProg.id,
+        tenant_id: 'al-ihsan',
+        name: idGoatProg.name,
+        slug: idGoatProg.slug,
+        description: null,
+        country: idGoatProg.country,
+        region: null,
+        service_type: 'qurban',
+        supports_portions: false,
+        hijri_year: 1447,
+        animal_type: idGoatProg.animal_type,
+        animals_per_share: 1,
+        shares_available: 0,
+        min_quantity: 1,
+        max_quantity: null,
+        price_per_share: idGoatProg.price_per_share,
+        currency: 'SGD',
+        distribution_method: 'local_distribution',
+        delivery_required: false,
+        certificate_required: true,
+        evidence_required: false,
+        workflow_config: {},
+        status_flow: [],
+        notification_config: {},
+        starts_at: null,
+        ends_at: null,
+        qurban_date: idGoatProg.qurban_date,
+        is_active: true,
+        sort_order: 1,
+        metadata: {},
+        created_by: null,
+        updated_by: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+    expect(pdfBlob).toBeInstanceOf(Blob);
+    expect(pdfBlob.size).toBeGreaterThan(500);
+
+    // 4. Public /verify/:code route displays non-sensitive verification info and never leaks participant email/phone/IC
+    const verifyHtml = renderToStaticMarkup(
+      <MemoryRouter initialEntries={[`/verify/${multiCerts[0].verification_code}`]}>
+        <AuthProvider>
+          <ToastProvider>
+            <AppDataProvider>
+              <Routes>
+                <Route path="/verify/:code" element={<CertificateVerifyPage />} />
+              </Routes>
+            </AppDataProvider>
+          </ToastProvider>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+    expect(verifyHtml).toContain('Verified Authentic Certificate');
+    expect(verifyHtml).toContain(multiCerts[0].verification_code);
+    expect(verifyHtml).not.toContain('ismail@example.sg');
+    expect(verifyHtml).not.toContain('+65 9444 5555');
+  });
+
+  it('TEST 17: Honest payment provider (never auto-paid) & strict media upload authorization', async () => {
+    // 1. Payment verification returns pending/requiresManualVerification instead of falsely marking 'paid'
+    const init = await paymentProvider.initiate({
+      orderId: 'ord-1',
+      amount: 165,
+      currency: 'SGD',
+      method: 'paynow',
+      participantEmail: 'test@example.sg',
+      participantName: 'Test User',
+      description: 'Qurban order ORD-1',
+    });
+    expect(init.status).toBe('initiated_pending_proof');
+    expect(init.isSimulated).toBe(true);
+    const verifyRes = await paymentProvider.verify(init.transactionRef!);
+    expect(verifyRes.status).toBe('pending');
+    expect(verifyRes.requiresManualVerification).toBe(true);
+    expect(verifyRes.isSimulated).toBe(true);
+
+    // 2. Media upload authorization rules (participants may only upload payment-proofs for their own orders)
+    expect(
+      validateMediaAuthorization({
+        actorRole: 'participant',
+        actorParticipantId: 'p1',
+        resourceOwnerParticipantId: 'p1',
+        category: 'inspection',
+        action: 'upload',
+      }).authorized,
+    ).toBe(false);
+    expect(
+      validateMediaAuthorization({
+        actorRole: 'super_admin',
+        category: 'inspection',
+        action: 'upload',
+      }).authorized,
+    ).toBe(true);
+    expect(
+      validateMediaAuthorization({
+        actorRole: 'participant',
+        actorParticipantId: 'p1',
+        resourceOwnerParticipantId: 'p2',
+        category: 'payment-proofs',
+        action: 'upload',
+      }).authorized,
+    ).toBe(false);
+    expect(
+      validateMediaAuthorization({
+        actorRole: 'participant',
+        actorParticipantId: 'p1',
+        resourceOwnerParticipantId: 'p1',
+        category: 'payment-proofs',
+        action: 'upload',
+      }).authorized,
+    ).toBe(true);
   });
 });

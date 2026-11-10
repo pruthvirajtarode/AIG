@@ -22,16 +22,20 @@ import { getStatusLabel } from '@/lib/statusEngine';
 import {
   animalCodeForOrder,
   defaultApproxWeight,
+  detectParticipantIdentityConflicts,
   formatPaymentMethod,
   formatServiceType,
+  getProgrammeShareMetadata,
   isBreedingProgramme,
   nextOrderRef,
   normaliseName,
   normaliseOrderRef,
   participantFullName,
   participantsMatch,
+  selectCertificateTemplate,
   splitFullName,
   validateOrderCandidate,
+  type CertificateTemplateType,
 } from '@/lib/orderRules';
 import { useAuth } from '@/contexts/AuthContext';
 import { LIVE_PROGRAMMES, LIVE_PROGRAMMES_VERSION } from '@/data/liveProgrammes';
@@ -74,6 +78,9 @@ export type AppOrder = {
   notes?: string;
   client_request_id?: string;
   confirmation_email_sent_at?: string | null;
+  confirmation_email_status?: 'not_sent' | 'queued' | 'simulated' | 'sent' | 'failed' | 'legacy_unverified_timestamp';
+  confirmation_email_provider_ref?: string | null;
+  confirmation_email_idempotency_key?: string | null;
 };
 
 export type AppAnimal = {
@@ -100,6 +107,8 @@ export type AppAnimal = {
   programme_id?: string;
   service_type?: 'qurban' | 'aqiqah' | 'nazar';
   delivery_portion?: 'full' | 'one_third' | 'two_thirds' | 'nil' | null;
+  animals_per_share?: number;
+  share_ratio?: string;
 };
 
 export type AppPayment = {
@@ -138,7 +147,9 @@ export type AppCertificate = {
   certificate_ref: string;
   order_ref: string;
   participant_name: string;
+  qurban_name_holder?: string;
   programme_name: string;
+  programme_id?: string;
   country: string;
   animal_ref: string;
   animal_type: AnimalType;
@@ -149,6 +160,9 @@ export type AppCertificate = {
   sent_at: string | null;
   verification_code: string;
   year: string;
+  template_type?: CertificateTemplateType;
+  service_type?: 'qurban' | 'aqiqah' | 'nazar';
+  animal_photo_url?: string | null;
 };
 
 export type AppParticipant = {
@@ -547,6 +561,7 @@ function syncRelated(input: AppData, o: AppOrder, actor: Actor): AppData {
     if (linkedAll.length === 0) {
       const type = inferAnimalType(d, o.programme);
       const prog = d.programmes.find(p => (o.programme_id && p.id === o.programme_id) || norm(p.name) === norm(o.programme));
+      const shareMeta = getProgrammeShareMetadata(o.programme, prog?.animals_per_share);
       const count = Math.max(1, o.quantity || 1);
       for (let i = 0; i < count; i++) {
         const animalCode = animalCodeForOrder(o.order_ref, i);
@@ -572,6 +587,8 @@ function syncRelated(input: AppData, o: AppOrder, actor: Actor): AppData {
           programme_id: prog?.id ?? o.programme_id,
           service_type: o.service_type ?? 'qurban',
           delivery_portion: o.delivery_portion ?? null,
+          animals_per_share: shareMeta.animals_per_share,
+          share_ratio: shareMeta.share_ratio,
         };
         d = { ...d, animals: [...d.animals, placeholder] };
         d = withLog(d, actor, 'animal.allocated', 'animal', animalCode, `Animal ${animalCode} created and allocated to order ${o.order_ref}`);
@@ -625,41 +642,105 @@ function syncRelated(input: AppData, o: AppOrder, actor: Actor): AppData {
     }
   }
 
-  // ── Certificate ──────────────────────────────────────────
+  // ── Certificate (1 per Qurban animal/holder under the Order Reference) ──
   if (!isCancelled && r >= R('qurban_complete')) {
-    const cert = d.certificates.find(c => c.order_ref === o.order_ref);
-    const animal = d.animals.find(a => a.order_ref === o.order_ref);
+    const orderAnimals = d.animals
+      .filter(a => a.order_ref === o.order_ref)
+      .sort((a, b) => (a.animal_code ?? a.animal_ref).localeCompare(b.animal_code ?? b.animal_ref));
     const shouldBeGenerated = r >= R('certificate_generated');
-    if (!cert) {
-      const ref = nextRef('CERT', d.certificates.map(c => c.certificate_ref), 5);
-      const type = animal?.animal_type ?? inferAnimalType(d, o.programme);
-      const prog = d.programmes.find(p => norm(p.name) === norm(o.programme));
-      const code = () => Math.random().toString(36).slice(2, 6).toUpperCase();
-      const newCert: AppCertificate = {
-        id: uid(),
-        certificate_ref: ref,
-        order_ref: o.order_ref,
-        participant_name: o.participant,
-        programme_name: o.programme,
-        country: programmeCountry(d, o.programme),
-        animal_ref: animal?.animal_ref ?? 'Pending',
-        animal_type: type,
-        animal_label: type.charAt(0).toUpperCase() + type.slice(1),
-        qurban_date: prog?.qurban_date || today(),
-        status: shouldBeGenerated ? 'generated' : 'not_generated',
-        generated_at: shouldBeGenerated ? nowIso() : null,
-        sent_at: null,
-        verification_code: `AIGCERT-${code()}-${code()}`,
-        year: String(new Date().getFullYear()),
-      };
-      d = { ...d, certificates: [newCert, ...d.certificates] };
-      d = withLog(d, actor, 'certificate.created', 'certificate', ref, `Certificate ${ref} created for ${o.participant}`);
+    const prog = d.programmes.find(p => (o.programme_id && p.id === o.programme_id) || norm(p.name) === norm(o.programme));
+    const templateType = selectCertificateTemplate(o.programme, o.programme_id ?? prog?.id, prog?.supports_weight_timeline);
+    const serviceType = o.service_type ?? 'qurban';
+    const countryName = o.programme_country || programmeCountry(d, o.programme);
+    const code = () => Math.random().toString(36).slice(2, 6).toUpperCase();
+
+    if (orderAnimals.length > 0) {
+      for (let i = 0; i < orderAnimals.length; i++) {
+        const animal = orderAnimals[i];
+        const holder = (animal.qurban_name_holder || o.participant).trim();
+        const existingCert =
+          d.certificates.find(c => c.order_ref === o.order_ref && c.animal_ref === animal.animal_ref) ??
+          (i === 0
+            ? d.certificates.find(c => c.order_ref === o.order_ref && (c.animal_ref === 'Pending' || !orderAnimals.some(a => a.animal_ref === c.animal_ref)))
+            : undefined);
+
+        if (!existingCert) {
+          const ref = nextRef('CERT', d.certificates.map(c => c.certificate_ref), 5);
+          const type = animal.animal_type ?? inferAnimalType(d, o.programme);
+          const newCert: AppCertificate = {
+            id: uid(),
+            certificate_ref: ref,
+            order_ref: o.order_ref,
+            participant_name: o.participant,
+            qurban_name_holder: holder,
+            programme_name: o.programme,
+            programme_id: o.programme_id ?? prog?.id,
+            country: countryName,
+            animal_ref: animal.animal_ref,
+            animal_type: type,
+            animal_label: type.charAt(0).toUpperCase() + type.slice(1),
+            qurban_date: prog?.qurban_date || today(),
+            status: shouldBeGenerated ? 'generated' : 'not_generated',
+            generated_at: shouldBeGenerated ? nowIso() : null,
+            sent_at: null,
+            verification_code: `AIGCERT-${code()}-${code()}`,
+            year: String(new Date().getFullYear()),
+            template_type: templateType,
+            service_type: serviceType,
+          };
+          d = { ...d, certificates: [newCert, ...d.certificates] };
+          d = withLog(d, actor, 'certificate.created', 'certificate', ref, `Certificate ${ref} created for ${holder} (${animal.animal_ref})`);
+        } else {
+          const patch: Partial<AppCertificate> = {};
+          if (existingCert.animal_ref !== animal.animal_ref) patch.animal_ref = animal.animal_ref;
+          if (existingCert.qurban_name_holder !== holder) patch.qurban_name_holder = holder;
+          if (existingCert.template_type !== templateType) patch.template_type = templateType;
+          if (existingCert.service_type !== serviceType) patch.service_type = serviceType;
+          if (shouldBeGenerated && existingCert.status === 'not_generated') {
+            patch.status = 'generated';
+            patch.generated_at = nowIso();
+          }
+          if (Object.keys(patch).length) {
+            d = { ...d, certificates: d.certificates.map(c => c.id === existingCert.id ? { ...c, ...patch } : c) };
+          }
+        }
+      }
     } else {
-      const patch: Partial<AppCertificate> = {};
-      if (animal && cert.animal_ref !== animal.animal_ref) patch.animal_ref = animal.animal_ref;
-      if (shouldBeGenerated && cert.status === 'not_generated') { patch.status = 'generated'; patch.generated_at = nowIso(); }
-      if (Object.keys(patch).length) {
-        d = { ...d, certificates: d.certificates.map(c => c.id === cert.id ? { ...c, ...patch } : c) };
+      const cert = d.certificates.find(c => c.order_ref === o.order_ref);
+      if (!cert) {
+        const ref = nextRef('CERT', d.certificates.map(c => c.certificate_ref), 5);
+        const type = inferAnimalType(d, o.programme);
+        const newCert: AppCertificate = {
+          id: uid(),
+          certificate_ref: ref,
+          order_ref: o.order_ref,
+          participant_name: o.participant,
+          qurban_name_holder: o.participant,
+          programme_name: o.programme,
+          programme_id: o.programme_id ?? prog?.id,
+          country: countryName,
+          animal_ref: 'Pending',
+          animal_type: type,
+          animal_label: type.charAt(0).toUpperCase() + type.slice(1),
+          qurban_date: prog?.qurban_date || today(),
+          status: shouldBeGenerated ? 'generated' : 'not_generated',
+          generated_at: shouldBeGenerated ? nowIso() : null,
+          sent_at: null,
+          verification_code: `AIGCERT-${code()}-${code()}`,
+          year: String(new Date().getFullYear()),
+          template_type: templateType,
+          service_type: serviceType,
+        };
+        d = { ...d, certificates: [newCert, ...d.certificates] };
+        d = withLog(d, actor, 'certificate.created', 'certificate', ref, `Certificate ${ref} created for ${o.participant}`);
+      } else {
+        const patch: Partial<AppCertificate> = {};
+        if (cert.template_type !== templateType) patch.template_type = templateType;
+        if (cert.service_type !== serviceType) patch.service_type = serviceType;
+        if (shouldBeGenerated && cert.status === 'not_generated') { patch.status = 'generated'; patch.generated_at = nowIso(); }
+        if (Object.keys(patch).length) {
+          d = { ...d, certificates: d.certificates.map(c => c.id === cert.id ? { ...c, ...patch } : c) };
+        }
       }
     }
   }
@@ -679,6 +760,15 @@ function applyOrderStatus(d: AppData, id: string, status: OrderStatus, actor: Ac
 }
 
 const SYSTEM_ACTOR: Actor = { email: 'system', role: 'super_admin' };
+
+const STAFF_SYNC_ROLES: UserRole[] = [
+  'super_admin',
+  'operations_admin',
+  'supplier_manager',
+  'field_team',
+  'driver',
+  'd3_technical_admin',
+];
 
 function loadData(): AppData {
   try {
@@ -703,6 +793,7 @@ type AppDataContextType = AppData & {
   updateOrder: (id: string, patch: UpdateOrderInput) => AppOrder;
   updateOrderStatus: (id: string, status: OrderStatus) => void;
   cancelOrder: (id: string) => void;
+  markOrderInvoiceSent: (orderId: string, providerRef?: string) => void;
 
   // Animal actions
   addAnimal: (a: AppAnimal) => void;
@@ -739,6 +830,7 @@ type AppDataContextType = AppData & {
 };
 
 const AppDataContext = createContext<AppDataContextType | null>(null);
+let latestProviderSeq = 0;
 
 // ─────────────────────────────────────────────────────────────
 // Provider
@@ -746,6 +838,11 @@ const AppDataContext = createContext<AppDataContextType | null>(null);
 
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const { user, profile } = useAuth();
+  const instanceSeqRef = useRef<number>(0);
+  if (instanceSeqRef.current === 0) {
+    latestProviderSeq += 1;
+    instanceSeqRef.current = latestProviderSeq;
+  }
   const [data, setData] = useState<AppData>(loadData);
   const dataRef = useRef(data);
   // Keep a snapshot of what is persisted to Supabase so we only sync diffs
@@ -758,6 +855,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     email: profile?.email ?? user?.email ?? 'admin',
     role: profile?.role ?? 'super_admin',
   };
+  const isStaffActor = !profile || STAFF_SYNC_ROLES.includes(profile.role);
 
   // ── On mount: try to load from Supabase ──────────────────────
   useEffect(() => {
@@ -767,7 +865,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       // Merge: remote takes priority if it has any rows, else keep local
       const hasRemoteData = Object.values(remote).some((arr) => (arr as unknown[]).length > 0);
       if (!hasRemoteData) {
-        // No remote data yet — push local data up to Supabase
+        if (!isStaffActor) return;
+        // No remote data yet — push local data up to Supabase (staff only)
         const local = dataRef.current;
         supabaseSnapshotRef.current = local;
         syncToSupabase(
@@ -813,8 +912,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     } catch { /* storage full / unavailable */ }
   }, [data]);
 
-  // Sync to Supabase on every data change without dropping concurrent mutations
+  // Sync to Supabase on every data change without dropping concurrent mutations (staff only)
   const flushSupabaseSync = useCallback(() => {
+    if (!isStaffActor) return;
     if (supabaseSyncing.current) {
       supabaseSyncPending.current = true;
       return;
@@ -834,7 +934,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           flushSupabaseSync();
         }
       });
-  }, []);
+  }, [isStaffActor]);
 
   useEffect(() => {
     flushSupabaseSync();
@@ -977,7 +1077,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       created_at: nowIso(),
       notes: input.notes?.trim() || undefined,
       client_request_id: reqId || undefined,
-      confirmation_email_sent_at: shouldSendConfirmationOnce ? nowIso() : null,
+      // Phase 4.8: Do NOT initialize confirmation_email_sent_at until real email provider accepts submission
+      confirmation_email_sent_at: null,
+      confirmation_email_status: shouldSendConfirmationOnce ? 'queued' : 'not_sent',
+      confirmation_email_provider_ref: null,
+      confirmation_email_idempotency_key: `invoice:${orderRef}`,
     };
 
     // ── Create 1..N animals linked to the SAME Order Reference ──
@@ -986,6 +1090,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     const minWeight = animalType === 'cow' || animalType === 'buffalo' ? 350 : animalType === 'camel' ? 300 : 25;
     const approxWeightLabel =
       matchedProg?.approx_weight_label || defaultApproxWeight(canonicalProgramme, animalType);
+    const shareMeta = getProgrammeShareMetadata(canonicalProgramme, matchedProg?.animals_per_share);
 
     const newAnimals: AppAnimal[] = input.qurban_entries.map((entry, i) => {
       const animalCode = animalCodeForOrder(orderRef, i);
@@ -1012,6 +1117,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         programme_id: canonicalProgId,
         service_type: input.service_type,
         delivery_portion: validation.normalizedPortions[i] ?? validation.normalizedPortion,
+        animals_per_share: shareMeta.animals_per_share,
+        share_ratio: shareMeta.share_ratio,
       };
     });
 
@@ -1038,6 +1145,16 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
       let finalOrder = order;
       if (!dupParticipant) {
+        // Phase 2.2: Detect ambiguous identity conflicts (email or phone matches existing differently named participant)
+        const identityConflicts = detectParticipantIdentityConflicts(
+          {
+            full_name: input.full_name,
+            email: input.email,
+            contact_number: input.contact_number,
+          },
+          next.participants,
+        );
+
         next = { ...next, participants: [participantRecord, ...next.participants] };
         next = withLog(
           next,
@@ -1047,6 +1164,17 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           participantRecord.participant_ref,
           `Participant ${participantName} created with portal access enabled during order ${orderRef}`,
         );
+
+        if (identityConflicts.length > 0) {
+          next = withException(next, actor, {
+            severity: 'medium',
+            category: 'Participant',
+            title: `Participant identity conflict for review (${orderRef})`,
+            description: identityConflicts.map(c => c.summary).join(' '),
+            related_entity: 'participant',
+            related_entity_id: participantRecord.participant_ref,
+          });
+        }
       } else if (dupParticipant.id !== participantId) {
         finalOrder = {
           ...order,
@@ -1093,6 +1221,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       // Confirmed Communication Rule:
       // 1. Order Confirmation & Invoice sent ONCE to Email (never re-sent on edit/refresh)
       // 2. Order & Payment confirmation also sent via WhatsApp (+6585456783)
+      // 3. Phase 4.8: Stamp confirmation_email_sent_at ONLY when real live email provider accepts submission
       void notificationService
         .notifyOrderCreatedAndInvoice({
           recipient: {
@@ -1107,6 +1236,37 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           totalFormatted: `${orderCurrency} ${input.total_amount.toLocaleString()}`,
           paymentMethodLabel: formatPaymentMethod(input.payment_method),
           alreadySentEmail: false,
+        })
+        .then(res => {
+          if (instanceSeqRef.current !== latestProviderSeq) return;
+          commit(d => ({
+            ...d,
+            orders: d.orders.map(o => {
+              if (o.order_ref !== orderRef) return o;
+              if (res.emailTrulySubmitted) {
+                return {
+                  ...o,
+                  confirmation_email_sent_at: o.confirmation_email_sent_at ?? nowIso(),
+                  confirmation_email_status: 'sent',
+                  confirmation_email_provider_ref: res.emailProviderRef ?? o.confirmation_email_provider_ref ?? null,
+                };
+              }
+              if (res.emailDeliveryState === 'simulated') {
+                return {
+                  ...o,
+                  confirmation_email_status: 'simulated',
+                  confirmation_email_provider_ref: res.emailProviderRef ?? o.confirmation_email_provider_ref ?? null,
+                };
+              }
+              if (res.emailDeliveryState === 'failed') {
+                return {
+                  ...o,
+                  confirmation_email_status: 'failed',
+                };
+              }
+              return o;
+            }),
+          }));
         })
         .catch(() => {});
     } else if (createdNewParticipant) {
@@ -1259,6 +1419,22 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           participantName = split.full_name;
           next = { ...next, participants: [createdP, ...next.participants] };
         }
+
+        const editConflicts = detectParticipantIdentityConflicts(
+          { full_name: nextFullName, email: nextEmail, contact_number: nextPhone },
+          next.participants,
+          participantId,
+        );
+        if (editConflicts.length > 0) {
+          next = withException(next, actor, {
+            severity: 'medium',
+            category: 'Participant',
+            title: `Participant identity conflict for review (${cur.order_ref})`,
+            description: editConflicts.map(c => c.summary).join(' '),
+            related_entity: 'order',
+            related_entity_id: cur.order_ref,
+          });
+        }
       }
 
       const updatedOrder: AppOrder = {
@@ -1292,6 +1468,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const minWeight = targetAnimalType === 'cow' || targetAnimalType === 'buffalo' ? 350 : targetAnimalType === 'camel' ? 300 : 25;
       const nextApproxWeight =
         matchedProg?.approx_weight_label || defaultApproxWeight(nextProgramme, targetAnimalType);
+      const nextShareMeta = getProgrammeShareMetadata(nextProgramme, matchedProg?.animals_per_share);
 
       const removeIds = new Set(orderAnimals.slice(nextQuantity).map(a => a.id));
       const updatedById = new Map<string, AppAnimal>();
@@ -1310,7 +1487,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           programme_id: nextProgId,
           service_type: nextServiceType,
           delivery_portion: validation.normalizedPortions[i] ?? validation.normalizedPortion,
+          animals_per_share: nextShareMeta.animals_per_share,
+          share_ratio: nextShareMeta.share_ratio,
           approx_weight: programmeChanged ? nextApproxWeight : existingAnimal.approx_weight ?? nextApproxWeight,
+          ...(programmeChanged && !isBreedingProgramme(nextProgramme, matchedProg?.supports_weight_timeline)
+            ? { weight_history: [] }
+            : {}),
           ...(programmeChanged && unassignedBreed
             ? {
                 animal_type: targetAnimalType,
@@ -1355,6 +1537,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             programme_id: nextProgId,
             service_type: nextServiceType,
             delivery_portion: validation.normalizedPortions[i] ?? validation.normalizedPortion,
+            animals_per_share: nextShareMeta.animals_per_share,
+            share_ratio: nextShareMeta.share_ratio,
           });
         }
         syncedAnimals = [...added, ...syncedAnimals];
@@ -1362,7 +1546,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
       next = { ...next, animals: syncedAnimals };
 
-      // Keep certificate programme/participant aligned if certificate exists
+      // Keep certificate programme/participant/template aligned if certificates exist
+      const nextTemplateType = selectCertificateTemplate(nextProgramme, nextProgId, matchedProg?.supports_weight_timeline);
       next = {
         ...next,
         certificates: next.certificates.map(c =>
@@ -1371,7 +1556,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
                 ...c,
                 participant_name: updatedOrder.participant,
                 programme_name: updatedOrder.programme,
+                programme_id: nextProgId,
                 country: nextCountry,
+                template_type: nextTemplateType,
+                service_type: nextServiceType,
               }
             : c,
         ),
@@ -1392,6 +1580,28 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     return dataRef.current.orders.find(o => o.id === id)!;
   }, [commit]);
 
+  const markOrderInvoiceSent = useCallback((orderId: string, providerRef?: string) => {
+    commit((d, actor) => {
+      const target = d.orders.find(o => o.id === orderId || o.order_ref === orderId);
+      if (!target) return d;
+      if (target.confirmation_email_sent_at && target.confirmation_email_status === 'sent') return d;
+      const stamped: AppOrder = {
+        ...target,
+        confirmation_email_sent_at: target.confirmation_email_sent_at ?? nowIso(),
+        confirmation_email_status: 'sent',
+        confirmation_email_provider_ref: providerRef ?? target.confirmation_email_provider_ref ?? null,
+      };
+      return withLog(
+        { ...d, orders: d.orders.map(o => (o.id === target.id ? stamped : o)) },
+        actor,
+        'order.invoice_sent',
+        'order',
+        target.order_ref,
+        `Order confirmation & invoice email verified sent for ${target.order_ref}`,
+      );
+    });
+  }, [commit]);
+
   const updateOrderStatus = useCallback((id: string, status: OrderStatus) => {
     const prevOrder = dataRef.current.orders.find(o => o.id === id);
     commit((d, actor) => applyOrderStatus(d, id, status, actor));
@@ -1404,10 +1614,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         phone: updatedOrder.contact_number,
       };
       // If draft order moves to pending_payment for the first time, send one-time email invoice + WA
-      if (prevOrder.status === 'draft' && !updatedOrder.confirmation_email_sent_at && status !== 'cancelled') {
+      const alreadySentOrQueued =
+        Boolean(updatedOrder.confirmation_email_sent_at) ||
+        updatedOrder.confirmation_email_status === 'sent' ||
+        updatedOrder.confirmation_email_status === 'simulated';
+      if (prevOrder.status === 'draft' && !alreadySentOrQueued && status !== 'cancelled') {
         commit(d => ({
           ...d,
-          orders: d.orders.map(o => (o.id === id ? { ...o, confirmation_email_sent_at: nowIso() } : o)),
+          orders: d.orders.map(o => (o.id === id ? { ...o, confirmation_email_status: 'queued' } : o)),
         }));
         void notificationService
           .notifyOrderCreatedAndInvoice({
@@ -1419,6 +1633,31 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             totalFormatted: `${updatedOrder.currency} ${updatedOrder.total_amount.toLocaleString()}`,
             paymentMethodLabel: formatPaymentMethod(updatedOrder.payment_method ?? 'paynow'),
             alreadySentEmail: false,
+          })
+          .then(res => {
+            if (instanceSeqRef.current !== latestProviderSeq) return;
+            commit(d => ({
+              ...d,
+              orders: d.orders.map(o => {
+                if (o.id !== id) return o;
+                if (res.emailTrulySubmitted) {
+                  return {
+                    ...o,
+                    confirmation_email_sent_at: o.confirmation_email_sent_at ?? nowIso(),
+                    confirmation_email_status: 'sent',
+                    confirmation_email_provider_ref: res.emailProviderRef ?? null,
+                  };
+                }
+                if (res.emailDeliveryState === 'simulated') {
+                  return {
+                    ...o,
+                    confirmation_email_status: 'simulated',
+                    confirmation_email_provider_ref: res.emailProviderRef ?? null,
+                  };
+                }
+                return o;
+              }),
+            }));
           })
           .catch(() => {});
       } else if (status === 'certificate_generated') {
@@ -1476,23 +1715,32 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     commit((d, actor) => {
       const a = d.animals.find(x => x.id === id);
       if (!a) return d;
+      const targetProgName = patch.programme ?? a.programme ?? '';
+      const targetProgId = patch.programme_id ?? a.programme_id;
+      const prog = d.programmes.find(
+        p => (targetProgId && p.id === targetProgId) || (targetProgName && normaliseName(p.name) === normaliseName(targetProgName)),
+      );
+      const isProgrammeLinked = Boolean(targetProgName || targetProgId || patch.order_ref || a.order_ref);
+      const allowsTimeline = !isProgrammeLinked || isBreedingProgramme(targetProgName, prog?.supports_weight_timeline);
+
       const weightChanged =
         patch.current_weight_kg !== undefined &&
         patch.current_weight_kg > 0 &&
         patch.current_weight_kg !== a.current_weight_kg;
-      const nextWeightHistory =
-        patch.weight_history ??
-        (weightChanged
-          ? [
-              ...(a.weight_history ?? []),
-              { weight_kg: patch.current_weight_kg!, recorded_at: nowIso() },
-            ]
-          : a.weight_history);
+      const nextWeightHistory = !allowsTimeline
+        ? []
+        : patch.weight_history ??
+          (weightChanged
+            ? [
+                ...(a.weight_history ?? []),
+                { weight_kg: patch.current_weight_kg!, recorded_at: nowIso() },
+              ]
+            : a.weight_history);
 
       const updated: AppAnimal = {
         ...a,
         ...patch,
-        ...(nextWeightHistory ? { weight_history: nextWeightHistory } : {}),
+        ...(nextWeightHistory !== undefined ? { weight_history: nextWeightHistory } : {}),
       };
       let next: AppData = { ...d, animals: d.animals.map(x => x.id === id ? updated : x) };
       if (patch.status && patch.status !== a.status) {
@@ -1506,11 +1754,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           });
         }
       }
-      if (weightChanged) {
+      if (weightChanged && allowsTimeline) {
         next = withLog(next, actor, 'animal.weight_logged', 'animal', a.animal_ref, `Animal ${a.animal_ref} weight ${patch.current_weight_kg} kg`);
-        const prog = next.programmes.find(
-          p => (updated.programme_id && p.id === updated.programme_id) || normaliseName(p.name) === normaliseName(updated.programme ?? ''),
-        );
         if (isBreedingProgramme(updated.programme, prog?.supports_weight_timeline) && updated.order_ref) {
           loggedBreedingWeight = {
             animal: updated,
@@ -1522,7 +1767,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (a.order_ref && (patch.animal_ref || patch.animal_type)) {
         next = {
           ...next,
-          certificates: next.certificates.map(c => c.order_ref === a.order_ref
+          certificates: next.certificates.map(c => c.order_ref === a.order_ref && c.animal_ref === a.animal_ref
             ? { ...c, animal_ref: updated.animal_ref, animal_type: updated.animal_type, animal_label: updated.animal_type.charAt(0).toUpperCase() + updated.animal_type.slice(1) }
             : c),
         };
@@ -1890,7 +2135,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AppDataContextType>(() => ({
     ...data,
     participants, programmes, suppliers,
-    addOrder, updateOrder, updateOrderStatus, cancelOrder,
+    addOrder, updateOrder, updateOrderStatus, cancelOrder, markOrderInvoiceSent,
     addAnimal, updateAnimal, updateAnimalStatus,
     addPayment, verifyPayment, rejectPayment,
     updateDeliveryStatus, updateDelivery,
@@ -1901,7 +2146,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     resolveException, assignException,
   }), [
     data, participants, programmes, suppliers,
-    addOrder, updateOrder, updateOrderStatus, cancelOrder,
+    addOrder, updateOrder, updateOrderStatus, cancelOrder, markOrderInvoiceSent,
     addAnimal, updateAnimal, updateAnimalStatus,
     addPayment, verifyPayment, rejectPayment,
     updateDeliveryStatus, updateDelivery,

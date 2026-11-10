@@ -1,16 +1,47 @@
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import type { Certificate, Order, Participant, Programme } from '@/lib/database.types';
+import { selectCertificateTemplate, type CertificateTemplateType } from '@/lib/orderRules';
+import { formatCertificateSerialNo } from '@/components/ui/CertificateDesign';
 
 export interface CertificateData {
-  certificate: Certificate;
+  certificate: Certificate & {
+    qurban_name_holder?: string;
+    template_type?: CertificateTemplateType;
+    service_type?: 'qurban' | 'aqiqah' | 'nazar';
+    animal_ref?: string;
+    animal_label?: string;
+    year?: string;
+  };
   order: Order;
   participant: Participant;
-  programme: Programme;
+  programme: Programme & {
+    supports_weight_timeline?: boolean;
+  };
+}
+
+export function getCertificateVerificationUrl(verificationCode: string): string {
+  const baseUrl = (import.meta.env.VITE_APP_URL ?? 'https://www.aigsuite.com').replace(/\/+$/, '');
+  return `${baseUrl}/verify/${encodeURIComponent(verificationCode)}`;
 }
 
 export async function generateCertificatePdf(data: CertificateData): Promise<Blob> {
-  const { certificate, participant, programme } = data;
+  const { certificate, participant, programme, order } = data;
+  const templateType: CertificateTemplateType =
+    certificate.template_type ??
+    selectCertificateTemplate(programme.name, programme.id, programme.supports_weight_timeline);
+  const isBreedingTemplate = templateType === 'breeding_programme';
+  const serviceType = certificate.service_type ?? order.service_type ?? 'qurban';
+  const isAqiqah = serviceType === 'aqiqah';
+  const holderName =
+    certificate.qurban_name_holder?.trim() ||
+    `${participant.first_name} ${participant.last_name}`.trim();
+  const yearStr = certificate.year || (programme.qurban_date ? programme.qurban_date.slice(0, 4) : '2026');
+  const serialNo = formatCertificateSerialNo(certificate.certificate_ref, yearStr);
+  const livestockLabel = (
+    certificate.animal_label ||
+    `${programme.animal_type.charAt(0).toUpperCase()}${programme.animal_type.slice(1)}`
+  ).toUpperCase();
 
   const doc = new jsPDF({
     orientation: 'landscape',
@@ -18,110 +49,174 @@ export async function generateCertificatePdf(data: CertificateData): Promise<Blo
     format: 'a4',
   });
 
-  const W = doc.internal.pageSize.getWidth();
-  const H = doc.internal.pageSize.getHeight();
+  const W = doc.internal.pageSize.getWidth(); // 297mm
+  const H = doc.internal.pageSize.getHeight(); // 210mm
 
-  // ── Background ──────────────────────────────────────────────
-  doc.setFillColor(10, 61, 42); // AIG dark green
+  // ── Dark Obsidian Background (#0a0a0a) ──────────────────────
+  doc.setFillColor(10, 10, 10);
   doc.rect(0, 0, W, H, 'F');
 
-  // Inner cream panel
-  doc.setFillColor(253, 250, 244);
-  doc.roundedRect(12, 12, W - 24, H - 24, 4, 4, 'F');
+  // ── Top Gold Arch & Side Geometric Panels ───────────────────
+  doc.setFillColor(35, 28, 10);
+  doc.rect(0, 0, 62, 54, 'F');
+  doc.rect(W - 62, 0, 62, 54, 'F');
 
-  // Gold border lines
-  doc.setDrawColor(184, 145, 48);
-  doc.setLineWidth(1.2);
-  doc.roundedRect(16, 16, W - 32, H - 32, 3, 3, 'S');
-  doc.setLineWidth(0.4);
-  doc.roundedRect(18, 18, W - 36, H - 36, 2, 2, 'S');
+  doc.setDrawColor(212, 168, 50); // #d4a832
+  doc.setLineWidth(0.9);
+  doc.line(0, 2, W, 2);
+  doc.setLineWidth(0.35);
+  doc.line(0, 4, W, 4);
+  doc.rect(4, 6, 54, 44, 'S');
+  doc.rect(W - 58, 6, 54, 44, 'S');
 
-  // ── Header ──────────────────────────────────────────────────
-  doc.setTextColor(10, 61, 42);
-  doc.setFontSize(26);
-  doc.setFont('helvetica', 'bold');
-  doc.text('AL IHSAN GROUP', W / 2, 36, { align: 'center' });
+  // Arch line across top center
+  doc.setLineWidth(1.1);
+  doc.line(62, 2, W / 2, 34);
+  doc.line(W / 2, 34, W - 62, 2);
 
-  doc.setFontSize(10);
+  // ── Certificate Title (QURBAN / AQIQAH CERTIFICATE) ─────────
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('times', 'bold');
+  doc.setFontSize(28);
+  doc.text(isAqiqah ? 'AQIQAH' : 'QURBAN', W / 2, 50, { align: 'center' });
+  doc.text('CERTIFICATE', W / 2, 61, { align: 'center' });
+
+  // ── Amanah Statement ────────────────────────────────────────
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(90, 90, 90);
-  doc.text('QURBAN CERTIFICATE', W / 2, 44, { align: 'center' });
+  doc.setFontSize(10.5);
+  doc.setTextColor(225, 225, 225);
+  doc.text(
+    'This is to certify that Al Ihsan Group SG has faithfully fulfilled the amanah',
+    W / 2,
+    74,
+    { align: 'center' }
+  );
+  doc.text(
+    `entrusted to them in performing the ${isAqiqah ? 'Aqiqah' : 'Qurban'} ritual for`,
+    W / 2,
+    80,
+    { align: 'center' }
+  );
 
-  // Decorative line
-  doc.setDrawColor(184, 145, 48);
-  doc.setLineWidth(0.6);
-  doc.line(W / 2 - 60, 48, W / 2 + 60, 48);
+  // ── Qurban Holder Name (Gold Italic) ────────────────────────
+  doc.setFont('times', 'bolditalic');
+  doc.setFontSize(30);
+  doc.setTextColor(212, 168, 50);
+  doc.text(holderName, W / 2, 97, { align: 'center' });
 
-  // ── Body ────────────────────────────────────────────────────
-  doc.setFontSize(12);
-  doc.setTextColor(60, 60, 60);
-  doc.setFont('helvetica', 'normal');
-  doc.text('This is to certify that', W / 2, 62, { align: 'center' });
-
-  doc.setFontSize(22);
+  // ── Location / Livestock / Year Row ─────────────────────────
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(10, 61, 42);
-  const fullName = `${participant.first_name} ${participant.last_name}`;
-  doc.text(fullName, W / 2, 76, { align: 'center' });
-
   doc.setFontSize(11);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(60, 60, 60);
-  doc.text('has successfully performed Qurban through', W / 2, 88, { align: 'center' });
+  doc.setTextColor(255, 255, 255);
+  doc.text(
+    `LOCATION : ${programme.country.toUpperCase()}        LIVESTOCK : ${livestockLabel}        YEAR : ${yearStr}`,
+    W / 2,
+    112,
+    { align: 'center' }
+  );
 
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(10, 61, 42);
-  doc.text(programme.name, W / 2, 98, { align: 'center' });
+  // ── Du'a ────────────────────────────────────────────────────
+  doc.setFont('times', 'italic');
+  doc.setFontSize(10);
+  doc.setTextColor(200, 200, 200);
+  doc.text(
+    'May Allah swt accept this Ibadah and reward us the best in this life and hereafter.',
+    W / 2,
+    124,
+    { align: 'center' }
+  );
+  doc.text('Ameen ya Rabb', W / 2, 130, { align: 'center' });
 
-  // ── Details grid ────────────────────────────────────────────
-  const details = [
-    ['Certificate No.', certificate.certificate_ref],
-    ['Order Reference', data.order.order_ref],
-    ['Animal Type', programme.animal_type.charAt(0).toUpperCase() + programme.animal_type.slice(1)],
-    ['Qurban Date', certificate.qurban_date ?? 'N/A'],
-    ['Country', programme.country],
-  ];
-
-  let y = 115;
-  doc.setFontSize(9);
-  details.forEach(([label, value], i) => {
-    const x = i % 2 === 0 ? W / 2 - 90 : W / 2 + 10;
-    if (i % 2 === 0 && i > 0) y += 12;
+  // ── Template-Specific Footer Layout ─────────────────────────
+  if (isBreedingTemplate) {
+    // Template 1 (cert-sample-1.png): Indonesia Breeding Programme ONLY
+    // Left: Gold-framed animal photo inset + Serial No
+    doc.setDrawColor(212, 168, 50);
+    doc.setFillColor(24, 24, 24);
+    doc.setLineWidth(0.8);
+    doc.roundedRect(24, 142, 42, 32, 1.5, 1.5, 'FD');
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(90, 90, 90);
-    doc.text(label + ':', x, y);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(20, 20, 20);
-    doc.text(value ?? 'N/A', x + 40, y);
-  });
+    doc.setFontSize(7.5);
+    doc.setTextColor(212, 168, 50);
+    doc.text('BREEDING LIVESTOCK', 45, 157, { align: 'center' });
+    doc.setFontSize(6.5);
+    doc.setTextColor(200, 200, 200);
+    doc.text(certificate.animal_ref || order.order_ref, 45, 163, { align: 'center' });
 
-  // ── QR Code ─────────────────────────────────────────────────
-  const verifyUrl = `${import.meta.env.VITE_APP_URL ?? 'https://alhisangroup.com'}/verify/${certificate.verification_code}`;
-  try {
-    const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
-      width: 80,
-      margin: 1,
-      color: { dark: '#0a3d2a', light: '#fdfaf4' },
-    });
-    doc.addImage(qrDataUrl, 'PNG', W - 54, H - 58, 36, 36);
-    doc.setFontSize(7);
-    doc.setTextColor(100, 100, 100);
-    doc.text('Scan to verify', W - 36, H - 18, { align: 'center' });
-  } catch (_) {
-    // QR generation failed — continue without it
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.text('SERIAL NO:', 72, 164);
+    doc.setTextColor(212, 168, 50);
+    doc.text(serialNo, 72, 171);
+  } else {
+    // Template 2 (cert-sample-2.png): Standard Programme (All other 11 programmes)
+    // Left: Serial No | Center-Right: Gold Rosette Seal | Bottom: Gold Star Geometric Lattice
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text('SERIAL NO:', 32, 160);
+    doc.setTextColor(212, 168, 50);
+    doc.text(serialNo, 32, 167);
+
+    // Gold Rosette Seal
+    doc.setFillColor(212, 168, 50);
+    doc.setDrawColor(255, 238, 170);
+    doc.setLineWidth(0.7);
+    doc.circle(185, 158, 11, 'FD');
+    doc.setDrawColor(101, 73, 11);
+    doc.circle(185, 158, 8, 'S');
+
+    // Bottom geometric gold band
+    doc.setFillColor(35, 28, 10);
+    doc.rect(0, H - 12, W, 12, 'F');
+    doc.setDrawColor(212, 168, 50);
+    doc.setLineWidth(0.6);
+    doc.line(0, H - 12, W, H - 12);
   }
 
-  // ── Footer ──────────────────────────────────────────────────
-  doc.setDrawColor(184, 145, 48);
-  doc.setLineWidth(0.4);
-  doc.line(W / 2 - 80, H - 34, W / 2 + 80, H - 34);
-
+  // Center Logo Box
+  doc.setDrawColor(212, 168, 50);
+  doc.setLineWidth(0.6);
+  doc.roundedRect(W / 2 - 16, 145, 32, 26, 2, 2, 'S');
+  doc.setFont('times', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(212, 168, 50);
+  doc.text('Al Ihsan', W / 2, 157, { align: 'center' });
   doc.setFontSize(8);
-  doc.setTextColor(90, 90, 90);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Al Ihsan Group | Daredevil Digital Implementation', W / 2, H - 26, { align: 'center' });
-  doc.text(`Verification: ${certificate.verification_code}`, W / 2, H - 20, { align: 'center' });
+  doc.text('GROUP', W / 2, 163, { align: 'center' });
+
+  // Right Ustaz Signature Block
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.4);
+  doc.line(W - 86, 164, W - 34, 164);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(255, 255, 255);
+  doc.text('UST KHIDR MUHAMMAD', W - 60, 170, { align: 'center' });
+
+  // ── QR Code & Verification Footer ───────────────────────────
+  const verifyUrl = getCertificateVerificationUrl(certificate.verification_code);
+  try {
+    const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
+      width: 72,
+      margin: 1,
+      color: { dark: '#0a0a0a', light: '#f6e3a1' },
+    });
+    doc.addImage(qrDataUrl, 'PNG', W - 28, 144, 20, 20);
+  } catch (_) {
+    // QR generation may be skipped in headless canvas-less test environments
+  }
+
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(150, 150, 150);
+  doc.text(
+    `VERIFICATION: ${certificate.verification_code} · ${certificate.certificate_ref} · Order: ${order.order_ref}`,
+    W / 2,
+    H - 16,
+    { align: 'center' }
+  );
 
   return doc.output('blob');
 }

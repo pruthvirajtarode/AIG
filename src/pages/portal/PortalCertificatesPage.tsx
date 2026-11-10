@@ -144,10 +144,10 @@ export function PortalCertificatesPage() {
                 <div style={{ position: 'absolute', width: 160, height: 160, borderRadius: '50%', background: 'radial-gradient(circle, rgba(212,168,50,0.18), transparent)', top: -60, right: -60, pointerEvents: 'none' }} />
                 <AnimalPhoto type={cert.animal_type} size={80} radius={16} style={{ margin: '0 auto 0.75rem' }} />
                 <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: '1.375rem', fontWeight: 700, color: '#fff', letterSpacing: '0.12em', lineHeight: 1.1, textTransform: 'uppercase' }}>
-                  Qurban<br />Certificate
+                  {cert.service_type === 'aqiqah' ? 'Aqiqah' : 'Qurban'}<br />Certificate
                 </div>
                 <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontStyle: 'italic', fontSize: '1.125rem', color: '#d4a832', marginTop: '0.5rem' }}>
-                  {cert.participant_name}
+                  {cert.qurban_name_holder || cert.participant_name}
                 </div>
               </div>
 

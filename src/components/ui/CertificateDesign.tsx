@@ -1,16 +1,21 @@
 import React from 'react';
-import { Award } from 'lucide-react';
 import type { CertificateStatus } from '@/lib/database.types';
+import { selectCertificateTemplate, type CertificateTemplateType } from '@/lib/orderRules';
+import { ANIMAL_IMAGES } from '@/lib/animalImages';
 
-// Shared Qurban certificate artwork. Used by BOTH the admin and participant portals
-// so participants see exactly the same certificate format that admins issue.
+// Shared Qurban / Aqiqah certificate artwork. Used by BOTH the admin and participant portals
+// so participants see the exact client-supplied certificate template:
+// - 'breeding_programme' (cert-sample-1.png): Indonesia Breeding Programme ONLY (framed animal photo inset)
+// - 'standard' (cert-sample-2.png): All other 11 programmes including Indonesia - Goat (XL) (gold rosette seal + bottom star border)
 
 export type Certificate = {
   id: string;
   certificate_ref: string;
   order_ref: string;
   participant_name: string;
+  qurban_name_holder?: string;
   programme_name: string;
+  programme_id?: string;
   country: string;
   animal_ref: string;
   animal_type: string;
@@ -21,6 +26,9 @@ export type Certificate = {
   sent_at: string | null;
   verification_code: string;
   year: string;
+  template_type?: CertificateTemplateType;
+  service_type?: 'qurban' | 'aqiqah' | 'nazar';
+  animal_photo_url?: string | null;
 };
 
 // ── Islamic Lantern SVG ────────────────────────────────────────
@@ -42,7 +50,61 @@ function Lantern({ x, y, scale = 1 }: { x: number; y: number; scale?: number }) 
   );
 }
 
-// ── Al Ihsan Logo (vector) ─────────────────────────────────────
+// ── Gold Rosette Ribbon Seal SVG (cert-sample-2.png) ───────────
+function GoldRosetteSeal() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }} data-testid="certificate-gold-rosette-seal">
+      <svg
+        viewBox="0 0 80 100"
+        style={{ width: 'clamp(32px, 6.2vw, 64px)', height: 'clamp(40px, 7.6vw, 78px)', display: 'block' }}
+      >
+        <defs>
+          <radialGradient id="goldRosetteGrad" cx="50%" cy="42%" r="55%">
+            <stop offset="0%" stopColor="#fff2b2" />
+            <stop offset="45%" stopColor="#d4a832" />
+            <stop offset="85%" stopColor="#926c15" />
+            <stop offset="100%" stopColor="#65490b" />
+          </radialGradient>
+        </defs>
+        {/* Twin flowing ribbons */}
+        <path d="M28,56 L18,95 L29,87 L36,96 L38,58 Z" fill="#b8891e" stroke="#65490b" strokeWidth="0.8" />
+        <path d="M52,56 L62,95 L51,87 L44,96 L42,58 Z" fill="#d4a832" stroke="#65490b" strokeWidth="0.8" />
+        {/* Serrated outer gold rosette */}
+        <circle cx="40" cy="38" r="28" fill="url(#goldRosetteGrad)" stroke="#ffea9f" strokeWidth="1.2" strokeDasharray="3.5 1.8" />
+        <circle cx="40" cy="38" r="22" fill="none" stroke="#65490b" strokeWidth="1" strokeDasharray="2 2" />
+        <circle cx="40" cy="38" r="18" fill="url(#goldRosetteGrad)" stroke="#fff2b2" strokeWidth="0.9" />
+      </svg>
+    </div>
+  );
+}
+
+// ── Ustaz Signature Block (both templates) ─────────────────────
+function UstazSignatureBlock() {
+  return (
+    <div style={{ textAlign: 'center', flexShrink: 0, minWidth: 'clamp(80px, 15vw, 155px)' }}>
+      <svg
+        viewBox="0 0 180 55"
+        style={{ width: 'clamp(64px, 12vw, 130px)', height: 'clamp(22px, 4vw, 42px)', display: 'block', margin: '0 auto 2px' }}
+      >
+        <path
+          d="M25,40 C38,12 52,10 48,32 C45,45 64,16 76,26 C86,34 96,14 110,28 C120,38 138,15 156,22 C135,34 85,38 18,44"
+          fill="none"
+          stroke="#ffffff"
+          strokeWidth="2.1"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity="0.92"
+        />
+      </svg>
+      <div style={{ height: 1, background: 'rgba(255,255,255,0.75)', width: '100%', marginBottom: 4 }} />
+      <div style={{ fontSize: 'clamp(6px, 0.82vw, 10.5px)', color: '#ffffff', fontWeight: 700, letterSpacing: '0.05em' }}>
+        UST KHIDR MUHAMMAD
+      </div>
+    </div>
+  );
+}
+
+// ── Al Ihsan Logo ──────────────────────────────────────────────
 function LogoText() {
   return (
     <div style={{ textAlign: 'center', flexShrink: 0 }}>
@@ -50,8 +112,8 @@ function LogoText() {
         src="/logo.jpg"
         alt="Al Ihsan Group"
         style={{
-          width: 'clamp(34px, 8vw, 80px)',
-          height: 'clamp(34px, 8vw, 80px)',
+          width: 'clamp(34px, 7.5vw, 76px)',
+          height: 'clamp(34px, 7.5vw, 76px)',
           objectFit: 'cover',
           borderRadius: 'clamp(6px, 1.2vw, 12px)',
           display: 'block',
@@ -62,11 +124,34 @@ function LogoText() {
   );
 }
 
+export function formatCertificateSerialNo(certificateRef: string, year = '2026'): string {
+  const shortYear = year.slice(-2) || '26';
+  const digits = certificateRef.replace(/\D/g, '').slice(-4).padStart(4, '0');
+  if (certificateRef.startsWith('AIG-')) return certificateRef;
+  if (certificateRef.startsWith('CERT-')) {
+    return `AIG-Q${shortYear}Y-${digits}`;
+  }
+  return certificateRef.replace('CERT-', 'AIG-Q');
+}
+
 // ── Certificate Design ─────────────────────────────────────────
 export function CertificateDesign({ cert }: { cert: Certificate }) {
+  const templateType: CertificateTemplateType =
+    cert.template_type ?? selectCertificateTemplate(cert.programme_name, cert.programme_id);
+  const isBreedingTemplate = templateType === 'breeding_programme';
+  const isAqiqah = cert.service_type === 'aqiqah';
+  const holderName = (cert.qurban_name_holder || cert.participant_name || '').trim() || cert.participant_name;
+  const serialNo = formatCertificateSerialNo(cert.certificate_ref, cert.year);
+  const animalPhotoUrl =
+    cert.animal_photo_url ||
+    ANIMAL_IMAGES[cert.animal_type?.toLowerCase?.() ?? 'goat'] ||
+    ANIMAL_IMAGES.goat;
+
   return (
     <div
       id="certificate-print-area"
+      data-template-type={templateType}
+      data-service-type={cert.service_type ?? 'qurban'}
       style={{
         background: '#0a0a0a',
         width: '100%',
@@ -114,15 +199,25 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
         <Lantern x={720} y={22} scale={0.75} />
       </svg>
 
-      {/* ── Bottom border ── */}
-      <svg viewBox="0 0 900 30" style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', pointerEvents: 'none', zIndex: 1 }} preserveAspectRatio="none">
-        <line x1="0" y1="2" x2="900" y2="2" stroke="#d4a832" strokeWidth="1.5" opacity="0.6" />
-        <line x1="0" y1="6" x2="900" y2="6" stroke="#d4a832" strokeWidth="0.5" opacity="0.4" />
-        {/* Bottom geometric row */}
-        {[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20].map(i => (
-          <rect key={i} x={i*46+5} y={10} width="30" height="16" fill="none" stroke="#d4a832" strokeWidth="0.6" opacity="0.4" transform={`rotate(45,${i*46+20},18)`} />
-        ))}
-      </svg>
+      {/* ── Bottom border: Ornate 8-point star geometric lattice on Standard template (cert-sample-2.png) ── */}
+      {!isBreedingTemplate && (
+        <svg
+          viewBox="0 0 900 36"
+          data-testid="certificate-standard-bottom-border"
+          style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', pointerEvents: 'none', zIndex: 1 }}
+          preserveAspectRatio="none"
+        >
+          <rect x="0" y="0" width="900" height="36" fill="rgba(180,140,30,0.14)" />
+          <line x1="0" y1="2" x2="900" y2="2" stroke="#d4a832" strokeWidth="1.6" opacity="0.8" />
+          <line x1="0" y1="6" x2="900" y2="6" stroke="#d4a832" strokeWidth="0.6" opacity="0.5" />
+          {[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21].map(i => (
+            <g key={i}>
+              <rect x={i*42+8} y={11} width="18" height="18" fill="none" stroke="#d4a832" strokeWidth="0.8" opacity="0.65" />
+              <rect x={i*42+8} y={11} width="18" height="18" fill="none" stroke="#d4a832" strokeWidth="0.8" opacity="0.65" transform={`rotate(45,${i*42+17},20)`} />
+            </g>
+          ))}
+        </svg>
+      )}
 
       {/* ── Certificate body (fluid responsive scaling for phones → A4 print) ── */}
       <div
@@ -131,12 +226,12 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
           zIndex: 2,
           textAlign: 'center',
           width: '100%',
-          padding: 'clamp(16px, 8.5%, 80px) clamp(12px, 6%, 60px) clamp(8px, 2.5%, 20px)',
+          padding: 'clamp(16px, 8.5%, 80px) clamp(12px, 5.5%, 54px) clamp(10px, 3%, 26px)',
           boxSizing: 'border-box',
         }}
       >
 
-        {/* QURBAN CERTIFICATE heading */}
+        {/* QURBAN / AQIQAH CERTIFICATE heading */}
         <div style={{
           fontFamily: "'Cormorant Garamond', 'Georgia', serif",
           fontSize: 'clamp(14px, 3.8vw, 42px)',
@@ -148,23 +243,23 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
           textShadow: '0 2px 8px rgba(0,0,0,0.5)',
           marginBottom: '0.35em',
         }}>
-          QURBAN<br />CERTIFICATE
+          {isAqiqah ? 'AQIQAH' : 'QURBAN'}<br />CERTIFICATE
         </div>
 
         {/* Description */}
         <div style={{
           fontSize: 'clamp(7px, 1.1vw, 13px)',
           color: 'rgba(255,255,255,0.85)',
-          maxWidth: 480,
-          margin: '0 auto 0.65em',
+          maxWidth: 500,
+          margin: '0 auto 0.55em',
           lineHeight: 1.5,
           fontWeight: 400,
         }}>
           This is to certify that Al Ihsan Group SG has faithfully fulfilled the amanah<br />
-          entrusted to them in performing the Qurban ritual for
+          entrusted to them in performing the {isAqiqah ? 'Aqiqah' : 'Qurban'} ritual for
         </div>
 
-        {/* Participant name — gold cursive */}
+        {/* Qurban Name Holder / Participant name — gold cursive */}
         <div style={{
           fontFamily: "'Cormorant Garamond', 'Georgia', serif",
           fontSize: 'clamp(16px, 4.4vw, 52px)',
@@ -172,11 +267,11 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
           fontStyle: 'italic',
           color: '#d4a832',
           textShadow: '0 2px 12px rgba(212,168,50,0.3)',
-          margin: '0.08em 0 0.25em',
+          margin: '0.06em 0 0.22em',
           lineHeight: 1.2,
           letterSpacing: '-0.01em',
         }}>
-          {cert.participant_name}
+          {holderName}
         </div>
 
         {/* Details row */}
@@ -188,7 +283,7 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
           fontWeight: 700,
           color: '#ffffff',
           letterSpacing: '0.08em',
-          marginBottom: '0.45em',
+          marginBottom: '0.4em',
           flexWrap: 'wrap',
         }}>
           <span>LOCATION : {cert.country.toUpperCase()}</span>
@@ -200,7 +295,7 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
         <div style={{
           fontSize: 'clamp(6.5px, 0.95vw, 12px)',
           color: 'rgba(255,255,255,0.75)',
-          marginBottom: '0.85em',
+          marginBottom: '0.75em',
           fontStyle: 'italic',
           lineHeight: 1.55,
         }}>
@@ -208,53 +303,104 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
           Ameen ya Rabb
         </div>
 
-        {/* Bottom row: Serial | Logo | Signature */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          maxWidth: 620,
-          margin: '0 auto',
-          padding: '0 6px',
-          gap: '8px',
-        }}>
-          {/* Serial */}
-          <div style={{ textAlign: 'left' }}>
-            <div style={{ fontSize: 'clamp(6px, 0.85vw, 11px)', color: 'rgba(255,255,255,0.6)', fontWeight: 600, letterSpacing: '0.06em' }}>SERIAL NO:</div>
-            <div style={{ fontSize: 'clamp(7px, 1vw, 13px)', fontWeight: 700, color: '#d4a832', fontFamily: 'monospace', letterSpacing: '0.05em' }}>
-              {cert.certificate_ref.replace('CERT-', 'AIG-Q')}
+        {/* ── Footer Layout: Template-Specific ── */}
+        {isBreedingTemplate ? (
+          /* Template 1 (cert-sample-1.png): Indonesia Breeding Programme ONLY
+             Left: Framed Animal Photo + Serial No | Center: Al Ihsan Logo | Right: Ustaz Signature */
+          <div
+            data-testid="certificate-breeding-footer"
+            style={{
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'space-between',
+              maxWidth: 740,
+              margin: '0 auto',
+              padding: '0 6px',
+              gap: '10px',
+            }}
+          >
+            {/* Framed Animal Photo Inset + Serial No */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 'clamp(8px, 1.6vw, 18px)', textAlign: 'left' }}>
+              <div
+                data-testid="certificate-breeding-photo-inset"
+                style={{
+                  width: 'clamp(58px, 12vw, 135px)',
+                  height: 'clamp(44px, 9vw, 100px)',
+                  border: '2px solid #d4a832',
+                  borderRadius: 4,
+                  overflow: 'hidden',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.65)',
+                  background: '#1a1a1a',
+                  flexShrink: 0,
+                }}
+              >
+                <img
+                  src={animalPhotoUrl}
+                  alt={`${cert.animal_label} — ${holderName}`}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+              </div>
+              <div style={{ paddingBottom: 2 }}>
+                <div style={{ fontSize: 'clamp(6px, 0.85vw, 11px)', color: '#ffffff', fontWeight: 700, letterSpacing: '0.06em' }}>
+                  SERIAL NO:
+                </div>
+                <div style={{ fontSize: 'clamp(7px, 1vw, 12.5px)', fontWeight: 700, color: '#d4a832', fontFamily: 'monospace', letterSpacing: '0.04em' }}>
+                  {serialNo}
+                </div>
+              </div>
             </div>
+
+            {/* Center Logo */}
+            <LogoText />
+
+            {/* Right Signature */}
+            <UstazSignatureBlock />
           </div>
-
-          {/* Logo */}
-          <LogoText />
-
-          {/* Gold seal / signature */}
-          <div style={{ textAlign: 'right' }}>
-            <div style={{
-              width: 'clamp(26px, 5vw, 50px)',
-              height: 'clamp(26px, 5vw, 50px)',
-              borderRadius: '50%',
-              background: 'radial-gradient(circle, #d4a832 0%, #92700e 60%, #6b5010 100%)',
-              margin: '0 auto 3px',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 2px 8px rgba(212,168,50,0.4)',
-            }}>
-              <Award size={16} color="#fff" />
+        ) : (
+          /* Template 2 (cert-sample-2.png): Standard Programme (All other 11 programmes incl. Indonesia Goat XL)
+             4-column bottom row: Serial No | Al Ihsan Logo | Gold Rosette Ribbon Seal | Ustaz Signature */
+          <div
+            data-testid="certificate-standard-footer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              maxWidth: 700,
+              margin: '0 auto',
+              padding: '0 6px',
+              gap: '10px',
+            }}
+          >
+            {/* Serial No */}
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontSize: 'clamp(6px, 0.85vw, 11px)', color: '#ffffff', fontWeight: 700, letterSpacing: '0.06em' }}>
+                SERIAL NO:
+              </div>
+              <div style={{ fontSize: 'clamp(7px, 1vw, 13px)', fontWeight: 700, color: '#d4a832', fontFamily: 'monospace', letterSpacing: '0.05em' }}>
+                {serialNo}
+              </div>
             </div>
-            <div style={{ fontSize: 'clamp(6px, 0.8vw, 10px)', color: 'rgba(255,255,255,0.7)', fontWeight: 600, letterSpacing: '0.04em' }}>UST KHIDR MUHAMMAD</div>
+
+            {/* Al Ihsan Logo */}
+            <LogoText />
+
+            {/* Gold Rosette Ribbon Seal */}
+            <GoldRosetteSeal />
+
+            {/* Ustaz Signature */}
+            <UstazSignatureBlock />
           </div>
-        </div>
+        )}
 
         {/* Verification code */}
         <div style={{
-          marginTop: '0.4em',
-          fontSize: 'clamp(6px, 0.8vw, 10px)',
-          color: 'rgba(255,255,255,0.35)',
+          marginTop: '0.35em',
+          fontSize: 'clamp(5.5px, 0.75vw, 9.5px)',
+          color: 'rgba(255,255,255,0.4)',
           fontFamily: 'monospace',
           letterSpacing: '0.08em',
         }}>
-          VERIFICATION: {cert.verification_code} · {cert.certificate_ref}
+          VERIFICATION: {cert.verification_code} · {cert.certificate_ref} · {cert.animal_ref}
         </div>
       </div>
     </div>
@@ -262,10 +408,11 @@ export function CertificateDesign({ cert }: { cert: Certificate }) {
 }
 
 /** Opens the rendered certificate (#certificate-print-area) in a print window so it can be printed / saved as PDF. */
-export function printCertificate(cert: Pick<Certificate, 'participant_name'>): boolean {
+export function printCertificate(cert: Pick<Certificate, 'participant_name' | 'qurban_name_holder'>): boolean {
   const el = document.getElementById('certificate-print-area');
   if (!el) return false;
-  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><title>Qurban Certificate - ${cert.participant_name}</title><link rel="preconnect" href="https://fonts.googleapis.com"/><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0a0a0a;}#certificate-print-area{width:297mm!important;height:210mm!important;}@page{size:A4 landscape;margin:0;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body>${el.outerHTML}<script>window.onload=function(){window.print();window.close();}</script></body></html>`;
+  const displayHolder = cert.qurban_name_holder || cert.participant_name;
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><title>Certificate - ${displayHolder}</title><link rel="preconnect" href="https://fonts.googleapis.com"/><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0a0a0a;}#certificate-print-area{width:297mm!important;height:210mm!important;}@page{size:A4 landscape;margin:0;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body>${el.outerHTML}<script>window.onload=function(){window.print();window.close();}</script></body></html>`;
   const w = window.open('', '_blank');
   if (!w) return false;
   w.document.write(html);
