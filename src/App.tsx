@@ -6,6 +6,7 @@ import { AppDataProvider, useAppData } from '@/contexts/AppDataContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { CertificateDesign, formatCertificateSerialNo } from '@/components/ui/CertificateDesign';
+import { usePageTitle } from '@/hooks/usePageTitle';
 
 // ── Admin Pages (lazy loaded) ─────────────────────────────────
 const DashboardPage     = lazy(() => import('@/pages/admin/DashboardPage').then(m => ({ default: m.DashboardPage })));
@@ -179,6 +180,10 @@ function PageLoader() {
 
 // ── Public Certificate Verification Page (/verify/:code) ──────
 export function CertificateVerifyPage() {
+  usePageTitle(
+    'Verify Certificate',
+    'Verify authentic Al Ihsan Group Singapore Qurban and Aqiqah digital certificates online.',
+  );
   const { code: routeCode } = useParams<{ code?: string }>();
   const { certificates } = useAppData();
   const [query, setQuery] = useState(routeCode ?? '');
