@@ -793,6 +793,7 @@ type AppDataContextType = AppData & {
   updateOrder: (id: string, patch: UpdateOrderInput) => AppOrder;
   updateOrderStatus: (id: string, status: OrderStatus) => void;
   cancelOrder: (id: string) => void;
+  deleteOrder: (id: string) => void;
   markOrderInvoiceSent: (orderId: string, providerRef?: string) => void;
 
   // Animal actions
@@ -1704,6 +1705,50 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     commit((d, actor) => applyOrderStatus(d, id, 'cancelled', actor));
   }, [commit]);
 
+  const deleteOrder = useCallback((id: string) => {
+    const target = dataRef.current.orders.find(o => o.id === id);
+    if (!target) throw new Error('Order not found.');
+    const deletableStatuses: OrderStatus[] = ['cancelled', 'draft', 'pending_payment', 'payment_rejected'];
+    if (!deletableStatuses.includes(target.status)) {
+      throw new Error('Cancel this order first before permanently deleting it.');
+    }
+
+    commit((d, actor) => {
+      const o = d.orders.find(x => x.id === id);
+      if (!o) return d;
+
+      const removedPayCount = d.payments.filter(p => p.order_ref === o.order_ref).length;
+      const removedDelCount = d.deliveries.filter(x => x.order_ref === o.order_ref).length;
+      const removedCertCount = d.certificates.filter(c => c.order_ref === o.order_ref).length;
+      const orderSpecificAnimalCount = d.animals.filter(a => a.order_ref === o.order_ref && Boolean(a.animal_code)).length;
+
+      let next: AppData = {
+        ...d,
+        orders: d.orders.filter(x => x.id !== id),
+        payments: d.payments.filter(p => p.order_ref !== o.order_ref),
+        deliveries: d.deliveries.filter(x => x.order_ref !== o.order_ref),
+        certificates: d.certificates.filter(c => c.order_ref !== o.order_ref),
+        animals: d.animals
+          .filter(a => !(a.order_ref === o.order_ref && Boolean(a.animal_code)))
+          .map(a =>
+            a.order_ref === o.order_ref
+              ? { ...a, status: 'available' as AnimalStatus, order_id: undefined, order_ref: undefined, qurban_name_holder: undefined }
+              : a,
+          ),
+      };
+
+      next = withLog(
+        next,
+        actor,
+        'order.deleted',
+        'order',
+        o.order_ref,
+        `Order ${o.order_ref} permanently deleted (${o.participant}, ${o.programme}) — removed ${orderSpecificAnimalCount} animal(s), ${removedPayCount} payment(s), ${removedDelCount} delivery(s), ${removedCertCount} certificate(s)`,
+      );
+      return next;
+    });
+  }, [commit]);
+
   // ── Animals ───────────────────────────────────────────────
   const addAnimal = useCallback((a: AppAnimal) => {
     commit((d, actor) => {
@@ -2139,7 +2184,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AppDataContextType>(() => ({
     ...data,
     participants, programmes, suppliers,
-    addOrder, updateOrder, updateOrderStatus, cancelOrder, markOrderInvoiceSent,
+    addOrder, updateOrder, updateOrderStatus, cancelOrder, deleteOrder, markOrderInvoiceSent,
     addAnimal, updateAnimal, updateAnimalStatus,
     addPayment, verifyPayment, rejectPayment,
     updateDeliveryStatus, updateDelivery,
@@ -2150,7 +2195,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     resolveException, assignException,
   }), [
     data, participants, programmes, suppliers,
-    addOrder, updateOrder, updateOrderStatus, cancelOrder, markOrderInvoiceSent,
+    addOrder, updateOrder, updateOrderStatus, cancelOrder, deleteOrder, markOrderInvoiceSent,
     addAnimal, updateAnimal, updateAnimalStatus,
     addPayment, verifyPayment, rejectPayment,
     updateDeliveryStatus, updateDelivery,

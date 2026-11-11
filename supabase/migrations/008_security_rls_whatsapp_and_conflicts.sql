@@ -892,3 +892,65 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION verify_aigms_certificate(TEXT) TO anon, authenticated;
+
+-- ============================================================
+-- 8. SAFE ADMIN ORDER DELETE RPC (Audit-Logged Disposal)
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION delete_aigms_order(p_order_id TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_order aigms_orders%ROWTYPE;
+BEGIN
+  IF auth.role() <> 'service_role' AND NOT EXISTS (
+    SELECT 1 FROM profiles
+    WHERE id = auth.uid()
+      AND is_active = TRUE
+      AND role IN ('super_admin', 'operations_admin', 'd3_technical_admin')
+  ) THEN
+    RAISE EXCEPTION 'Forbidden: only senior admin staff may permanently delete disposable orders.';
+  END IF;
+
+  SELECT * INTO v_order
+    FROM aigms_orders
+   WHERE id = p_order_id OR LOWER(order_ref) = LOWER(btrim(p_order_id))
+   FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Order "%" not found.', p_order_id;
+  END IF;
+
+  IF v_order.status NOT IN ('cancelled', 'draft', 'pending_payment', 'payment_rejected') THEN
+    RAISE EXCEPTION 'Order % must be cancelled before it can be permanently deleted.', v_order.order_ref;
+  END IF;
+
+  DELETE FROM aigms_certificates WHERE order_ref = v_order.order_ref;
+  DELETE FROM aigms_deliveries   WHERE order_ref = v_order.order_ref;
+  DELETE FROM aigms_payments     WHERE order_ref = v_order.order_ref;
+  DELETE FROM aigms_animals      WHERE order_ref = v_order.order_ref AND animal_code IS NOT NULL;
+  UPDATE aigms_animals
+     SET status = 'available', order_id = NULL, order_ref = NULL, qurban_name_holder = NULL
+   WHERE order_ref = v_order.order_ref AND animal_code IS NULL;
+  DELETE FROM aigms_orders       WHERE id = v_order.id;
+
+  INSERT INTO aigms_audit_logs (
+    id, actor_email, actor_role, action, entity, entity_id, description
+  ) VALUES (
+    uuid_generate_v4()::TEXT,
+    COALESCE(auth.jwt()->>'email', 'admin'),
+    'super_admin',
+    'order.deleted',
+    'order',
+    v_order.order_ref,
+    'Order ' || v_order.order_ref || ' permanently deleted by admin'
+  );
+
+  RETURN jsonb_build_object('deleted', TRUE, 'order_ref', v_order.order_ref);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION delete_aigms_order(TEXT) TO authenticated;

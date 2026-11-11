@@ -1476,4 +1476,71 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
       }).authorized,
     ).toBe(true);
   });
+
+  it('TEST 18: Cancel any order, hide cancelled from Active Orders by default, guard & permanently delete disposable orders cleanly', () => {
+    const store = mountAppDataStore();
+    let ctx = store.getState();
+
+    const activeOrder = ctx.addOrder({
+      order_ref: 'ORD-KEEP-01',
+      full_name: 'Salma binte Yusuf',
+      email: 'salma@example.sg',
+      contact_number: '+65 9111 0001',
+      programme: 'Uganda - Goat',
+      programme_id: 'prog-ug-goat',
+      programme_country: 'Uganda',
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      quantity: 1,
+      qurban_entries: [{ qurban_name_holder: 'Salma binte Yusuf' }],
+      total_amount: 145,
+      currency: 'SGD',
+    });
+
+    const disposableOrder = ctx.addOrder({
+      order_ref: 'ORD-DEL-02',
+      full_name: 'Test Order User',
+      email: 'testdel@example.sg',
+      contact_number: '+65 9222 0002',
+      programme: 'Uganda - Sheep',
+      programme_id: 'prog-ug-sheep',
+      programme_country: 'Uganda',
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      quantity: 2,
+      qurban_entries: [
+        { qurban_name_holder: 'Test Holder 1' },
+        { qurban_name_holder: 'Test Holder 2' },
+      ],
+      total_amount: 330,
+      currency: 'SGD',
+    });
+
+    // Advance disposable order to confirmed -> direct delete MUST throw until cancelled first
+    ctx = store.getState();
+    ctx.updateOrderStatus(disposableOrder.id, 'confirmed');
+    ctx = store.getState();
+    expect(() => ctx.deleteOrder(disposableOrder.id)).toThrow(/Cancel this order first/);
+
+    // Admin cancels disposable order -> hidden from default Active Orders table, toggle pill shows count
+    ctx.cancelOrder(disposableOrder.id);
+    const htmlAfterCancel = store.renderScreen(<OrdersPage />);
+    expect(htmlAfterCancel).toContain('Active Orders');
+    expect(htmlAfterCancel).toContain('ORD-KEEP-01');
+    expect(htmlAfterCancel).not.toContain('ORD-DEL-02');
+    expect(htmlAfterCancel).toContain('Cancelled (1)');
+    expect(htmlAfterCancel).toContain('+ Show 1 Cancelled');
+
+    // Permanently delete cancelled order -> cascades linked animals/payments/deliveries/certificates + writes audit log
+    ctx = store.getState();
+    ctx.deleteOrder(disposableOrder.id);
+    const afterDelete = store.getState();
+    expect(afterDelete.orders.some(o => o.order_ref === 'ORD-DEL-02')).toBe(false);
+    expect(afterDelete.orders.some(o => o.order_ref === 'ORD-KEEP-01')).toBe(true);
+    expect(afterDelete.animals.some(a => a.order_ref === 'ORD-DEL-02')).toBe(false);
+    expect(afterDelete.payments.some(p => p.order_ref === 'ORD-DEL-02')).toBe(false);
+    expect(afterDelete.certificates.some(c => c.order_ref === 'ORD-DEL-02')).toBe(false);
+    expect(afterDelete.auditLogs.some(l => l.action === 'order.deleted' && l.entity_id === 'ORD-DEL-02')).toBe(true);
+    void activeOrder;
+  });
 });

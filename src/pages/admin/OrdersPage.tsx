@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import {
   Search, Plus, X, ChevronDown, ChevronUp, CheckCircle2,
-  XCircle, RefreshCw, Eye, Users, Package, Edit3, AlertCircle,
+  XCircle, RefreshCw, Eye, Users, Package, Edit3, AlertCircle, Trash2,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import type { OrderStatus, PaymentStatus } from '@/lib/database.types';
@@ -129,16 +129,18 @@ function syncSummary(status: OrderStatus): string {
 const PAGE_SIZE = 10;
 
 // ── View Full Details Modal ────────────────────────────────────
-function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel }: {
+function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel, onRequestDelete }: {
   order: Order;
   onClose: () => void;
   onEdit: (order: Order) => void;
   onStatusChange: (id: string, next: OrderStatus) => void;
   onCancel: (id: string) => void;
+  onRequestDelete: (order: Order) => void;
 }) {
   const { animals, payments, programmes } = useAppData();
   const nextStatus = NEXT_STATUSES[order.status];
-  const isCancellable = !['completed', 'cancelled', 'certificate_generated', 'delivered'].includes(order.status);
+  const isCancellable = order.status !== 'cancelled';
+  const isDeletable = ['cancelled', 'draft', 'pending_payment', 'payment_rejected'].includes(order.status);
   const orderAnimals = useMemo(
     () =>
       animals
@@ -395,6 +397,78 @@ function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel }: 
               Cancel Order
             </button>
           )}
+          {isDeletable && (
+            <button
+              className="btn"
+              onClick={() => { onClose(); onRequestDelete(order); }}
+              style={{ background: 'rgba(220,38,38,0.18)', border: '1px solid rgba(220,38,38,0.4)', color: '#fca5a5', gap: '0.5rem' }}
+              data-testid="detail-delete-order-btn"
+            >
+              <Trash2 size={14} />
+              Delete Permanently
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Permanent Delete Order Confirmation Modal ──────────────────
+function DeleteOrderModal({
+  order,
+  linkedCounts,
+  onClose,
+  onConfirmDelete,
+}: {
+  order: Order;
+  linkedCounts: { animals: number; payments: number; deliveries: number; certificates: number };
+  onClose: () => void;
+  onConfirmDelete: (id: string) => void;
+}) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }} data-testid="delete-order-modal">
+        <div className="modal-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Trash2 size={18} color="#f87171" />
+            <div className="heading-md">Permanently Delete Order</div>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+          <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+            Are you sure you want to permanently delete{' '}
+            <strong style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)' }}>{order.order_ref}</strong>{' '}
+            for <strong>{order.participant}</strong> ({order.programme})?
+          </div>
+          <div style={{
+            padding: '0.75rem 0.875rem',
+            borderRadius: 8,
+            background: 'rgba(239,68,68,0.08)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            fontSize: '0.8rem',
+            color: '#fca5a5',
+            lineHeight: 1.55,
+          }}>
+            <strong>Recommended for real orders:</strong> Keep orders as <em>Cancelled</em> for financial audit records. Only permanently delete test orders, duplicate entries, or mistaken drafts.
+            <div style={{ marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
+              This will permanently remove: <strong>{linkedCounts.animals}</strong> animal allocation(s),{' '}
+              <strong>{linkedCounts.payments}</strong> payment(s), <strong>{linkedCounts.deliveries}</strong> delivery record(s), and{' '}
+              <strong>{linkedCounts.certificates}</strong> certificate(s). An <code>order.deleted</code> audit log entry will be kept.
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Keep Order</button>
+          <button
+            className="btn"
+            style={{ background: '#dc2626', border: '1px solid #ef4444', color: '#fff', gap: '0.45rem' }}
+            onClick={() => { onConfirmDelete(order.id); onClose(); }}
+            data-testid="confirm-delete-order-btn"
+          >
+            <Trash2 size={14} /> Delete Order Permanently
+          </button>
         </div>
       </div>
     </div>
@@ -1342,15 +1416,19 @@ export function OrdersPage() {
     orders,
     animals,
     payments,
+    deliveries,
+    certificates,
     programmes,
     addOrder,
     updateOrder,
     updateOrderStatus,
     cancelOrder: ctxCancelOrder,
+    deleteOrder: ctxDeleteOrder,
   } = useAppData();
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [showCancelled, setShowCancelled] = useState(false);
   const [programmeFilter, setProgrammeFilter] = useState('');
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -1358,10 +1436,12 @@ export function OrdersPage() {
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
   const [editOrderId, setEditOrderId] = useState<string | null>(null);
   const [updateStatusOrderId, setUpdateStatusOrderId] = useState<string | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const detailOrder = detailOrderId ? orders.find(o => o.id === detailOrderId) ?? null : null;
   const editOrderTarget = editOrderId ? orders.find(o => o.id === editOrderId) ?? null : null;
   const updateStatusOrder = updateStatusOrderId ? orders.find(o => o.id === updateStatusOrderId) ?? null : null;
+  const deleteTargetOrder = deleteTargetId ? orders.find(o => o.id === deleteTargetId) ?? null : null;
 
   const paymentByOrderRef = useMemo(() => {
     const map = new Map<string, AppPayment>();
@@ -1391,8 +1471,21 @@ export function OrdersPage() {
 
   const cancelOrder = useCallback((id: string) => {
     ctxCancelOrder(id);
-    toast('info', 'Order cancelled');
+    toast('info', 'Order cancelled', 'Hidden from active Orders view (use "Cancelled" or "Show Cancelled" to view or delete permanently).');
   }, [ctxCancelOrder, toast]);
+
+  const confirmDeleteOrder = useCallback((id: string) => {
+    try {
+      const target = orders.find(o => o.id === id);
+      ctxDeleteOrder(id);
+      setExpandedId(prev => (prev === id ? null : prev));
+      toast('success', 'Order permanently deleted', target ? `${target.order_ref} and its linked records were removed.` : 'Order removed.');
+    } catch (err) {
+      toast('error', 'Cannot delete order', err instanceof Error ? err.message : 'Unexpected error');
+    }
+  }, [ctxDeleteOrder, orders, toast]);
+
+  const cancelledCount = useMemo(() => orders.filter(o => o.status === 'cancelled').length, [orders]);
 
   const filtered = orders.filter(o => {
     const q = search.toLowerCase();
@@ -1409,9 +1502,11 @@ export function OrdersPage() {
       (o.contact_number ?? '').toLowerCase().includes(q) ||
       (o.service_type ?? '').toLowerCase().includes(q) ||
       holdersAndCodes.includes(q);
+    // Hide cancelled orders by default unless user explicitly selects 'cancelled' status or toggles Show Cancelled
+    const matchVisibility = statusFilter === 'cancelled' || showCancelled || o.status !== 'cancelled';
     const matchStatus = !statusFilter || o.status === statusFilter;
     const matchProgramme = !programmeFilter || o.programme === programmeFilter;
-    return matchSearch && matchStatus && matchProgramme;
+    return matchSearch && matchVisibility && matchStatus && matchProgramme;
   });
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
@@ -1427,6 +1522,20 @@ export function OrdersPage() {
           onEdit={o => setEditOrderId(o.id)}
           onStatusChange={updateStatus}
           onCancel={cancelOrder}
+          onRequestDelete={o => setDeleteTargetId(o.id)}
+        />
+      )}
+      {deleteTargetOrder && (
+        <DeleteOrderModal
+          order={deleteTargetOrder}
+          linkedCounts={{
+            animals: animals.filter(a => a.order_ref === deleteTargetOrder.order_ref).length,
+            payments: payments.filter(p => p.order_ref === deleteTargetOrder.order_ref).length,
+            deliveries: deliveries.filter(d => d.order_ref === deleteTargetOrder.order_ref).length,
+            certificates: certificates.filter(c => c.order_ref === deleteTargetOrder.order_ref).length,
+          }}
+          onClose={() => setDeleteTargetId(null)}
+          onConfirmDelete={confirmDeleteOrder}
         />
       )}
       {editOrderTarget && (
@@ -1496,16 +1605,28 @@ export function OrdersPage() {
             <option key={p.id} value={p.name}>{p.name}</option>
           ))}
         </select>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {STATUS_FILTERS.map(f => (
             <button
               key={f.value}
               className={`btn btn-sm ${statusFilter === f.value ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => { setStatusFilter(f.value); setPage(1); }}
             >
-              {f.label}
+              {f.value === '' && !showCancelled ? 'Active Orders' : f.label}
+              {f.value === 'cancelled' && cancelledCount > 0 ? ` (${cancelledCount})` : ''}
             </button>
           ))}
+          {statusFilter !== 'cancelled' && cancelledCount > 0 && (
+            <button
+              type="button"
+              className={`btn btn-sm ${showCancelled ? 'btn-outline-green' : 'btn-ghost'}`}
+              onClick={() => { setShowCancelled(s => !s); setPage(1); }}
+              data-testid="toggle-show-cancelled-btn"
+              title="Toggle whether cancelled orders appear in Active Orders"
+            >
+              {showCancelled ? `Hiding 0 Cancelled` : `+ Show ${cancelledCount} Cancelled`}
+            </button>
+          )}
         </div>
       </div>
 
@@ -1706,7 +1827,7 @@ export function OrdersPage() {
                               </button>
                             )}
 
-                            {!['completed', 'cancelled', 'certificate_generated', 'delivered'].includes(o.status) && (
+                            {o.status !== 'cancelled' && (
                               <button
                                 className="btn btn-sm"
                                 style={{ gap: '0.375rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}
@@ -1714,8 +1835,20 @@ export function OrdersPage() {
                                   cancelOrder(o.id);
                                   setExpandedId(null);
                                 }}
+                                data-testid={`cancel-order-btn-${o.order_ref}`}
                               >
                                 <XCircle size={13} /> Cancel Order
+                              </button>
+                            )}
+
+                            {['cancelled', 'draft', 'pending_payment', 'payment_rejected'].includes(o.status) && (
+                              <button
+                                className="btn btn-sm"
+                                style={{ gap: '0.375rem', background: 'rgba(220,38,38,0.16)', border: '1px solid rgba(220,38,38,0.35)', color: '#fca5a5' }}
+                                onClick={() => setDeleteTargetId(o.id)}
+                                data-testid={`delete-order-btn-${o.order_ref}`}
+                              >
+                                <Trash2 size={13} /> Delete Permanently
                               </button>
                             )}
                           </div>
