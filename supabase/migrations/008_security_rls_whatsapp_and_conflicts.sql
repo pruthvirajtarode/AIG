@@ -834,3 +834,61 @@ $$;
 GRANT EXECUTE ON FUNCTION create_aigms_order(
   TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INTEGER, NUMERIC, JSONB, TEXT, TEXT, TEXT, TEXT, TEXT
 ) TO authenticated;
+
+-- ============================================================
+-- 7. PUBLIC NON-SENSITIVE CERTIFICATE VERIFICATION RPC (/verify/:code)
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION verify_aigms_certificate(p_code TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_clean TEXT := UPPER(btrim(COALESCE(p_code, '')));
+  v_cert  aigms_certificates%ROWTYPE;
+BEGIN
+  IF v_clean = '' THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT * INTO v_cert
+    FROM aigms_certificates
+   WHERE status IN ('generated', 'sent', 'regenerated')
+     AND (
+       UPPER(btrim(verification_code)) = v_clean
+       OR UPPER(btrim(certificate_ref)) = v_clean
+     )
+   LIMIT 1;
+
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+
+  -- Return ONLY safe public verification attributes (zero email/phone/IC/address)
+  RETURN jsonb_build_object(
+    'id', v_cert.id,
+    'certificate_ref', v_cert.certificate_ref,
+    'order_ref', v_cert.order_ref,
+    'participant_name', COALESCE(NULLIF(btrim(v_cert.qurban_name_holder), ''), v_cert.participant_name),
+    'qurban_name_holder', COALESCE(NULLIF(btrim(v_cert.qurban_name_holder), ''), v_cert.participant_name),
+    'programme_name', v_cert.programme_name,
+    'country', COALESCE(v_cert.country, ''),
+    'animal_ref', v_cert.animal_ref,
+    'animal_type', v_cert.animal_type,
+    'animal_label', v_cert.animal_label,
+    'qurban_date', v_cert.qurban_date,
+    'status', v_cert.status,
+    'generated_at', v_cert.generated_at,
+    'sent_at', v_cert.sent_at,
+    'verification_code', v_cert.verification_code,
+    'year', COALESCE(v_cert.year, EXTRACT(YEAR FROM NOW())::TEXT),
+    'template_type', COALESCE(v_cert.template_type, 'standard'),
+    'service_type', COALESCE(v_cert.service_type, 'qurban'),
+    'animal_photo_url', v_cert.animal_photo_url
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION verify_aigms_certificate(TEXT) TO anon, authenticated;

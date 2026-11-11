@@ -5,8 +5,9 @@ import { ToastProvider } from '@/contexts/ToastContext';
 import { AppDataProvider, useAppData } from '@/contexts/AppDataContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { LoginPage } from '@/pages/auth/LoginPage';
-import { CertificateDesign, formatCertificateSerialNo } from '@/components/ui/CertificateDesign';
+import { CertificateDesign, formatCertificateSerialNo, type Certificate as CertDesignData } from '@/components/ui/CertificateDesign';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 // ── Admin Pages (lazy loaded) ─────────────────────────────────
 const DashboardPage     = lazy(() => import('@/pages/admin/DashboardPage').then(m => ({ default: m.DashboardPage })));
@@ -187,9 +188,11 @@ export function CertificateVerifyPage() {
   const { code: routeCode } = useParams<{ code?: string }>();
   const { certificates } = useAppData();
   const [query, setQuery] = useState(routeCode ?? '');
+  const [remoteMatch, setRemoteMatch] = useState<CertDesignData | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
 
   const normalizedQuery = (routeCode ?? query).trim().toUpperCase();
-  const matched = normalizedQuery
+  const localMatched = normalizedQuery
     ? certificates.find(
         c =>
           c.verification_code.trim().toUpperCase() === normalizedQuery ||
@@ -197,6 +200,37 @@ export function CertificateVerifyPage() {
           formatCertificateSerialNo(c.certificate_ref, c.year).toUpperCase() === normalizedQuery,
       )
     : undefined;
+
+  useEffect(() => {
+    if (!normalizedQuery || localMatched || !isSupabaseConfigured) {
+      setRemoteMatch(null);
+      return;
+    }
+    let cancelled = false;
+    setLookupLoading(true);
+    Promise.resolve(
+      supabase.rpc('verify_aigms_certificate', { p_code: normalizedQuery } as never),
+    )
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (!error && data && typeof data === 'object') {
+          setRemoteMatch(data as CertDesignData);
+        } else {
+          setRemoteMatch(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setRemoteMatch(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLookupLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedQuery, localMatched]);
+
+  const matched = localMatched ?? remoteMatch ?? undefined;
 
   return (
     <div
@@ -274,6 +308,10 @@ export function CertificateVerifyPage() {
             <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(212,168,50,0.35)' }}>
               <CertificateDesign cert={matched} />
             </div>
+          </div>
+        ) : normalizedQuery && lookupLoading ? (
+          <div className="card" style={{ padding: '1.5rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Checking verification code…</div>
           </div>
         ) : normalizedQuery ? (
           <div className="card" style={{ padding: '1.5rem', textAlign: 'center' }} data-testid="certificate-verify-not-found">

@@ -837,7 +837,7 @@ let latestProviderSeq = 0;
 // ─────────────────────────────────────────────────────────────
 
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
-  const { user, profile } = useAuth();
+  const { user, profile, isAuthenticated } = useAuth();
   const instanceSeqRef = useRef<number>(0);
   if (instanceSeqRef.current === 0) {
     latestProviderSeq += 1;
@@ -855,10 +855,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     email: profile?.email ?? user?.email ?? 'admin',
     role: profile?.role ?? 'super_admin',
   };
-  const isStaffActor = !profile || STAFF_SYNC_ROLES.includes(profile.role);
+  const isStaffActor = Boolean(user && (!profile || STAFF_SYNC_ROLES.includes(profile.role)));
 
-  // ── On mount: try to load from Supabase ──────────────────────
+  // ── On authenticated mount/sign-in: load from Supabase (never query anon tables on /login or /verify) ──
   useEffect(() => {
+    if (!isAuthenticated || !user?.id) {
+      supabaseSnapshotRef.current = null;
+      return;
+    }
     let cancelled = false;
     loadFromSupabase().then(remote => {
       if (cancelled || !remote) return;
@@ -887,7 +891,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     }).catch(console.error);
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isAuthenticated, user?.id]);
 
   /** Apply a pure transformation to the latest state. */
   const commit = useCallback((fn: (d: AppData, actor: Actor) => AppData) => {
