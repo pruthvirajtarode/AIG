@@ -40,6 +40,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { LIVE_PROGRAMMES, LIVE_PROGRAMMES_VERSION } from '@/data/liveProgrammes';
 import { notificationService } from '@/services/notificationService';
+import { buildInstallmentSchedule, type InstallmentScheduleItem } from '@/services/paymentService';
 import { loadFromSupabase, syncToSupabase } from '@/services/supabaseSync';
 
 export { animalCodeForOrder, nextOrderRef };
@@ -67,6 +68,9 @@ export type AppOrder = {
   programme_country?: string;
   service_type?: 'qurban' | 'aqiqah' | 'nazar';
   payment_method?: 'paynow' | 'cash' | 'installment' | 'bank_transfer';
+  installment_count?: number;
+  installments_paid?: number;
+  installment_schedule?: InstallmentScheduleItem[];
   delivery_portion?: 'full' | 'one_third' | 'two_thirds' | 'nil' | null;
   quantity: number;
   number_of_qurbans?: number;
@@ -126,6 +130,9 @@ export type AppPayment = {
   notes: string | null;
   proof_url?: string | null;
   rejection_reason?: string | null;
+  installment_count?: number;
+  installments_paid?: number;
+  installment_schedule?: InstallmentScheduleItem[];
 };
 
 export type AppDelivery = {
@@ -264,6 +271,7 @@ export type NewOrderInput = {
   programme_country?: string;
   service_type: 'qurban' | 'aqiqah' | 'nazar';
   payment_method: 'paynow' | 'cash' | 'installment' | 'bank_transfer';
+  installment_count?: number;
   delivery_portion?: 'full' | 'one_third' | 'two_thirds' | 'nil' | null;
   quantity: number;           // number of qurbans
   total_amount: number;
@@ -287,6 +295,9 @@ export type UpdateOrderInput = {
   programme_country?: string;
   service_type?: 'qurban' | 'aqiqah' | 'nazar';
   payment_method?: 'paynow' | 'cash' | 'installment' | 'bank_transfer';
+  installment_count?: number;
+  installments_paid?: number;
+  installment_schedule?: InstallmentScheduleItem[];
   delivery_portion?: 'full' | 'one_third' | 'two_thirds' | 'nil' | null;
   quantity?: number;
   total_amount?: number;
@@ -425,9 +436,24 @@ function animalStatusFor(s: OrderStatus): AnimalStatus | null {
   if (s === 'animal_allocated') return 'allocated';
   if (s === 'animal_growing') return 'growing';
   if (s === 'final_inspection') return 'inspection_pending';
-  if (s === 'certificate_generated' || s === 'completed') return 'completed';
+  if (s === 'delivered' || s === 'certificate_generated' || s === 'completed') return 'completed';
+  if (s === 'processing' || s === 'shipped' || s === 'arrived' || s === 'delivery_scheduled' || s === 'out_for_delivery') return 'processed';
   if (R(s) >= R('qurban_complete')) return 'slaughtered';
   return null;
+}
+
+function orderStatusForAnimal(s: AnimalStatus): OrderStatus | null {
+  switch (s) {
+    case 'allocated':          return 'animal_allocated';
+    case 'growing':            return 'animal_growing';
+    case 'inspection_pending': return 'final_inspection';
+    case 'inspection_passed':  return 'final_inspection';
+    case 'qurban_ready':       return 'final_inspection';
+    case 'slaughtered':        return 'qurban_complete';
+    case 'processed':          return 'processing';
+    case 'completed':          return 'completed';
+    default:                   return null;
+  }
 }
 
 function deliveryStatusFor(s: OrderStatus): DeliveryStatus | null {
@@ -483,16 +509,27 @@ function syncRelated(input: AppData, o: AppOrder, actor: Actor): AppData {
   const isCancelled = o.status === 'cancelled' || o.status === 'refunded';
 
   // ── Payment ──────────────────────────────────────────────
-  const wantPay = paymentStatusFor(o.status);
+  const rawWantPay = paymentStatusFor(o.status);
+  const hasPartialInstallment =
+    o.payment_method === 'installment' &&
+    (o.installments_paid ?? 0) > 0 &&
+    (o.installments_paid ?? 0) < (o.installment_count ?? 2);
+  const wantPay: PaymentStatus | null =
+    hasPartialInstallment && rawWantPay === 'pending' ? 'submitted' : rawWantPay;
   const pay = d.payments.find(p => p.order_ref === o.order_ref);
   const desiredMethod = o.payment_method ?? pay?.method ?? 'paynow';
   if (pay) {
     const nextPayStatus = wantPay ?? pay.status;
+    const installmentChanged =
+      pay.installment_count !== o.installment_count ||
+      pay.installments_paid !== o.installments_paid ||
+      JSON.stringify(pay.installment_schedule ?? null) !== JSON.stringify(o.installment_schedule ?? null);
     if (
       pay.status !== nextPayStatus ||
       pay.amount !== o.total_amount ||
       pay.participant !== o.participant ||
-      pay.method !== desiredMethod
+      pay.method !== desiredMethod ||
+      installmentChanged
     ) {
       const submittedLike = nextPayStatus === 'submitted' || nextPayStatus === 'under_review' || nextPayStatus === 'verified';
       const updated: AppPayment = {
@@ -501,6 +538,9 @@ function syncRelated(input: AppData, o: AppOrder, actor: Actor): AppData {
         amount: o.total_amount,
         participant: o.participant,
         method: desiredMethod,
+        installment_count: o.installment_count,
+        installments_paid: o.installments_paid,
+        installment_schedule: o.installment_schedule,
         submitted_at: submittedLike ? pay.submitted_at ?? nowIso() : nextPayStatus === 'pending' ? null : pay.submitted_at,
         verified_at: nextPayStatus === 'verified' ? pay.verified_at ?? nowIso() : nextPayStatus === 'refunded' ? pay.verified_at : null,
       };
@@ -527,13 +567,16 @@ function syncRelated(input: AppData, o: AppOrder, actor: Actor): AppData {
       notes: null,
       proof_url: null,
       rejection_reason: null,
+      installment_count: o.installment_count,
+      installments_paid: o.installments_paid,
+      installment_schedule: o.installment_schedule,
     };
     d = { ...d, payments: [newPayment, ...d.payments] };
     d = withLog(d, actor, 'payment.created', 'payment', ref, `Payment ${ref} created for order ${o.order_ref} (${wantPay.replace(/_/g, ' ')})`);
   }
 
   // ── Animal ───────────────────────────────────────────────
-  const linkedAll = d.animals.filter(a => a.order_ref === o.order_ref);
+  const linkedAll = d.animals.filter(a => a.order_ref === o.order_ref || (o.id && a.order_id === o.id));
   if (isCancelled) {
     for (const linked of linkedAll) {
       if (['slaughtered', 'processed', 'completed'].includes(linked.status)) continue;
@@ -805,6 +848,8 @@ type AppDataContextType = AppData & {
   addPayment: (p: AppPayment) => void;
   verifyPayment: (id: string) => void;
   rejectPayment: (id: string, reason?: string) => void;
+  recordInstallmentPayment: (orderId: string, paidDateIso?: string) => void;
+  sendInstallmentReminder: (orderId: string) => Promise<void>;
 
   // Delivery actions
   updateDeliveryStatus: (id: string, status: DeliveryStatus) => void;
@@ -1060,6 +1105,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     const orderCurrency = input.currency ?? matchedProg?.currency ?? 'SGD';
     const shouldSendConfirmationOnce = targetStatus !== 'draft';
+    const isInstallment = input.payment_method === 'installment';
+    const installmentCount = isInstallment
+      ? Math.max(2, Math.min(6, Math.round(input.installment_count ?? 2)))
+      : undefined;
+    const installmentSchedule = isInstallment && installmentCount
+      ? buildInstallmentSchedule(input.total_amount, installmentCount, nowIso(), orderCurrency)
+      : undefined;
     const order: AppOrder = {
       id: uid(),
       order_ref: orderRef,
@@ -1073,6 +1125,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       programme_country: canonicalCountry,
       service_type: input.service_type,
       payment_method: input.payment_method,
+      ...(isInstallment
+        ? {
+            installment_count: installmentCount,
+            installments_paid: 0,
+            installment_schedule: installmentSchedule,
+          }
+        : {}),
       delivery_portion: validation.normalizedPortion,
       quantity: input.quantity,
       number_of_qurbans: input.quantity,
@@ -1442,6 +1501,26 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      const nextIsInstallment = nextPaymentMethod === 'installment';
+      const nextCurrency = patch.currency ?? matchedProg?.currency ?? cur.currency;
+      const nextInstallmentCount = nextIsInstallment
+        ? Math.max(2, Math.min(6, Math.round(patch.installment_count ?? cur.installment_count ?? 2)))
+        : undefined;
+      const prevPaid = Math.min(cur.installments_paid ?? 0, nextInstallmentCount ?? 0);
+      const needsScheduleRebuild =
+        nextIsInstallment &&
+        (!cur.installment_schedule ||
+          cur.installment_count !== nextInstallmentCount ||
+          cur.total_amount !== nextTotal ||
+          cur.payment_method !== 'installment');
+      const nextInstallmentSchedule = nextIsInstallment
+        ? needsScheduleRebuild && nextInstallmentCount
+          ? buildInstallmentSchedule(nextTotal, nextInstallmentCount, cur.created_at, nextCurrency).map((item, idx) =>
+              idx < prevPaid ? { ...item, status: 'verified' as const } : item,
+            )
+          : cur.installment_schedule
+        : undefined;
+
       const updatedOrder: AppOrder = {
         ...cur,
         participant: participantName,
@@ -1453,11 +1532,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         programme_country: nextCountry,
         service_type: nextServiceType,
         payment_method: nextPaymentMethod,
+        installment_count: nextInstallmentCount,
+        installments_paid: nextIsInstallment ? prevPaid : undefined,
+        installment_schedule: nextInstallmentSchedule,
         delivery_portion: validation.normalizedPortion,
         quantity: nextQuantity,
         number_of_qurbans: nextQuantity,
         total_amount: nextTotal,
-        currency: patch.currency ?? matchedProg?.currency ?? cur.currency,
+        currency: nextCurrency,
         notes: patch.notes !== undefined ? patch.notes.trim() || undefined : cur.notes,
       };
 
@@ -1801,6 +1883,30 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             description: `Animal ${a.animal_ref} (${a.animal_type}${a.order_ref ? `, order ${a.order_ref}` : ''}) failed inspection / was rejected. ${a.order_ref ? 'A replacement animal must be allocated.' : ''}`.trim(),
             related_entity: 'animal', related_entity_id: a.animal_ref,
           });
+        } else {
+          // Order-as-single-source-of-truth: advance linked Order (which syncs Deliveries + Certificates)
+          const linkedOrder = next.orders.find(
+            o => o.order_ref === updated.order_ref || (updated.order_id && o.id === updated.order_id),
+          );
+          const targetOrderStatus = orderStatusForAnimal(patch.status);
+          if (
+            linkedOrder &&
+            targetOrderStatus &&
+            linkedOrder.status !== 'cancelled' &&
+            linkedOrder.status !== 'refunded' &&
+            orderRank(linkedOrder.status) >= 0 &&
+            orderRank(linkedOrder.status) < R(targetOrderStatus)
+          ) {
+            const orderAnimals = next.animals.filter(
+              x => (x.order_ref === linkedOrder.order_ref || x.order_id === linkedOrder.id) && x.status !== 'rejected',
+            );
+            const minAnimalRank = orderAnimals.length > 0
+              ? Math.min(...orderAnimals.map(x => animalRank(x.status)))
+              : animalRank(patch.status);
+            if (minAnimalRank >= animalRank(patch.status)) {
+              next = applyOrderStatus(next, linkedOrder.id, targetOrderStatus, actor);
+            }
+          }
         }
       }
       if (weightChanged && allowsTimeline) {
@@ -1930,6 +2036,150 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           .catch(() => {});
       }
     }
+  }, [commit]);
+
+  const recordInstallmentPayment = useCallback((orderId: string, paidDateIso?: string) => {
+    let reminderInfo: {
+      order: AppOrder;
+      paidCount: number;
+      totalCount: number;
+      nextInstallment: InstallmentScheduleItem;
+    } | null = null;
+
+    commit((d, actor) => {
+      const o = d.orders.find(x => x.id === orderId || x.order_ref === orderId);
+      if (!o || o.payment_method !== 'installment') return d;
+
+      const count = Math.max(2, Math.min(6, Math.round(o.installment_count ?? o.installment_schedule?.length ?? 2)));
+      const schedule = (
+        o.installment_schedule && o.installment_schedule.length === count
+          ? o.installment_schedule
+          : buildInstallmentSchedule(o.total_amount, count, o.created_at, o.currency)
+      ).map(item => ({ ...item }));
+
+      const nextIdx = schedule.findIndex(item => item.status !== 'verified');
+      if (nextIdx < 0) return d;
+
+      schedule[nextIdx] = {
+        ...schedule[nextIdx],
+        status: 'verified',
+        ...(paidDateIso ? { dueDate: paidDateIso } : {}),
+      };
+      const paidCount = schedule.filter(item => item.status === 'verified').length;
+      const updatedOrder: AppOrder = {
+        ...o,
+        installment_count: count,
+        installments_paid: paidCount,
+        installment_schedule: schedule,
+      };
+
+      let next: AppData = {
+        ...d,
+        orders: d.orders.map(x => (x.id === o.id ? updatedOrder : x)),
+      };
+      next = syncRelated(next, updatedOrder, actor);
+      next = withLog(
+        next,
+        actor,
+        'payment.installment_recorded',
+        'order',
+        o.order_ref,
+        `Installment ${paidCount}/${count} recorded for order ${o.order_ref}${paidCount < count ? ` (${count - paidCount} remaining)` : ' — fully paid'}`,
+      );
+
+      if (paidCount >= count) {
+        if (orderRank(updatedOrder.status) < R('payment_verified') || updatedOrder.status === 'payment_rejected') {
+          next = applyOrderStatus(next, o.id, 'payment_verified', actor);
+        }
+      } else {
+        const pay = next.payments.find(p => p.order_ref === o.order_ref);
+        if (pay && pay.status === 'pending') {
+          next = {
+            ...next,
+            payments: next.payments.map(p =>
+              p.id === pay.id ? { ...p, status: 'submitted' as PaymentStatus, submitted_at: p.submitted_at ?? nowIso() } : p,
+            ),
+          };
+        }
+        const nextItem = schedule.find(item => item.status !== 'verified');
+        if (nextItem) {
+          reminderInfo = {
+            order: updatedOrder,
+            paidCount,
+            totalCount: count,
+            nextInstallment: nextItem,
+          };
+        }
+      }
+
+      return next;
+    });
+
+    if (reminderInfo) {
+      const info = reminderInfo as {
+        order: AppOrder;
+        paidCount: number;
+        totalCount: number;
+        nextInstallment: InstallmentScheduleItem;
+      };
+      void notificationService
+        .notifyInstallmentReminder({
+          recipient: {
+            name: info.order.participant,
+            email: info.order.email,
+            phone: info.order.contact_number,
+          },
+          orderRef: info.order.order_ref,
+          programme: info.order.programme,
+          paidCount: info.paidCount,
+          totalCount: info.totalCount,
+          nextInstallmentNumber: info.nextInstallment.installmentNumber,
+          nextAmountFormatted: `${info.nextInstallment.currency} ${info.nextInstallment.amount.toLocaleString()}`,
+          dueDate: info.nextInstallment.dueDate,
+        })
+        .catch(() => {});
+    }
+  }, [commit]);
+
+  const sendInstallmentReminder = useCallback(async (orderId: string) => {
+    const d0 = dataRef.current;
+    const o = d0.orders.find(x => x.id === orderId || x.order_ref === orderId);
+    if (!o || o.payment_method !== 'installment') return;
+
+    const count = Math.max(2, Math.min(6, Math.round(o.installment_count ?? o.installment_schedule?.length ?? 2)));
+    const schedule =
+      o.installment_schedule && o.installment_schedule.length === count
+        ? o.installment_schedule
+        : buildInstallmentSchedule(o.total_amount, count, o.created_at, o.currency);
+    const paidCount = schedule.filter(item => item.status === 'verified').length;
+    const nextItem = schedule.find(item => item.status !== 'verified');
+    if (!nextItem) return;
+
+    await notificationService.notifyInstallmentReminder({
+      recipient: {
+        name: o.participant,
+        email: o.email,
+        phone: o.contact_number,
+      },
+      orderRef: o.order_ref,
+      programme: o.programme,
+      paidCount,
+      totalCount: count,
+      nextInstallmentNumber: nextItem.installmentNumber,
+      nextAmountFormatted: `${nextItem.currency} ${nextItem.amount.toLocaleString()}`,
+      dueDate: nextItem.dueDate,
+    });
+
+    commit((d, actor) =>
+      withLog(
+        d,
+        actor,
+        'payment.installment_reminded',
+        'order',
+        o.order_ref,
+        `Installment ${nextItem.installmentNumber}/${count} reminder sent to ${o.participant} (${count - paidCount} remaining)`,
+      ),
+    );
   }, [commit]);
 
   // ── Deliveries ─────────────────────────────────────────────
@@ -2186,7 +2436,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     participants, programmes, suppliers,
     addOrder, updateOrder, updateOrderStatus, cancelOrder, deleteOrder, markOrderInvoiceSent,
     addAnimal, updateAnimal, updateAnimalStatus,
-    addPayment, verifyPayment, rejectPayment,
+    addPayment, verifyPayment, rejectPayment, recordInstallmentPayment, sendInstallmentReminder,
     updateDeliveryStatus, updateDelivery,
     updateCertStatus,
     addParticipant, updateParticipant,
@@ -2197,7 +2447,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     data, participants, programmes, suppliers,
     addOrder, updateOrder, updateOrderStatus, cancelOrder, deleteOrder, markOrderInvoiceSent,
     addAnimal, updateAnimal, updateAnimalStatus,
-    addPayment, verifyPayment, rejectPayment,
+    addPayment, verifyPayment, rejectPayment, recordInstallmentPayment, sendInstallmentReminder,
     updateDeliveryStatus, updateDelivery,
     updateCertStatus,
     addParticipant, updateParticipant,

@@ -137,7 +137,9 @@ function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel, on
   onCancel: (id: string) => void;
   onRequestDelete: (order: Order) => void;
 }) {
-  const { animals, payments, programmes } = useAppData();
+  const { animals, payments, programmes, recordInstallmentPayment, sendInstallmentReminder } = useAppData();
+  const { toast } = useToast();
+  const [reminding, setReminding] = useState(false);
   const nextStatus = NEXT_STATUSES[order.status];
   const isCancellable = order.status !== 'cancelled';
   const isDeletable = ['cancelled', 'draft', 'pending_payment', 'payment_rejected'].includes(order.status);
@@ -240,6 +242,88 @@ function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel, on
               )}
             </div>
           </div>
+
+          {order.payment_method === 'installment' && (() => {
+            const totalCount = order.installment_count ?? order.installment_schedule?.length ?? 2;
+            const schedule = order.installment_schedule ?? Array.from({ length: totalCount }, (_, i) => ({
+              installmentNumber: i + 1,
+              amount: Number((order.total_amount / totalCount).toFixed(2)),
+              currency: order.currency,
+              dueDate: order.created_at,
+              status: (i < (order.installments_paid ?? 0) ? 'verified' : 'pending') as 'verified' | 'pending',
+            }));
+            const paidCount = schedule.filter(s => s.status === 'verified').length;
+            const remaining = Math.max(0, totalCount - paidCount);
+            return (
+              <div style={{ padding: '0.875rem', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--surface-900)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.625rem' }}>
+                  <div>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--aig-green-400)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Installment Schedule — {paidCount} of {totalCount} Paid
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.125rem' }}>
+                      {remaining > 0 ? `${remaining} installment${remaining === 1 ? '' : 's'} remaining` : 'All installments verified'}
+                    </div>
+                  </div>
+                  {remaining > 0 && order.status !== 'cancelled' && (
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => {
+                          recordInstallmentPayment(order.id);
+                          toast('success', 'Installment recorded', `Installment ${paidCount + 1}/${totalCount} recorded for ${order.order_ref}.${remaining - 1 > 0 ? ' Reminder sent for remaining balance.' : ' Payment fully verified!'}`);
+                        }}
+                      >
+                        Record Installment {paidCount + 1}/{totalCount}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={reminding}
+                        onClick={async () => {
+                          setReminding(true);
+                          try {
+                            await sendInstallmentReminder(order.id);
+                            toast('success', 'Reminder sent', `Installment reminder sent to ${order.participant}.`);
+                          } finally {
+                            setReminding(false);
+                          }
+                        }}
+                      >
+                        {reminding ? 'Sending…' : 'Send Nudge Reminder'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.5rem' }}>
+                  {schedule.map(item => (
+                    <div
+                      key={item.installmentNumber}
+                      style={{
+                        padding: '0.5rem 0.625rem',
+                        borderRadius: 8,
+                        border: '1px solid var(--border-subtle)',
+                        background: 'var(--surface-800)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '0.375rem',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 600 }}>#{item.installmentNumber} · {formatCurrency(item.amount, item.currency)}</div>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Due {formatDate(item.dueDate)}</div>
+                      </div>
+                      <span className={`badge ${item.status === 'verified' ? 'badge-green' : 'badge-yellow'}`} style={{ fontSize: '0.65rem' }}>
+                        {item.status === 'verified' ? 'Paid' : 'Pending'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* QURBAN / ANIMAL INFORMATION */}
           <div>
@@ -496,6 +580,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
   const [programmeId,     setProgrammeId]     = useState('');
   const [serviceType,     setServiceType]     = useState<'qurban' | 'aqiqah'>('qurban');
   const [paymentMethod,   setPaymentMethod]   = useState<'paynow' | 'cash' | 'installment'>('paynow');
+  const [installmentCount, setInstallmentCount] = useState<number>(2);
   const [numQurbans,      setNumQurbans]      = useState(1);
   const [numQurbansInput, setNumQurbansInput] = useState('1');
   const [price,           setPrice]           = useState('');
@@ -670,6 +755,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
         programme_country: prog.country,
         service_type: serviceType,
         payment_method: paymentMethod,
+        installment_count: paymentMethod === 'installment' ? installmentCount : undefined,
         delivery_portion: validation.normalizedPortion,
         quantity: parsedQty,
         total_amount: unitPrice * parsedQty,
@@ -853,6 +939,28 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
                     </div>
                   )}
                 </div>
+
+                {/* Number of Installments (only when Payment Method = Installment) */}
+                {paymentMethod === 'installment' && (
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="order-installment-count">Number of Installments *</label>
+                    <select
+                      id="order-installment-count"
+                      className="form-input form-select"
+                      value={installmentCount}
+                      onChange={e => setInstallmentCount(Number(e.target.value))}
+                    >
+                      {[2, 3, 4, 6].map(n => (
+                        <option key={n} value={n}>
+                          {n} Installments ({formatCurrency(((parseFloat(price) || 0) * numQurbans) / n, selectedProg?.currency ?? 'SGD')} each)
+                        </option>
+                      ))}
+                    </select>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--aig-green-300)', marginTop: '0.25rem' }}>
+                      {installmentCount} × {formatCurrency(((parseFloat(price) || 0) * numQurbans) / installmentCount, selectedProg?.currency ?? 'SGD')} · Registered as Pending Payment with automated installment nudges
+                    </div>
+                  </div>
+                )}
 
                 {/* Number of Qurbans */}
                 <div className="form-group">
@@ -1055,6 +1163,7 @@ function EditOrderModal({ order, onClose, onSave }: {
   const [programmeId, setProgrammeId] = useState(initialProg?.id ?? '');
   const [serviceType, setServiceType] = useState<'qurban' | 'aqiqah' | 'nazar'>(order.service_type ?? 'qurban');
   const [paymentMethod, setPaymentMethod] = useState<'paynow' | 'cash' | 'installment' | 'bank_transfer'>(order.payment_method ?? 'paynow');
+  const [installmentCount, setInstallmentCount] = useState<number>(order.installment_count ?? 2);
   const [numQurbans, setNumQurbans] = useState(order.quantity);
   const [numQurbansInput, setNumQurbansInput] = useState(String(order.quantity));
   const [unitPrice, setUnitPrice] = useState(
@@ -1143,6 +1252,7 @@ function EditOrderModal({ order, onClose, onSave }: {
         programme_country: progCountry,
         service_type: serviceType,
         payment_method: paymentMethod,
+        installment_count: paymentMethod === 'installment' ? installmentCount : undefined,
         delivery_portion: supportsPortions ? (preparedEntries[0]?.delivery_portion ?? null) : null,
         quantity: parsedQty,
         total_amount: priceNum * parsedQty,
@@ -1243,6 +1353,24 @@ function EditOrderModal({ order, onClose, onSave }: {
                   ))}
                 </select>
               </div>
+
+              {paymentMethod === 'installment' && (
+                <div className="form-group">
+                  <label className="form-label" htmlFor="edit-order-installment-count">Number of Installments *</label>
+                  <select
+                    id="edit-order-installment-count"
+                    className="form-input form-select"
+                    value={installmentCount}
+                    onChange={e => setInstallmentCount(Number(e.target.value))}
+                  >
+                    {[2, 3, 4, 6].map(n => (
+                      <option key={n} value={n}>
+                        {n} Installments ({formatCurrency(((parseFloat(unitPrice) || 0) * numQurbans) / n, selectedProg?.currency ?? order.currency)} each)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="form-group">
                 <label className="form-label">Number of Qurbans *</label>
@@ -1704,6 +1832,9 @@ export function OrdersPage() {
                       <td>
                         <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
                           {formatPaymentMethod(o.payment_method)}
+                          {o.payment_method === 'installment' && o.installment_count
+                            ? ` (${o.installments_paid ?? 0}/${o.installment_count})`
+                            : ''}
                         </div>
                         <span className={`badge ${payStatus.badgeClass}`} style={{ fontSize: '0.62rem', marginTop: 2 }}>
                           {payStatus.text}
@@ -1747,7 +1878,10 @@ export function OrdersPage() {
                             <div>
                               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>Payment Method & Status</div>
                               <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                                {formatPaymentMethod(o.payment_method)} · {payStatus.text}
+                                {formatPaymentMethod(o.payment_method)}
+                          {o.payment_method === 'installment' && o.installment_count
+                            ? ` (${o.installments_paid ?? 0}/${o.installment_count})`
+                            : ''} · {payStatus.text}
                               </div>
                             </div>
                             {portionSummary !== '—' && (

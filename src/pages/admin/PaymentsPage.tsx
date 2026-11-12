@@ -139,7 +139,7 @@ function PaymentDetailModal({ payment, linkedOrder, onClose, onVerify, onReject 
                     ['No. of Qurbans', String(linkedOrder.quantity)],
                   ] : []),
                   ['Amount', formatCurrency(payment.amount, payment.currency)],
-                  ['Method', formatPaymentMethod(payment.method)],
+                  ['Method', formatPaymentMethod(payment.method) + (payment.method === 'installment' && payment.installment_count ? ` (${payment.installments_paid ?? 0}/${payment.installment_count} paid)` : '')],
                   ['Bank', payment.bank || '—'],
                   ['Status', STATUS_LABEL[payment.status]],
                 ].map(([k, v]) => (
@@ -361,6 +361,9 @@ export function PaymentsPage() {
                   <td style={{ fontWeight: 600 }}>{formatCurrency(p.amount, p.currency)}</td>
                   <td style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
                     {formatPaymentMethod(p.method)}
+                    {p.method === 'installment' && p.installment_count
+                      ? ` (${p.installments_paid ?? 0}/${p.installment_count})`
+                      : ''}
                   </td>
                   <td>
                     <span className={`badge ${STATUS_COLOR[p.status]}`}>{STATUS_LABEL[p.status]}</span>

@@ -1543,4 +1543,123 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
     expect(afterDelete.auditLogs.some(l => l.action === 'order.deleted' && l.entity_id === 'ORD-DEL-02')).toBe(true);
     void activeOrder;
   });
+
+  it('TEST 19: Installment count selector, schedule computation, partial payment recording with nudge reminder & final settlement', async () => {
+    const store = mountAppDataStore();
+    let ctx = store.getState();
+
+    const ord = ctx.addOrder({
+      order_ref: 'ORD-INST-19',
+      full_name: 'Johnny Tan',
+      email: 'johnny@example.sg',
+      contact_number: '+65 9111 2233',
+      programme: 'Indonesia - Breeding Programme',
+      programme_id: 'prog-id-breeding',
+      programme_country: 'Indonesia',
+      service_type: 'qurban',
+      payment_method: 'installment',
+      installment_count: 2,
+      quantity: 1,
+      qurban_entries: [{ qurban_name_holder: 'Johnny Tan' }],
+      total_amount: 360,
+      currency: 'SGD',
+      status: 'pending_payment',
+    });
+
+    ctx = store.getState();
+    const createdOrder = ctx.orders.find(o => o.id === ord.id)!;
+    const createdPay = ctx.payments.find(p => p.order_ref === 'ORD-INST-19')!;
+    expect(createdOrder.status).toBe('pending_payment');
+    expect(createdOrder.installment_count).toBe(2);
+    expect(createdOrder.installments_paid).toBe(0);
+    expect(createdOrder.installment_schedule).toHaveLength(2);
+    expect(createdOrder.installment_schedule?.[0].amount).toBe(180);
+    expect(createdOrder.installment_schedule?.[1].amount).toBe(180);
+    expect(createdPay.installment_count).toBe(2);
+
+    // Record 1st installment -> 1 of 2 paid, 1 remaining, payment remains submitted (not fully verified yet)
+    ctx.recordInstallmentPayment(ord.id, '2026-11-01T00:00:00.000Z');
+    await new Promise(r => setTimeout(r, 20));
+    ctx = store.getState();
+    const afterFirst = ctx.orders.find(o => o.id === ord.id)!;
+    const payAfterFirst = ctx.payments.find(p => p.order_ref === 'ORD-INST-19')!;
+    expect(afterFirst.installments_paid).toBe(1);
+    expect(afterFirst.status).toBe('pending_payment');
+    expect(payAfterFirst.status).toBe('submitted');
+    expect(ctx.auditLogs.some(l => l.action === 'payment.installment_recorded' && l.entity_id === 'ORD-INST-19')).toBe(true);
+    expect(notificationService.getDeliveryLogs().some(n => n.eventType === 'payment.installment_reminder' && n.orderRef === 'ORD-INST-19')).toBe(true);
+
+    // Record 2nd (final) installment -> 2 of 2 paid, payment & order automatically advance to payment_verified
+    ctx.recordInstallmentPayment(ord.id);
+    ctx = store.getState();
+    const afterFinal = ctx.orders.find(o => o.id === ord.id)!;
+    const payAfterFinal = ctx.payments.find(p => p.order_ref === 'ORD-INST-19')!;
+    expect(afterFinal.installments_paid).toBe(2);
+    expect(afterFinal.status).toBe('payment_verified');
+    expect(payAfterFinal.status).toBe('verified');
+  });
+
+  it('TEST 20: Bidirectional Order-as-Single-Source-of-Truth sync across Orders, Animals, Deliveries & Certificates', () => {
+    const store = mountAppDataStore();
+    let ctx = store.getState();
+
+    // 1. Order -> Animals & Certificates: advancing Order from final_inspection to qurban_complete must advance Animal from inspection_passed to slaughtered
+    const ordA = ctx.addOrder({
+      order_ref: 'ORD-SYNC-20A',
+      full_name: 'Sync User A',
+      email: 'synca@example.sg',
+      contact_number: '+65 9333 4444',
+      programme: 'Australia to Singapore - Sheep',
+      programme_id: 'prog-au-sg-sheep',
+      programme_country: 'Australia',
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      delivery_portion: 'full',
+      quantity: 1,
+      qurban_entries: [{ qurban_name_holder: 'Sync User A', delivery_portion: 'full' }],
+      total_amount: 390,
+      currency: 'SGD',
+      status: 'final_inspection',
+    });
+
+    ctx = store.getState();
+    const animalA = ctx.animals.find(a => a.order_ref === 'ORD-SYNC-20A')!;
+    ctx.updateAnimalStatus(animalA.id, 'inspection_passed');
+    ctx = store.getState();
+    expect(ctx.animals.find(a => a.id === animalA.id)!.status).toBe('inspection_passed');
+
+    // Now update Order to qurban_complete -> Animal MUST advance to slaughtered (not stay stuck on inspection_passed)
+    ctx.updateOrderStatus(ordA.id, 'qurban_complete');
+    ctx = store.getState();
+    expect(ctx.animals.find(a => a.id === animalA.id)!.status).toBe('slaughtered');
+    expect(ctx.certificates.some(c => c.order_ref === 'ORD-SYNC-20A')).toBe(true);
+
+    // 2. Animals -> Order -> Deliveries & Certificates: marking an Animal as completed in Animals tab must update Order, Delivery & Certificate
+    const ordB = ctx.addOrder({
+      order_ref: 'ORD-SYNC-20B',
+      full_name: 'Sync User B',
+      email: 'syncb@example.sg',
+      contact_number: '+65 9555 6666',
+      programme: 'Australia to Singapore - Sheep',
+      programme_id: 'prog-au-sg-sheep',
+      programme_country: 'Australia',
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      delivery_portion: 'full',
+      quantity: 1,
+      qurban_entries: [{ qurban_name_holder: 'Sync User B', delivery_portion: 'full' }],
+      total_amount: 390,
+      currency: 'SGD',
+      status: 'final_inspection',
+    });
+
+    ctx = store.getState();
+    const animalB = ctx.animals.find(a => a.order_ref === 'ORD-SYNC-20B')!;
+    ctx.updateAnimalStatus(animalB.id, 'completed');
+
+    ctx = store.getState();
+    expect(ctx.orders.find(o => o.id === ordB.id)!.status).toBe('completed');
+    expect(ctx.deliveries.find(d => d.order_ref === 'ORD-SYNC-20B')!.status).toBe('delivered');
+    expect(ctx.certificates.find(c => c.order_ref === 'ORD-SYNC-20B')!.status).toBe('generated');
+  });
 });

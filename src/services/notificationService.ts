@@ -12,6 +12,7 @@ export type NotificationEventType =
   | 'payment.submitted'
   | 'payment.verified'
   | 'payment.rejected'
+  | 'payment.installment_reminder'
   | 'animal.allocated'
   | 'qurban.completed'
   | 'delivery.scheduled'
@@ -183,6 +184,15 @@ export const WHATSAPP_TEMPLATE_REGISTRY: Record<string, WhatsAppTemplateSpec> = 
     language: 'en',
     requiredVariables: ['participant_name', 'order_ref', 'certificate_ref', 'programme'],
     description: 'Certificate ready for PDF download in Participant Portal',
+  },
+  'payment.installment_reminder': {
+    templateId: 'payment.installment_reminder',
+    metaTemplateName: 'aigms_installment_reminder_v1',
+    eventType: 'payment.installment_reminder',
+    category: 'UTILITY',
+    language: 'en',
+    requiredVariables: ['participant_name', 'order_ref', 'installment_progress', 'amount_formatted', 'due_date', 'portal_url'],
+    description: 'Installment payment reminder nudge for participant & admin',
   },
 };
 
@@ -1452,6 +1462,48 @@ class NotificationService {
       },
       subject: 'Al Ihsan Group — AIGMS Diagnostic Test Notification',
       body: `Assalamu Alaikum ${params.recipientName}, this is a controlled diagnostic test from AIGMS (${OFFICIAL_WHATSAPP_DISPLAY}).`,
+    });
+  }
+
+  /**
+   * Installment Payment Nudge:
+   * Notifies participant (WhatsApp primary + Email fallback) about remaining installment(s)
+   * and logs an admin follow-up reminder so manual payment can be initiated & verified.
+   */
+  async notifyInstallmentReminder(params: {
+    recipient: { name: string; email?: string; phone?: string };
+    orderRef: string;
+    programme: string;
+    paidCount: number;
+    totalCount: number;
+    nextInstallmentNumber: number;
+    nextAmountFormatted: string;
+    dueDate: string;
+  }): Promise<NotificationResult> {
+    const remaining = Math.max(0, params.totalCount - params.paidCount);
+    const portalOrdersUrl = `${this.portalBaseUrl}/portal/orders`;
+    const progressLabel = `${params.nextInstallmentNumber} of ${params.totalCount} (${remaining} remaining)`;
+    const dueLabel = params.dueDate.slice(0, 10);
+
+    return this.sendWhatsAppWithEmailFallback({
+      recipient: params.recipient,
+      eventType: 'payment.installment_reminder',
+      orderRef: params.orderRef,
+      templateId: 'payment.installment_reminder',
+      variables: {
+        participant_name: params.recipient.name,
+        order_ref: params.orderRef,
+        installment_progress: progressLabel,
+        amount_formatted: params.nextAmountFormatted,
+        due_date: dueLabel,
+        portal_url: portalOrdersUrl,
+      },
+      subject: `Al Ihsan Group — Installment ${params.nextInstallmentNumber}/${params.totalCount} Reminder (${params.orderRef})`,
+      body:
+        `Assalamu Alaikum ${params.recipient.name}, reminder for your ${params.programme} order ${params.orderRef}: ` +
+        `${params.paidCount} of ${params.totalCount} installment(s) paid (${remaining} remaining). ` +
+        `Next installment (${params.nextAmountFormatted}) is due ${dueLabel}. ` +
+        `Please submit your manual payment proof in the portal or reply to ${OFFICIAL_WHATSAPP_DISPLAY}: ${portalOrdersUrl}`,
     });
   }
 
