@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { Search, CheckCircle2, XCircle, Eye, Clock, X, Upload, Download, ExternalLink, ZoomIn, ZoomOut, FileX } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, Eye, Clock, X, Upload, Download, ExternalLink, ZoomIn, ZoomOut, FileX, Trash2 } from 'lucide-react';
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
 import { formatPaymentMethod, formatServiceType } from '@/lib/orderRules';
 import type { PaymentStatus } from '@/lib/database.types';
@@ -102,12 +102,13 @@ function ProofViewer({ payment, onClose }: { payment: Payment; onClose: () => vo
   );
 }
 
-function PaymentDetailModal({ payment, linkedOrder, onClose, onVerify, onReject }: {
+function PaymentDetailModal({ payment, linkedOrder, onClose, onVerify, onReject, onDelete }: {
   payment: Payment;
   linkedOrder?: AppOrder;
   onClose: () => void;
   onVerify: (id: string) => void;
   onReject: (id: string, reason?: string) => void;
+  onDelete?: (id: string) => void;
 }) {
   const { toast } = useToast();
   const [rejectReason, setRejectReason] = useState('');
@@ -220,6 +221,30 @@ function PaymentDetailModal({ payment, linkedOrder, onClose, onVerify, onReject 
               </div>
             </div>
           ) : null}
+
+          {onDelete && (
+            <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                {payment.status === 'cancelled'
+                  ? 'Cancelled payment record. Deleting cleans it from the system.'
+                  : 'Deleting a payment will automatically update the linked order back to pending payment.'}
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ color: 'var(--danger)', gap: '0.35rem' }}
+                onClick={() => {
+                  if (window.confirm(`Permanently delete payment ${payment.payment_ref}? Linked order status will update accordingly.`)) {
+                    onDelete(payment.id);
+                    onClose();
+                    toast('success', 'Payment deleted', `Payment ${payment.payment_ref} removed. Linked order status synced.`);
+                  }
+                }}
+              >
+                <Trash2 size={14} /> Delete Payment
+              </button>
+            </div>
+          )}
         </div>
       </div>
       {showProof && <ProofViewer payment={payment} onClose={() => setShowProof(false)} />}
@@ -229,15 +254,34 @@ function PaymentDetailModal({ payment, linkedOrder, onClose, onVerify, onReject 
 
 export function PaymentsPage() {
   usePageTitle('Payments');
-  const { payments, orders, verifyPayment, rejectPayment } = useAppData();
+  const { toast } = useToast();
+  const { payments, orders, verifyPayment, rejectPayment, deletePayment } = useAppData();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [showCancelled, setShowCancelled] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const isPaymentCancelled = useCallback((p: Payment) => {
+    if (p.status === 'cancelled') return true;
+    const linkedOrder = orders.find(o => o.order_ref === p.order_ref);
+    if (linkedOrder && linkedOrder.status === 'cancelled') return true;
+    return false;
+  }, [orders]);
+
+  const cancelledCount = payments.filter(isPaymentCancelled).length;
+  const livePayments = payments.filter(p => !isPaymentCancelled(p));
 
   const selected = selectedId ? payments.find(p => p.id === selectedId) ?? null : null;
   const selectedOrder = selected ? orders.find(o => o.order_ref === selected.order_ref) : undefined;
 
   const filtered = payments.filter(p => {
+    const isCancelled = isPaymentCancelled(p);
+    if (statusFilter === 'cancelled') {
+      if (!isCancelled) return false;
+    } else {
+      if (!showCancelled && isCancelled) return false;
+      if (statusFilter && p.status !== statusFilter) return false;
+    }
     const q = search.toLowerCase();
     const matchSearch =
       !q ||
@@ -245,11 +289,13 @@ export function PaymentsPage() {
       p.participant.toLowerCase().includes(q) ||
       p.order_ref.toLowerCase().includes(q) ||
       formatPaymentMethod(p.method).toLowerCase().includes(q);
-    const matchStatus = !statusFilter || p.status === statusFilter;
-    return matchSearch && matchStatus;
+    return matchSearch;
   });
 
-  const pendingReview = payments.filter(p => p.status === 'submitted' || p.status === 'under_review').length;
+  const pendingReview = livePayments.filter(p => p.status === 'submitted' || p.status === 'under_review').length;
+  const totalCollected = livePayments.filter(p => p.status === 'verified').reduce((a, p) => a + p.amount, 0);
+  const verifiedCount = livePayments.filter(p => p.status === 'verified').length;
+  const rejectedCount = livePayments.filter(p => p.status === 'rejected').length;
 
   return (
     <div className="page-content animate-fadeInUp">
@@ -260,6 +306,7 @@ export function PaymentsPage() {
           onClose={() => setSelectedId(null)}
           onVerify={verifyPayment}
           onReject={rejectPayment}
+          onDelete={deletePayment}
         />
       )}
 
@@ -279,14 +326,24 @@ export function PaymentsPage() {
       {/* Stats */}
       <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
-          { label: 'Total Collected', value: `SGD ${payments.filter(p => p.status === 'verified').reduce((a, p) => a + p.amount, 0).toLocaleString()}`, color: 'var(--aig-green-400)' },
-          { label: 'Pending Review', value: String(pendingReview), color: 'var(--warning)' },
-          { label: 'Verified',       value: String(payments.filter(p => p.status === 'verified').length), color: 'var(--success)' },
-          { label: 'Rejected',       value: String(payments.filter(p => p.status === 'rejected').length), color: 'var(--danger)' },
+          {
+            label: 'Total Collected',
+            value: `SGD ${totalCollected.toLocaleString()}`,
+            sub: cancelledCount > 0 ? `+ ${cancelledCount} cancelled` : 'All payments live',
+            color: 'var(--aig-green-400)',
+          },
+          { label: 'Pending Review', value: String(pendingReview), sub: undefined, color: 'var(--warning)' },
+          { label: 'Verified',       value: String(verifiedCount), sub: undefined, color: 'var(--success)' },
+          { label: 'Rejected',       value: String(rejectedCount), sub: undefined, color: 'var(--danger)' },
         ].map(s => (
           <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
             <div className="stat-value" style={{ fontSize: '1.375rem', color: s.color }}>{s.value}</div>
             <div className="stat-label">{s.label}</div>
+            {s.sub && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                {s.sub}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -305,16 +362,30 @@ export function PaymentsPage() {
             style={{ height: 38 }}
           />
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {(['', 'pending', 'submitted', 'under_review', 'verified', 'rejected'] as const).map(s => (
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {(['', 'pending', 'submitted', 'under_review', 'verified', 'rejected', 'cancelled'] as const).map(s => {
+            if (s === 'cancelled' && cancelledCount === 0) return null;
+            return (
+              <button
+                key={s}
+                className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setStatusFilter(s)}
+              >
+                {s === '' ? (!showCancelled ? 'Live Payments' : 'All Payments') : s === 'cancelled' ? `Cancelled (${cancelledCount})` : STATUS_LABEL[s as PaymentStatus]}
+              </button>
+            );
+          })}
+          {statusFilter !== 'cancelled' && cancelledCount > 0 && (
             <button
-              key={s}
-              className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setStatusFilter(s)}
+              type="button"
+              className={`btn btn-sm ${showCancelled ? 'btn-outline-green' : 'btn-ghost'}`}
+              onClick={() => setShowCancelled(s => !s)}
+              data-testid="toggle-show-cancelled-payments-btn"
+              title="Toggle whether cancelled payments appear in Live Payments"
             >
-              {s === '' ? 'All' : STATUS_LABEL[s as PaymentStatus]}
+              {showCancelled ? 'Hiding Cancelled' : `+ Show ${cancelledCount} Cancelled`}
             </button>
-          ))}
+          )}
         </div>
       </div>
 
@@ -372,7 +443,7 @@ export function PaymentsPage() {
                     {p.submitted_at ? formatDate(p.submitted_at) : '—'}
                   </td>
                   <td>
-                    <div style={{ display: 'flex', gap: '0.375rem', justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'flex', gap: '0.375rem', justifyContent: 'flex-end', alignItems: 'center' }}>
                       {(p.status === 'submitted' || p.status === 'under_review') && (
                         <>
                           <button className="btn btn-sm" style={{ background: 'var(--success-bg)', color: 'var(--success)', border: '1px solid rgba(34,197,94,0.2)', gap: '0.25rem' }} onClick={() => setSelectedId(p.id)}>
@@ -380,8 +451,21 @@ export function PaymentsPage() {
                           </button>
                         </>
                       )}
-                      <button className="btn btn-ghost btn-sm" onClick={() => setSelectedId(p.id)}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setSelectedId(p.id)} title="View details">
                         <Eye size={14} />
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ color: 'var(--danger)' }}
+                        title="Delete payment"
+                        onClick={() => {
+                          if (window.confirm(`Permanently delete payment ${p.payment_ref}? Linked order will update automatically.`)) {
+                            deletePayment(p.id);
+                            toast('success', 'Payment deleted', `Payment ${p.payment_ref} removed. Linked order status synced.`);
+                          }
+                        }}
+                      >
+                        <Trash2 size={13} />
                       </button>
                     </div>
                   </td>

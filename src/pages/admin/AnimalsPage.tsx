@@ -689,13 +689,28 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
 export function AnimalsPage() {
   usePageTitle('Animals');
   const { toast } = useToast();
-  const { animals, programmes, addAnimal, updateAnimal: ctxUpdateAnimal } = useAppData();
+  const { animals, programmes, orders, addAnimal, updateAnimal: ctxUpdateAnimal } = useAppData();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [programmeFilter, setProgrammeFilter] = useState('');
   const [serviceFilter, setServiceFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [showCancelled, setShowCancelled] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const isAnimalCancelled = useCallback((a: Animal) => {
+    if (a.order_ref) {
+      const linkedOrder = orders.find(o => o.order_ref === a.order_ref);
+      if (linkedOrder) {
+        return linkedOrder.status === 'cancelled';
+      }
+      return true;
+    }
+    return false;
+  }, [orders]);
+
+  const cancelledCount = animals.filter(isAnimalCancelled).length;
+  const liveAnimals = animals.filter(a => !isAnimalCancelled(a));
   const [weightAnimal, setWeightAnimal] = useState<Animal | null>(null);
   const [inspectionAnimal, setInspectionAnimal] = useState<Animal | null>(null);
   const [statusAnimal, setStatusAnimal] = useState<Animal | null>(null);
@@ -733,6 +748,8 @@ export function AnimalsPage() {
   const openEdit = (a: Animal) => { setSelectedId(null); setEditAnimal(a); };
 
   const filtered = animals.filter(a => {
+    const isCancelled = isAnimalCancelled(a);
+    if (!showCancelled && isCancelled && statusFilter !== 'reserved') return false;
     const q = search.toLowerCase();
     const matchSearch =
       a.animal_ref.toLowerCase().includes(q) ||
@@ -812,21 +829,31 @@ export function AnimalsPage() {
 
       {/* Stats */}
       {(() => {
-        const cattleShares = animals.filter(a => (a.animals_per_share ?? getProgrammeShareMetadata(a.programme).animals_per_share) === 7).length;
+        const cattleShares = liveAnimals.filter(a => (a.animals_per_share ?? getProgrammeShareMetadata(a.programme).animals_per_share) === 7).length;
         const physicalCattleEquiv = calculatePhysicalAnimalsNeeded(cattleShares, 7);
         return (
           <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
             {[
-              { label: 'Total Allocations', value: String(animals.length), color: 'var(--aig-green-400)' },
+              {
+                label: 'Live Allocations',
+                value: String(liveAnimals.length),
+                sub: cancelledCount > 0 ? `+ ${cancelledCount} cancelled` : 'All animals live',
+                color: 'var(--aig-green-400)',
+              },
               { label: '1/7 Cattle Shares', value: cattleShares > 0 ? `${cattleShares} (${physicalCattleEquiv} cow${physicalCattleEquiv === 1 ? '' : 's'})` : '0', color: 'var(--gold-400)' },
-              { label: 'Available', value: String(animals.filter(a => a.status === 'available').length), color: 'var(--success)' },
-              { label: 'Reserved', value: String(animals.filter(a => a.status === 'reserved').length), color: 'var(--info)' },
-              { label: 'Allocated', value: String(animals.filter(a => a.status === 'allocated').length), color: 'var(--purple, #a855f7)' },
-              { label: 'Exceptions', value: String(animals.filter(a => ['rejected','inspection_pending'].includes(a.status)).length), color: 'var(--danger)' },
+              { label: 'Available', value: String(liveAnimals.filter(a => a.status === 'available').length), color: 'var(--success)' },
+              { label: 'Allocated', value: String(liveAnimals.filter(a => a.status === 'allocated').length), color: 'var(--purple, #a855f7)' },
+              { label: 'Completed', value: String(liveAnimals.filter(a => a.status === 'completed').length), color: 'var(--aig-green-300)' },
+              { label: 'Exceptions', value: String(liveAnimals.filter(a => ['rejected','inspection_pending'].includes(a.status)).length), color: 'var(--danger)' },
             ].map(s => (
               <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
                 <div className="stat-value" style={{ fontSize: '1.25rem', color: s.color }}>{s.value}</div>
                 <div className="stat-label">{s.label}</div>
+                {s.sub && (
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                    {s.sub}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -866,6 +893,17 @@ export function AnimalsPage() {
             <option key={s} value={s}>{ANIMAL_STATUS_LABEL[s]}</option>
           ))}
         </select>
+        {cancelledCount > 0 && (
+          <button
+            type="button"
+            className={`btn btn-sm ${showCancelled ? 'btn-outline-green' : 'btn-ghost'}`}
+            onClick={() => setShowCancelled(s => !s)}
+            data-testid="toggle-show-cancelled-animals-btn"
+            title="Toggle whether cancelled order animals appear"
+          >
+            {showCancelled ? 'Hiding Cancelled' : `+ Show ${cancelledCount} Cancelled`}
+          </button>
+        )}
       </div>
 
       {/* Animal Grid — real photorealistic images */}

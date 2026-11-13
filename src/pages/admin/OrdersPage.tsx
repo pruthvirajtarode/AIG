@@ -1695,14 +1695,39 @@ export function OrdersPage() {
       {/* Stats */}
       <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
-          { label: 'Total Orders',    value: String(orders.length),                                         color: 'var(--aig-green-400)' },
-          { label: 'Pending Payment', value: String(orders.filter(o => ['pending_payment', 'payment_submitted', 'payment_under_review', 'payment_rejected'].includes(o.status)).length), color: 'var(--warning)' },
-          { label: 'In Progress',     value: String(orders.filter(o => orderRank(o.status) >= orderRank('payment_verified') && orderRank(o.status) < orderRank('completed')).length), color: 'var(--info)' },
-          { label: 'Completed',       value: String(orders.filter(o => o.status === 'completed').length),       color: 'var(--success)' },
+          {
+            label: 'Live Orders',
+            value: String(orders.filter(o => o.status !== 'cancelled').length),
+            sub: cancelledCount > 0 ? `+ ${cancelledCount} cancelled` : 'All orders live',
+            color: 'var(--aig-green-400)',
+          },
+          {
+            label: 'Pending Payment',
+            value: String(orders.filter(o => ['pending_payment', 'payment_submitted', 'payment_under_review', 'payment_rejected'].includes(o.status)).length),
+            sub: undefined,
+            color: 'var(--warning)',
+          },
+          {
+            label: 'In Progress',
+            value: String(orders.filter(o => orderRank(o.status) >= orderRank('payment_verified') && orderRank(o.status) < orderRank('completed')).length),
+            sub: undefined,
+            color: 'var(--info)',
+          },
+          {
+            label: 'Completed',
+            value: String(orders.filter(o => o.status === 'completed').length),
+            sub: undefined,
+            color: 'var(--success)',
+          },
         ].map(s => (
           <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
             <div className="stat-value" style={{ fontSize: '1.5rem', color: s.color }}>{s.value}</div>
             <div className="stat-label">{s.label}</div>
+            {s.sub && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                {s.sub}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -1740,7 +1765,7 @@ export function OrdersPage() {
               className={`btn btn-sm ${statusFilter === f.value ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => { setStatusFilter(f.value); setPage(1); }}
             >
-              {f.value === '' && !showCancelled ? 'Active Orders' : f.label}
+              {f.value === '' && !showCancelled ? 'Live Orders' : f.label}
               {f.value === 'cancelled' && cancelledCount > 0 ? ` (${cancelledCount})` : ''}
             </button>
           ))}
@@ -1750,7 +1775,7 @@ export function OrdersPage() {
               className={`btn btn-sm ${showCancelled ? 'btn-outline-green' : 'btn-ghost'}`}
               onClick={() => { setShowCancelled(s => !s); setPage(1); }}
               data-testid="toggle-show-cancelled-btn"
-              title="Toggle whether cancelled orders appear in Active Orders"
+              title="Toggle whether cancelled orders appear in Live Orders"
             >
               {showCancelled ? `Hiding 0 Cancelled` : `+ Show ${cancelledCount} Cancelled`}
             </button>

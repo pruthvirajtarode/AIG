@@ -132,15 +132,25 @@ function CertPreviewModal({
 export function CertificatesPage() {
   usePageTitle('Certificates');
   const { toast } = useToast();
-  const { certificates: rawCerts, updateCertStatus } = useAppData();
+  const { certificates: rawCerts, orders, updateCertStatus } = useAppData();
   // Adapt context type to local Certificate type used by CertificateDesign
   const certs = rawCerts as unknown as Certificate[];
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [showCancelled, setShowCancelled] = useState(false);
   const [selected, setSelected] = useState<Certificate | null>(null);
   const [generating, setGenerating] = useState<string | null>(null);
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [bulkSending, setBulkSending] = useState(false);
+
+  const isCertCancelled = useCallback((c: Certificate) => {
+    const linkedOrder = orders.find(o => o.order_ref === c.order_ref);
+    if (linkedOrder && linkedOrder.status === 'cancelled') return true;
+    return false;
+  }, [orders]);
+
+  const cancelledCount = certs.filter(isCertCancelled).length;
+  const liveCerts = certs.filter(c => !isCertCancelled(c));
 
   const updateStatus = useCallback((id: string, status: CertificateStatus) => {
     updateCertStatus(id, status);
@@ -156,18 +166,18 @@ export function CertificatesPage() {
   }, [toast, updateStatus]);
 
   const handleBulkGenerate = useCallback(async () => {
-    const notGen = certs.filter(c => c.status === 'not_generated');
-    if (!notGen.length) { toast('info', 'All certificates already generated'); return; }
+    const notGen = liveCerts.filter(c => c.status === 'not_generated');
+    if (!notGen.length) { toast('info', 'All active certificates already generated'); return; }
     setBulkGenerating(true);
     await new Promise(r => setTimeout(r, 2000));
     notGen.forEach(c => updateCertStatus(c.id, 'generated'));
     setBulkGenerating(false);
     toast('success', `${notGen.length} certificates generated!`);
-  }, [certs, toast, updateCertStatus]);
+  }, [liveCerts, toast, updateCertStatus]);
 
   const handleBulkSend = useCallback(async () => {
-    const toSend = certs.filter(c => c.status === 'generated');
-    if (!toSend.length) { toast('info', 'No generated certificates to send'); return; }
+    const toSend = liveCerts.filter(c => c.status === 'generated');
+    if (!toSend.length) { toast('info', 'No active generated certificates to send'); return; }
     setBulkSending(true);
     await new Promise(r => setTimeout(r, 1200));
     toSend.forEach(c => updateCertStatus(c.id, 'sent'));
@@ -183,7 +193,7 @@ export function CertificatesPage() {
         ? `Sent from ${OFFICIAL_WHATSAPP_DISPLAY} with Portal PDF download link (Email fallback active).`
         : 'Configure the WhatsApp Cloud API Edge Function secrets to enable live Meta delivery.',
     );
-  }, [certs, toast, updateCertStatus]);
+  }, [liveCerts, toast, updateCertStatus]);
 
   const handleSend = useCallback(async (cert: Certificate) => {
     await new Promise(r => setTimeout(r, 800));
@@ -200,14 +210,20 @@ export function CertificatesPage() {
   }, [toast, updateCertStatus]);
 
   const filtered = certs.filter(c => {
+    const isCancelled = isCertCancelled(c);
+    if (statusFilter === 'cancelled') {
+      if (!isCancelled) return false;
+    } else {
+      if (!showCancelled && isCancelled) return false;
+      if (statusFilter && c.status !== statusFilter) return false;
+    }
     const q = search.toLowerCase();
     const matchSearch =
       c.certificate_ref.toLowerCase().includes(q) ||
       c.participant_name.toLowerCase().includes(q) ||
       (c.qurban_name_holder ?? '').toLowerCase().includes(q) ||
       c.order_ref.toLowerCase().includes(q);
-    const matchStatus = !statusFilter || c.status === statusFilter;
-    return matchSearch && matchStatus;
+    return matchSearch;
   });
 
   return (
@@ -255,14 +271,24 @@ export function CertificatesPage() {
       {/* Stats */}
       <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
-          { label: 'Total', value: String(certs.length), color: 'var(--aig-green-400)' },
-          { label: 'Not Generated', value: String(certs.filter(c => c.status === 'not_generated').length), color: 'var(--text-muted)' },
-          { label: 'Generated', value: String(certs.filter(c => c.status === 'generated').length), color: 'var(--info)' },
-          { label: 'Sent', value: String(certs.filter(c => c.status === 'sent').length), color: 'var(--success)' },
+          {
+            label: 'Live Certificates',
+            value: String(liveCerts.length),
+            sub: cancelledCount > 0 ? `+ ${cancelledCount} cancelled` : 'All certificates live',
+            color: 'var(--aig-green-400)',
+          },
+          { label: 'Not Generated', value: String(liveCerts.filter(c => c.status === 'not_generated').length), color: 'var(--text-muted)' },
+          { label: 'Generated',     value: String(liveCerts.filter(c => c.status === 'generated').length), color: 'var(--info)' },
+          { label: 'Sent',          value: String(liveCerts.filter(c => c.status === 'sent').length), color: 'var(--success)' },
         ].map(s => (
           <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
             <div className="stat-value" style={{ fontSize: '1.375rem', color: s.color }}>{s.value}</div>
             <div className="stat-label">{s.label}</div>
+            {s.sub && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                {s.sub}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -281,17 +307,31 @@ export function CertificatesPage() {
             style={{ height: 38 }}
           />
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {(['', 'not_generated', 'generated', 'sent', 'failed'] as const).map(s => (
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {(['', 'not_generated', 'generated', 'sent', 'failed', 'cancelled'] as const).map(s => {
+            if (s === 'cancelled' && cancelledCount === 0) return null;
+            return (
+              <button
+                key={s}
+                type="button"
+                className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setStatusFilter(s)}
+              >
+                {s === '' ? (!showCancelled ? 'Live Certificates' : 'All Certificates') : s === 'cancelled' ? `Cancelled (${cancelledCount})` : CERT_STATUS_LABEL[s as CertificateStatus]}
+              </button>
+            );
+          })}
+          {statusFilter !== 'cancelled' && cancelledCount > 0 && (
             <button
-              key={s}
               type="button"
-              className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setStatusFilter(s)}
+              className={`btn btn-sm ${showCancelled ? 'btn-outline-green' : 'btn-ghost'}`}
+              onClick={() => setShowCancelled(s => !s)}
+              data-testid="toggle-show-cancelled-certificates-btn"
+              title="Toggle whether cancelled certificates appear in Live Certificates"
             >
-              {s === '' ? 'All' : CERT_STATUS_LABEL[s as CertificateStatus]}
+              {showCancelled ? 'Hiding Cancelled' : `+ Show ${cancelledCount} Cancelled`}
             </button>
-          ))}
+          )}
         </div>
       </div>
 

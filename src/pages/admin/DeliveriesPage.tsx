@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { Search, MapPin, Truck, CheckCircle2, X, XCircle, Calendar } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
@@ -183,12 +183,30 @@ export function DeliveriesPage() {
     ctxUpdateStatus(id, status);
   };
 
+  const [showCancelled, setShowCancelled] = useState(false);
+
+  const isDeliveryCancelled = useCallback((d: Delivery) => {
+    if (d.status === 'cancelled') return true;
+    const linkedOrder = orders.find(o => o.order_ref === d.order_ref);
+    if (linkedOrder && linkedOrder.status === 'cancelled') return true;
+    return false;
+  }, [orders]);
+
+  const cancelledCount = deliveries.filter(isDeliveryCancelled).length;
+  const liveDeliveries = deliveries.filter(d => !isDeliveryCancelled(d));
+
   const filtered = deliveries.filter(d => {
+    const isCancelled = isDeliveryCancelled(d);
+    if (statusFilter === 'cancelled') {
+      if (!isCancelled) return false;
+    } else {
+      if (!showCancelled && isCancelled) return false;
+      if (statusFilter && d.status !== statusFilter) return false;
+    }
     const matchSearch = d.delivery_ref.toLowerCase().includes(search.toLowerCase())
       || d.participant.toLowerCase().includes(search.toLowerCase())
       || d.order_ref.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = !statusFilter || d.status === statusFilter;
-    return matchSearch && matchStatus;
+    return matchSearch;
   });
 
   return (
@@ -211,7 +229,7 @@ export function DeliveriesPage() {
           <button className="btn btn-secondary btn-sm"
             onClick={() => {
               setStatusFilter('pending');
-              const n = deliveries.filter(d => d.status === 'pending').length;
+              const n = liveDeliveries.filter(d => d.status === 'pending').length;
               toast('info', 'Schedule Delivery', n ? `${n} deliver${n === 1 ? 'y needs' : 'ies need'} scheduling — click one to set date, driver and address` : 'No pending deliveries. Deliveries are created automatically when an order reaches "Delivery Scheduled".');
             }}>
             <Calendar size={14} />
@@ -223,14 +241,24 @@ export function DeliveriesPage() {
       {/* Stats */}
       <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
-          { label: 'Total Deliveries',  value: String(deliveries.length), color: 'var(--aig-green-400)' },
-          { label: 'Active Today',      value: String(deliveries.filter(d => d.status === 'out_for_delivery' || d.status === 'scheduled').length), color: 'var(--orange)' },
-          { label: 'Delivered',         value: String(deliveries.filter(d => d.status === 'delivered').length), color: 'var(--success)' },
-          { label: 'Failed',            value: String(deliveries.filter(d => d.status === 'failed').length), color: 'var(--danger)' },
+          {
+            label: 'Live Deliveries',
+            value: String(liveDeliveries.length),
+            sub: cancelledCount > 0 ? `+ ${cancelledCount} cancelled` : 'All deliveries live',
+            color: 'var(--aig-green-400)',
+          },
+          { label: 'Active Today', value: String(liveDeliveries.filter(d => d.status === 'out_for_delivery' || d.status === 'scheduled').length), color: 'var(--orange)' },
+          { label: 'Delivered',    value: String(liveDeliveries.filter(d => d.status === 'delivered').length), color: 'var(--success)' },
+          { label: 'Failed',       value: String(liveDeliveries.filter(d => d.status === 'failed').length), color: 'var(--danger)' },
         ].map(s => (
           <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
             <div className="stat-value" style={{ fontSize: '1.375rem', color: s.color }}>{s.value}</div>
             <div className="stat-label">{s.label}</div>
+            {s.sub && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                {s.sub}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -242,13 +270,27 @@ export function DeliveriesPage() {
           <input id="deliveries-search" type="search" className="form-input" placeholder="Search deliveries..."
             value={search} onChange={e => setSearch(e.target.value)} style={{ height: 38 }} />
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {(['', 'pending', 'scheduled', 'out_for_delivery', 'delivered', 'failed'] as const).map(s => (
-            <button key={s} className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setStatusFilter(s)}>
-              {s === '' ? 'All' : DELIVERY_STATUS_LABEL[s as DeliveryStatus]}
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {(['', 'pending', 'scheduled', 'out_for_delivery', 'delivered', 'failed', 'cancelled'] as const).map(s => {
+            if (s === 'cancelled' && cancelledCount === 0) return null;
+            return (
+              <button key={s} className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setStatusFilter(s)}>
+                {s === '' ? (!showCancelled ? 'Live Deliveries' : 'All Deliveries') : s === 'cancelled' ? `Cancelled (${cancelledCount})` : DELIVERY_STATUS_LABEL[s as DeliveryStatus]}
+              </button>
+            );
+          })}
+          {statusFilter !== 'cancelled' && cancelledCount > 0 && (
+            <button
+              type="button"
+              className={`btn btn-sm ${showCancelled ? 'btn-outline-green' : 'btn-ghost'}`}
+              onClick={() => setShowCancelled(s => !s)}
+              data-testid="toggle-show-cancelled-deliveries-btn"
+              title="Toggle whether cancelled deliveries appear in Live Deliveries"
+            >
+              {showCancelled ? 'Hiding Cancelled' : `+ Show ${cancelledCount} Cancelled`}
             </button>
-          ))}
+          )}
         </div>
       </div>
 

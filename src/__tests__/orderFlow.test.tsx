@@ -1522,10 +1522,10 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
     ctx = store.getState();
     expect(() => ctx.deleteOrder(disposableOrder.id)).toThrow(/Cancel this order first/);
 
-    // Admin cancels disposable order -> hidden from default Active Orders table, toggle pill shows count
+    // Admin cancels disposable order -> hidden from default Live Orders table, toggle pill shows count
     ctx.cancelOrder(disposableOrder.id);
     const htmlAfterCancel = store.renderScreen(<OrdersPage />);
-    expect(htmlAfterCancel).toContain('Active Orders');
+    expect(htmlAfterCancel).toContain('Live Orders');
     expect(htmlAfterCancel).toContain('ORD-KEEP-01');
     expect(htmlAfterCancel).not.toContain('ORD-DEL-02');
     expect(htmlAfterCancel).toContain('Cancelled (1)');
@@ -1661,5 +1661,90 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
     expect(ctx.orders.find(o => o.id === ordB.id)!.status).toBe('completed');
     expect(ctx.deliveries.find(d => d.order_ref === 'ORD-SYNC-20B')!.status).toBe('delivered');
     expect(ctx.certificates.find(c => c.order_ref === 'ORD-SYNC-20B')!.status).toBe('generated');
+  });
+
+  it('TEST 21: Live stats, deletePayment bidirectional signal back to Orders & cancelled filtering across all 5 admin modules', async () => {
+    const store = mountAppDataStore();
+    let ctx = store.getState();
+
+    // 1. Create 2 orders: 1 live order with 2 animals, 1 disposable order with 1 animal
+    const liveOrder = ctx.addOrder({
+      order_ref: 'ORD-LIVE-21A',
+      full_name: 'Live Customer',
+      email: 'live@example.sg',
+      contact_number: '+65 9111 8888',
+      programme: 'Indonesia - Goat (XL)',
+      programme_id: 'prog-id-goat-xl',
+      programme_country: 'Indonesia',
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      quantity: 2,
+      qurban_entries: [{ qurban_name_holder: 'Live Animal 1' }, { qurban_name_holder: 'Live Animal 2' }],
+      total_amount: 580,
+      currency: 'SGD',
+      status: 'payment_verified',
+    });
+
+    const deadOrder = ctx.addOrder({
+      order_ref: 'ORD-DEAD-21B',
+      full_name: 'Dead Customer',
+      email: 'dead@example.sg',
+      contact_number: '+65 9222 7777',
+      programme: 'Uganda - Sheep',
+      programme_id: 'prog-ug-sheep',
+      programme_country: 'Uganda',
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      quantity: 1,
+      qurban_entries: [{ qurban_name_holder: 'Dead Animal 1' }],
+      total_amount: 165,
+      currency: 'SGD',
+      status: 'payment_verified',
+    });
+
+    // Cancel dead order
+    ctx = store.getState();
+    ctx.cancelOrder(deadOrder.id);
+    ctx = store.getState();
+
+    // Total orders is 2, but Live Orders is 1!
+    expect(ctx.orders).toHaveLength(2);
+    expect(ctx.orders.filter(o => o.status !== 'cancelled')).toHaveLength(1);
+
+    // OrdersPage UI checks: renders Live Orders stat & hides cancelled by default
+    const ordersHtml = store.renderScreen(<OrdersPage />);
+    expect(ordersHtml).toContain('Live Orders');
+    expect(ordersHtml).toContain('ORD-LIVE-21A');
+    expect(ordersHtml).not.toContain('ORD-DEAD-21B');
+    expect(ordersHtml).toContain('+ Show 1 Cancelled');
+
+    // AnimalsPage UI checks: 2 live animals shown, dead order animal hidden by default
+    const animalsHtml = store.renderScreen(<AnimalsPage />);
+    expect(animalsHtml).toContain('Live Allocations');
+    expect(animalsHtml).toContain('ANM-LIVE-21A-01');
+    expect(animalsHtml).toContain('ANM-LIVE-21A-02');
+    expect(animalsHtml).not.toContain('ANM-DEAD-21B-01');
+    expect(animalsHtml).toContain('+ Show 1 Cancelled');
+
+    // PaymentsPage UI checks: live payment shown, dead order payment hidden by default
+    const paymentsHtml = store.renderScreen(<PaymentsPage />);
+    expect(paymentsHtml).toContain('Live Payments');
+    expect(paymentsHtml).toContain('ORD-LIVE-21A');
+    expect(paymentsHtml).not.toContain('ORD-DEAD-21B');
+    expect(paymentsHtml).toContain('+ Show 1 Cancelled');
+
+    // 2. deletePayment test: verify payment delete removes payment and signals back to order!
+    const livePay = ctx.payments.find(p => p.order_ref === 'ORD-LIVE-21A')!;
+    expect(livePay).toBeDefined();
+    ctx.deletePayment(livePay.id);
+
+    ctx = store.getState();
+    // Payment is removed from payments list
+    expect(ctx.payments.some(p => p.id === livePay.id)).toBe(false);
+    // Order status reverted from payment_verified to pending_payment!
+    const updatedLiveOrder = ctx.orders.find(o => o.id === liveOrder.id)!;
+    expect(updatedLiveOrder.status).toBe('pending_payment');
+    // Audit log recorded for payment deletion
+    expect(ctx.auditLogs.some(l => l.action === 'payment.deleted' && l.entity_id === livePay.payment_ref)).toBe(true);
   });
 });

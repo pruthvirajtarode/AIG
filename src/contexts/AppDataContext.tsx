@@ -813,14 +813,53 @@ const STAFF_SYNC_ROLES: UserRole[] = [
   'd3_technical_admin',
 ];
 
+function sanitizeOrphanRecords(d: AppData): AppData {
+  const orderRefs = new Set(d.orders.map(o => o.order_ref));
+
+  // Purge legacy test stock and orphan order-assigned animals
+  const cleanAnimals = d.animals.filter(a => {
+    if (a.order_ref === 'TEST 1' || (a.animal_ref === 'A-2026-001' && a.order_ref === 'TEST 1')) return false;
+    // If order-specific animal (ANM-xxxxx-NN) whose order was deleted or doesn't exist, remove it
+    if (a.animal_code && a.order_ref && !orderRefs.has(a.order_ref)) return false;
+    return true;
+  });
+
+  // Purge payments whose order was deleted
+  const cleanPayments = d.payments.filter(p => {
+    if (p.order_ref && !orderRefs.has(p.order_ref)) return false;
+    return true;
+  });
+
+  // Purge deliveries whose order was deleted
+  const cleanDeliveries = d.deliveries.filter(del => {
+    if (del.order_ref && !orderRefs.has(del.order_ref)) return false;
+    return true;
+  });
+
+  // Purge certificates whose order was deleted
+  const cleanCertificates = d.certificates.filter(c => {
+    if (c.order_ref && !orderRefs.has(c.order_ref)) return false;
+    return true;
+  });
+
+  return {
+    ...d,
+    animals: cleanAnimals,
+    payments: cleanPayments,
+    deliveries: cleanDeliveries,
+    certificates: cleanCertificates,
+  };
+}
+
 function loadData(): AppData {
   try {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
     if (!raw) return ensureLiveProgrammes(EMPTY);
     const parsed = JSON.parse(raw) as Partial<AppData>;
     const base: AppData = ensureLiveProgrammes({ ...EMPTY, ...parsed });
+    const sanitized = sanitizeOrphanRecords(base);
     // Repair any orders whose related records are missing (idempotent)
-    return base.orders.reduce((acc, o) => syncRelated(acc, o, SYSTEM_ACTOR), base);
+    return sanitized.orders.reduce((acc, o) => syncRelated(acc, o, SYSTEM_ACTOR), sanitized);
   } catch {
     return ensureLiveProgrammes(EMPTY);
   }
@@ -848,6 +887,7 @@ type AppDataContextType = AppData & {
   addPayment: (p: AppPayment) => void;
   verifyPayment: (id: string) => void;
   rejectPayment: (id: string, reason?: string) => void;
+  deletePayment: (id: string) => void;
   recordInstallmentPayment: (orderId: string, paidDateIso?: string) => void;
   sendInstallmentReminder: (orderId: string) => Promise<void>;
 
@@ -2038,6 +2078,78 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [commit]);
 
+  const deletePayment = useCallback((id: string) => {
+    commit((d, actor) => {
+      const p = d.payments.find(x => x.id === id);
+      if (!p) return d;
+
+      const nextPayments = d.payments.filter(x => x.id !== id);
+      let next: AppData = {
+        ...d,
+        payments: nextPayments,
+      };
+
+      next = withLog(
+        next,
+        actor,
+        'payment.deleted',
+        'payment',
+        p.payment_ref,
+        `Payment ${p.payment_ref} deleted (${p.participant}, ${p.currency} ${p.amount})`
+      );
+
+      // Signal back to Order (single source of truth)
+      const o = next.orders.find(x => x.order_ref === p.order_ref);
+      if (o && o.status !== 'cancelled' && o.status !== 'refunded') {
+        const remainingVerified = nextPayments.filter(
+          x => x.order_ref === o.order_ref && x.status === 'verified'
+        );
+
+        if (remainingVerified.length === 0) {
+          if (['payment_verified', 'payment_submitted', 'payment_under_review'].includes(o.status)) {
+            next = applyOrderStatus(next, o.id, 'pending_payment', actor);
+          }
+          if (o.payment_method === 'installment') {
+            next = {
+              ...next,
+              orders: next.orders.map(ord =>
+                ord.id === o.id
+                  ? {
+                      ...ord,
+                      installments_paid: 0,
+                      installment_schedule: ord.installment_schedule?.map(sch => ({
+                        ...sch,
+                        status: 'pending' as const,
+                      })),
+                    }
+                  : ord
+              ),
+            };
+          }
+        } else if (o.payment_method === 'installment') {
+          const newPaidCount = remainingVerified.length;
+          next = {
+            ...next,
+            orders: next.orders.map(ord =>
+              ord.id === o.id
+                ? {
+                    ...ord,
+                    installments_paid: newPaidCount,
+                    installment_schedule: ord.installment_schedule?.map((sch, idx) => ({
+                      ...sch,
+                      status: (idx < newPaidCount ? 'verified' : 'pending') as 'verified' | 'pending',
+                    })),
+                  }
+                : ord
+            ),
+          };
+        }
+      }
+
+      return next;
+    });
+  }, [commit]);
+
   const recordInstallmentPayment = useCallback((orderId: string, paidDateIso?: string) => {
     let reminderInfo: {
       order: AppOrder;
@@ -2436,7 +2548,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     participants, programmes, suppliers,
     addOrder, updateOrder, updateOrderStatus, cancelOrder, deleteOrder, markOrderInvoiceSent,
     addAnimal, updateAnimal, updateAnimalStatus,
-    addPayment, verifyPayment, rejectPayment, recordInstallmentPayment, sendInstallmentReminder,
+    addPayment, verifyPayment, rejectPayment, deletePayment, recordInstallmentPayment, sendInstallmentReminder,
     updateDeliveryStatus, updateDelivery,
     updateCertStatus,
     addParticipant, updateParticipant,
@@ -2447,7 +2559,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     data, participants, programmes, suppliers,
     addOrder, updateOrder, updateOrderStatus, cancelOrder, deleteOrder, markOrderInvoiceSent,
     addAnimal, updateAnimal, updateAnimalStatus,
-    addPayment, verifyPayment, rejectPayment, recordInstallmentPayment, sendInstallmentReminder,
+    addPayment, verifyPayment, rejectPayment, deletePayment, recordInstallmentPayment, sendInstallmentReminder,
     updateDeliveryStatus, updateDelivery,
     updateCertStatus,
     addParticipant, updateParticipant,
