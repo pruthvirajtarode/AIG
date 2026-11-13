@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
-import { Routes, Route, Navigate, useParams, Link } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { AppDataProvider, useAppData } from '@/contexts/AppDataContext';
@@ -186,12 +186,19 @@ export function CertificateVerifyPage() {
     'Verify authentic Al Ihsan Group Singapore Qurban and Aqiqah digital certificates online.',
   );
   const { code: routeCode } = useParams<{ code?: string }>();
+  const navigate = useNavigate();
   const { certificates } = useAppData();
   const [query, setQuery] = useState(routeCode ?? '');
   const [remoteMatch, setRemoteMatch] = useState<CertDesignData | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
 
-  const normalizedQuery = (routeCode ?? query).trim().toUpperCase();
+  useEffect(() => {
+    if (routeCode) {
+      setQuery(routeCode);
+    }
+  }, [routeCode]);
+
+  const normalizedQuery = (routeCode || query).trim().toUpperCase();
   const localMatched = normalizedQuery
     ? certificates.find(
         c =>
@@ -208,9 +215,18 @@ export function CertificateVerifyPage() {
     }
     let cancelled = false;
     setLookupLoading(true);
-    Promise.resolve(
-      supabase.rpc('verify_aigms_certificate', { p_code: normalizedQuery } as never),
-    )
+
+    const callVerifyRpc = async () => {
+      // Primary call to aigms_verify_certificate (canonical Supabase DB stored procedure)
+      const res = await supabase.rpc('aigms_verify_certificate' as never, { p_code: normalizedQuery } as never);
+      if (res.error && (res.error as { code?: string }).code === 'PGRST202') {
+        // Fallback to verify_aigms_certificate if schema cache varies
+        return supabase.rpc('verify_aigms_certificate' as never, { p_code: normalizedQuery } as never);
+      }
+      return res;
+    };
+
+    callVerifyRpc()
       .then(({ data, error }) => {
         if (cancelled) return;
         if (!error && data && typeof data === 'object') {
@@ -229,6 +245,16 @@ export function CertificateVerifyPage() {
       cancelled = true;
     };
   }, [normalizedQuery, localMatched]);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = query.trim();
+    if (clean) {
+      navigate(`/verify/${encodeURIComponent(clean.toUpperCase())}`);
+    } else {
+      navigate('/verify');
+    }
+  };
 
   const matched = localMatched ?? remoteMatch ?? undefined;
 
@@ -256,7 +282,7 @@ export function CertificateVerifyPage() {
           <Link to="/login" className="btn btn-secondary btn-sm">Portal Sign In</Link>
         </div>
 
-        <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
+        <form onSubmit={handleSearchSubmit} className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
           <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
             Enter a Certificate Verification Code (e.g. <code>AIGCERT-XXXX-XXXX</code>) or Certificate Reference:
           </div>
@@ -269,8 +295,15 @@ export function CertificateVerifyPage() {
               onChange={e => setQuery(e.target.value)}
               style={{ flex: 1, minWidth: 220, fontFamily: 'var(--font-mono)' }}
             />
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{ padding: '0.625rem 1.25rem', whiteSpace: 'nowrap' }}
+            >
+              Verify Certificate
+            </button>
           </div>
-        </div>
+        </form>
 
         {normalizedQuery && matched ? (
           <div className="card" style={{ padding: '1.5rem' }} data-testid="certificate-verify-valid">
