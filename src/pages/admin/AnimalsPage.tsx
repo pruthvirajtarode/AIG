@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { Search, Plus, X, Weight, CheckCircle2, ClipboardCheck, RefreshCw } from 'lucide-react';
+import { Search, Plus, X, Weight, CheckCircle2, ClipboardCheck, RefreshCw, Trash2 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import type { AnimalStatus, AnimalType } from '@/lib/database.types';
 import {
@@ -517,13 +517,14 @@ function UpdateAnimalStatusModal({ animal, onClose, onUpdate }: {
 }
 
 // ── Animal Detail Modal ───────────────────────────────────────
-function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatusUpdate, onEdit }: {
+function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatusUpdate, onEdit, onDelete }: {
   animal: Animal;
   onClose: () => void;
   onWeightLog: (a: Animal) => void;
   onInspection: (a: Animal) => void;
   onStatusUpdate: (a: Animal) => void;
   onEdit: (a: Animal) => void;
+  onDelete?: (a: Animal) => void;
 }) {
   const { programmes } = useAppData();
   const matchedProg = programmes.find(
@@ -679,6 +680,22 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
           <button className="btn btn-primary" onClick={() => onStatusUpdate(animal)} style={{ gap: '0.5rem' }}>
             <RefreshCw size={14} /> Update Status
           </button>
+          {onDelete && (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ color: 'var(--danger)', marginLeft: 'auto', gap: '0.4rem' }}
+              onClick={() => {
+                const label = animal.animal_code || animal.animal_ref;
+                if (window.confirm(`Permanently delete animal ${label}? This cannot be undone.`)) {
+                  onDelete(animal);
+                }
+              }}
+              title="Delete animal record"
+            >
+              <Trash2 size={14} /> Delete Animal
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -689,7 +706,7 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
 export function AnimalsPage() {
   usePageTitle('Animals');
   const { toast } = useToast();
-  const { animals, programmes, orders, addAnimal, updateAnimal: ctxUpdateAnimal } = useAppData();
+  const { animals, programmes, orders, addAnimal, updateAnimal: ctxUpdateAnimal, deleteAnimal } = useAppData();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [programmeFilter, setProgrammeFilter] = useState('');
@@ -706,6 +723,10 @@ export function AnimalsPage() {
       }
       return true;
     }
+    // Animals marked allocated with no order are stale/unlinked
+    if (a.status === 'allocated' && !a.order_ref) {
+      return true;
+    }
     return false;
   }, [orders]);
 
@@ -719,6 +740,12 @@ export function AnimalsPage() {
 
   const selected = selectedId ? animals.find(a => a.id === selectedId) ?? null : null;
   const nextAnimalRef = nextRef('A', animals.map(a => a.animal_ref), 3);
+
+  const handleDeleteAnimal = useCallback((animal: Animal) => {
+    deleteAnimal(animal.id);
+    setSelectedId(null);
+    toast('success', 'Animal deleted', `Animal ${animal.animal_code || animal.animal_ref} removed from system.`);
+  }, [deleteAnimal, toast]);
 
   const registerAnimal = useCallback((animal: Animal) => {
     addAnimal(animal);
@@ -785,6 +812,7 @@ export function AnimalsPage() {
           onInspection={openInspection}
           onStatusUpdate={openStatus}
           onEdit={openEdit}
+          onDelete={handleDeleteAnimal}
         />
       )}
       {editAnimal && (
@@ -1047,9 +1075,26 @@ export function AnimalsPage() {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   <span>📍 {a.location}</span>
-                  <span>{a.tag_number}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>{a.tag_number}</span>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs"
+                      style={{ color: 'var(--danger)', padding: '2px 4px', height: 22, minWidth: 22 }}
+                      title={`Delete animal ${displayCode}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm(`Permanently delete animal ${displayCode}? This cannot be undone.`)) {
+                          deleteAnimal(a.id);
+                          toast('success', 'Animal deleted', `Animal ${displayCode} removed from system.`);
+                        }
+                      }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
-import { AppDataProvider, useAppData } from '@/contexts/AppDataContext';
+import { AppDataProvider, useAppData, sanitizeOrphanRecords, type AppAnimal } from '@/contexts/AppDataContext';
 import { LIVE_PROGRAMMES } from '@/data/liveProgrammes';
 import {
   AUSTRALIA_SINGAPORE_PORTION_OPTIONS,
@@ -1746,5 +1746,108 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
     expect(updatedLiveOrder.status).toBe('pending_payment');
     // Audit log recorded for payment deletion
     expect(ctx.auditLogs.some(l => l.action === 'payment.deleted' && l.entity_id === livePay.payment_ref)).toBe(true);
+  });
+
+  it('TEST 22: Sanitizes legacy test animal A-2026-001 (TEST 1), displays exactly 3 Live Allocations for 2 active orders, and provides deleteAnimal with audit logging', () => {
+    const store = mountAppDataStore();
+    let ctx = store.getState();
+
+    // 1. Create Order 1: ORD-10025 with 1 animal (Lamb)
+    const o1 = ctx.addOrder({
+      order_ref: 'ORD-10025',
+      full_name: 'TEST 12NOV26 0710HRS',
+      email: 'info@daredevildigital.com',
+      contact_number: '88240612',
+      programme: 'Australia to Singapore - Lamb',
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      quantity: 1,
+      total_amount: 345,
+      delivery_portion: 'two_thirds',
+      qurban_entries: [{ qurban_name_holder: 'TEST 12NOV26 0710HRS', delivery_portion: 'two_thirds' }],
+    });
+    ctx.updateOrderStatus(o1.id, 'completed');
+
+    // 2. Create Order 2: ORD-10001 with 2 animals (Goat XL)
+    const o2 = ctx.addOrder({
+      order_ref: 'ORD-10001',
+      full_name: 'TEST 04NOV26 1109HRS',
+      email: 'info@daredevildigital.com',
+      contact_number: '88240612',
+      programme: 'Indonesia - Goat (XL)',
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      quantity: 2,
+      total_amount: 580,
+      qurban_entries: [
+        { qurban_name_holder: 'Qurban 1' },
+        { qurban_name_holder: 'Qurban 2' },
+      ],
+    });
+    ctx.updateOrderStatus(o2.id, 'completed');
+
+    // 3. Inject legacy test animal A-2026-001 with location TEST 1 and tag TG-0001 directly into localStorage
+    const legacyMockAnimal: AppAnimal = {
+      id: 'legacy-test-mock-001',
+      animal_ref: 'A-2026-001',
+      animal_type: 'sheep',
+      breed: 'Boer',
+      gender: 'male',
+      status: 'allocated',
+      current_weight_kg: 40,
+      min_weight_kg: 24,
+      location: 'TEST 1',
+      supplier: 'Test Supplier',
+      tag_number: 'TG-0001',
+      created_at: new Date().toISOString(),
+    };
+
+    const raw = JSON.parse(localStorage.getItem('aigms-data-v1') || '{}');
+    raw.animals = [legacyMockAnimal, ...(raw.animals || [])];
+    localStorage.setItem('aigms-data-v1', JSON.stringify(raw));
+
+    // Remounting triggers loadData() which runs sanitizeOrphanRecords
+    ctx = store.remountFromStorage();
+    expect(ctx.animals.some(a => a.animal_ref === 'A-2026-001')).toBe(false);
+    expect(ctx.animals.some(a => a.location === 'TEST 1')).toBe(false);
+    expect(ctx.animals.some(a => a.tag_number === 'TG-0001')).toBe(false);
+
+    // 4. Register a disposable farm stock animal to verify deleteAnimal
+    const disposableAnimal: AppAnimal = {
+      id: 'disposable-stock-002',
+      animal_ref: 'A-2026-999',
+      animal_type: 'goat',
+      breed: 'Boer',
+      gender: 'female',
+      status: 'available',
+      current_weight_kg: 32,
+      min_weight_kg: 25,
+      location: 'Malaysia Farm',
+      supplier: 'Kedah Livestock',
+      tag_number: 'TG-9999',
+      created_at: new Date().toISOString(),
+    };
+    ctx.addAnimal(disposableAnimal);
+    ctx = store.getState();
+    expect(ctx.animals.some(a => a.id === disposableAnimal.id)).toBe(true);
+
+    // 5. Verify AnimalsPage rendering:
+    const animalsHtml = store.renderScreen(<AnimalsPage />);
+    expect(animalsHtml).not.toContain('A-2026-001');
+    expect(animalsHtml).not.toContain('📍 TEST 1');
+    expect(animalsHtml).not.toContain('TG-0001');
+    expect(animalsHtml).toContain('ANM-10025-01');
+    expect(animalsHtml).toContain('ANM-10001-01');
+    expect(animalsHtml).toContain('ANM-10001-02');
+
+    // 6. Test deleteAnimal on disposable animal
+    ctx.deleteAnimal(disposableAnimal.id);
+    ctx = store.getState();
+    expect(ctx.animals.some(a => a.id === disposableAnimal.id)).toBe(false);
+    expect(ctx.auditLogs.some(l => l.action === 'animal.deleted' && l.entity_id === disposableAnimal.animal_ref)).toBe(true);
+
+    // 7. Verify live animals count matches exactly the 3 animals belonging to the 2 active orders
+    const activeAnimals = ctx.animals.filter(a => a.order_ref === 'ORD-10025' || a.order_ref === 'ORD-10001');
+    expect(activeAnimals).toHaveLength(3);
   });
 });

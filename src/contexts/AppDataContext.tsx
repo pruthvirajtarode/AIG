@@ -813,14 +813,23 @@ const STAFF_SYNC_ROLES: UserRole[] = [
   'd3_technical_admin',
 ];
 
-function sanitizeOrphanRecords(d: AppData): AppData {
+export function sanitizeOrphanRecords(d: AppData): AppData {
   const orderRefs = new Set(d.orders.map(o => o.order_ref));
 
   // Purge legacy test stock and orphan order-assigned animals
   const cleanAnimals = d.animals.filter(a => {
-    if (a.order_ref === 'TEST 1' || (a.animal_ref === 'A-2026-001' && a.order_ref === 'TEST 1')) return false;
-    // If order-specific animal (ANM-xxxxx-NN) whose order was deleted or doesn't exist, remove it
-    if (a.animal_code && a.order_ref && !orderRefs.has(a.order_ref)) return false;
+    // Purge legacy test animal A-2026-001 or anything from test location/tag/order
+    if (
+      a.animal_ref === 'A-2026-001' ||
+      a.location === 'TEST 1' ||
+      a.tag_number === 'TG-0001' ||
+      a.order_ref === 'TEST 1' ||
+      (a.status === 'allocated' && !a.order_ref)
+    ) {
+      return false;
+    }
+    // If animal has order_ref but the order was deleted or doesn't exist, remove it
+    if (a.order_ref && !orderRefs.has(a.order_ref)) return false;
     return true;
   });
 
@@ -882,6 +891,7 @@ type AppDataContextType = AppData & {
   addAnimal: (a: AppAnimal) => void;
   updateAnimal: (id: string, patch: Partial<AppAnimal>) => void;
   updateAnimalStatus: (id: string, status: AnimalStatus) => void;
+  deleteAnimal: (id: string) => void;
 
   // Payment actions
   addPayment: (p: AppPayment) => void;
@@ -965,11 +975,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         ).catch(console.error);
         return;
       }
-      const merged: AppData = ensureLiveProgrammes({
+      const merged: AppData = sanitizeOrphanRecords(ensureLiveProgrammes({
         ...EMPTY,
         ...remote,
         programmes: remote.programmes.length > 0 ? remote.programmes : EMPTY.programmes,
-      });
+      }));
       supabaseSnapshotRef.current = merged;
       dataRef.current = merged;
       setData(merged);
@@ -1994,6 +2004,41 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     updateAnimal(id, { status });
   }, [updateAnimal]);
 
+  const deleteAnimal = useCallback((id: string) => {
+    commit((d, actor) => {
+      const a = d.animals.find(x => x.id === id);
+      if (!a) return d;
+
+      const nextAnimals = d.animals.filter(x => x.id !== id);
+      let next: AppData = {
+        ...d,
+        animals: nextAnimals,
+      };
+
+      next = withLog(
+        next,
+        actor,
+        'animal.deleted',
+        'animal',
+        a.animal_code || a.animal_ref,
+        `Animal ${a.animal_code || a.animal_ref} deleted (${a.breed}, ${a.animal_type}, location: ${a.location})`
+      );
+
+      // If animal had an active order_ref, check if linked order needs adjustment
+      if (a.order_ref) {
+        const o = next.orders.find(x => x.order_ref === a.order_ref);
+        if (o && o.status === 'animal_allocated') {
+          const remainingAnimals = nextAnimals.filter(x => x.order_ref === a.order_ref);
+          if (remainingAnimals.length === 0) {
+            next = applyOrderStatus(next, o.id, 'confirmed', actor);
+          }
+        }
+      }
+
+      return next;
+    });
+  }, [commit]);
+
   // ── Payments ──────────────────────────────────────────────
   const addPayment = useCallback((p: AppPayment) => {
     commit((d, actor) => withLog({ ...d, payments: [p, ...d.payments] }, actor, 'payment.created', 'payment', p.payment_ref, `Payment ${p.payment_ref} recorded`));
@@ -2547,7 +2592,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     ...data,
     participants, programmes, suppliers,
     addOrder, updateOrder, updateOrderStatus, cancelOrder, deleteOrder, markOrderInvoiceSent,
-    addAnimal, updateAnimal, updateAnimalStatus,
+    addAnimal, updateAnimal, updateAnimalStatus, deleteAnimal,
     addPayment, verifyPayment, rejectPayment, deletePayment, recordInstallmentPayment, sendInstallmentReminder,
     updateDeliveryStatus, updateDelivery,
     updateCertStatus,
@@ -2558,7 +2603,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   }), [
     data, participants, programmes, suppliers,
     addOrder, updateOrder, updateOrderStatus, cancelOrder, deleteOrder, markOrderInvoiceSent,
-    addAnimal, updateAnimal, updateAnimalStatus,
+    addAnimal, updateAnimal, updateAnimalStatus, deleteAnimal,
     addPayment, verifyPayment, rejectPayment, deletePayment, recordInstallmentPayment, sendInstallmentReminder,
     updateDeliveryStatus, updateDelivery,
     updateCertStatus,
