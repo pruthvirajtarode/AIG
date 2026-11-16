@@ -48,6 +48,7 @@ import { ParticipantsPage } from '@/pages/admin/ParticipantsPage';
 import { PaymentsPage } from '@/pages/admin/PaymentsPage';
 import { DashboardPage } from '@/pages/admin/DashboardPage';
 import { SettingsPage } from '@/pages/admin/SettingsPage';
+import { DeliveriesPage } from '@/pages/admin/DeliveriesPage';
 import { PortalOrdersPage } from '@/pages/portal/PortalOrdersPage';
 import { PortalCertificatesPage } from '@/pages/portal/PortalCertificatesPage';
 
@@ -1849,5 +1850,106 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
     // 7. Verify live animals count matches exactly the 3 animals belonging to the 2 active orders
     const activeAnimals = ctx.animals.filter(a => a.order_ref === 'ORD-10025' || a.order_ref === 'ORD-10001');
     expect(activeAnimals).toHaveLength(3);
+  });
+
+  it('TEST 23: Installments Paid selector, Deliveries AU-SG vs Other Regions segmentation & dual WhatsApp notifications', async () => {
+    const store = mountAppDataStore();
+    let ctx = store.getState();
+
+    // 1. Create an Indonesia Breeding installment order (4 installments)
+    const breedProg = ctx.programmes.find(p => p.id === 'prog-id-breeding')!;
+    const order = ctx.addOrder({
+      order_ref: 'ORD-10099',
+      full_name: 'Haji Sulaiman',
+      email: 'sulaiman@example.com',
+      contact_number: '+65 9123 4567',
+      programme: breedProg.name,
+      programme_id: breedProg.id,
+      programme_country: breedProg.country,
+      service_type: 'qurban',
+      payment_method: 'installment',
+      installment_count: 4,
+      installments_paid: 0,
+      quantity: 1,
+      total_amount: 360,
+      currency: 'SGD',
+      status: 'pending_payment',
+      qurban_entries: [{ qurban_name_holder: 'Haji Sulaiman' }],
+    });
+
+    ctx = store.getState();
+    const createdOrder = ctx.orders.find(o => o.id === order.id)!;
+    expect(createdOrder.payment_method).toBe('installment');
+    expect(createdOrder.installment_count).toBe(4);
+    expect(createdOrder.installments_paid).toBe(0);
+    expect(createdOrder.installment_schedule).toHaveLength(4);
+    expect(createdOrder.installment_schedule?.every(s => s.status === 'pending')).toBe(true);
+
+    // 2. Admin edits order via Edit Order modal: marks 2 of 4 installments as paid
+    ctx.updateOrder(order.id, {
+      installments_paid: 2,
+    });
+    ctx = store.getState();
+    const updated2 = ctx.orders.find(o => o.id === order.id)!;
+    expect(updated2.installments_paid).toBe(2);
+    expect(updated2.installment_schedule?.[0].status).toBe('verified');
+    expect(updated2.installment_schedule?.[1].status).toBe('verified');
+    expect(updated2.installment_schedule?.[2].status).toBe('pending');
+    expect(updated2.installment_schedule?.[3].status).toBe('pending');
+    const paymentPartial = ctx.payments.find(p => p.order_ref === 'ORD-10099')!;
+    expect(paymentPartial.status).toBe('submitted');
+    expect(paymentPartial.installments_paid).toBe(2);
+
+    // Verify Dual WhatsApp reminder notification dispatch when installments are remaining
+    const waLogCountBefore = notificationService.getDeliveryLogs().length;
+    await ctx.sendInstallmentReminder(order.id);
+    const waLogsAfter = notificationService.getDeliveryLogs();
+    expect(waLogsAfter.length).toBeGreaterThan(waLogCountBefore);
+    const adminNotif = waLogsAfter.find(
+      l => l.recipientPhoneE164 === OFFICIAL_WHATSAPP_NUMBER && l.body?.includes('ORD-10099'),
+    );
+    expect(adminNotif).toBeDefined();
+
+    // 3. Admin edits order again: marks 4 of 4 installments as paid (Full Payment Verified)
+    ctx.updateOrder(order.id, {
+      installments_paid: 4,
+    });
+    ctx = store.getState();
+    const updatedFull = ctx.orders.find(o => o.id === order.id)!;
+    expect(updatedFull.installments_paid).toBe(4);
+    expect(updatedFull.status).toBe('payment_verified');
+    expect(updatedFull.installment_schedule?.every(s => s.status === 'verified')).toBe(true);
+    const paymentFull = ctx.payments.find(p => p.order_ref === 'ORD-10099')!;
+    expect(paymentFull.status).toBe('verified');
+    expect(paymentFull.installments_paid).toBe(4);
+
+    // 4. Create an AU-SG order that reaches delivery_scheduled to verify AU-SG deliveries
+    const auProg = ctx.programmes.find(p => isAustraliaToSingaporeProgramme(p.name, p.country))!;
+    ctx.addOrder({
+      order_ref: 'ORD-10088',
+      full_name: 'Faris Ahmad',
+      email: 'faris@example.com',
+      contact_number: '+65 8123 4567',
+      programme: auProg.name,
+      programme_id: auProg.id,
+      programme_country: auProg.country,
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      delivery_portion: 'two_thirds',
+      quantity: 1,
+      total_amount: 345,
+      currency: 'SGD',
+      status: 'delivery_scheduled',
+      qurban_entries: [{ qurban_name_holder: 'Faris Ahmad', delivery_portion: 'two_thirds' }],
+    });
+
+    // 5. Verify DeliveriesPage segmentation: AU - SG Deliveries vs All Other Regions
+    const deliveriesHtml = store.renderScreen(<DeliveriesPage />);
+    expect(deliveriesHtml).toContain('AU – SG Deliveries');
+    expect(deliveriesHtml).toContain('Total Deliveries');
+    expect(deliveriesHtml).toContain('All Other Regions');
+    expect(deliveriesHtml).toContain('Active / Scheduled');
+    expect(deliveriesHtml).toContain('AU → SG');
+    expect(deliveriesHtml).toContain('2/3');
   });
 });

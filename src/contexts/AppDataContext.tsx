@@ -272,6 +272,7 @@ export type NewOrderInput = {
   service_type: 'qurban' | 'aqiqah' | 'nazar';
   payment_method: 'paynow' | 'cash' | 'installment' | 'bank_transfer';
   installment_count?: number;
+  installments_paid?: number;
   delivery_portion?: 'full' | 'one_third' | 'two_thirds' | 'nil' | null;
   quantity: number;           // number of qurbans
   total_amount: number;
@@ -510,12 +511,17 @@ function syncRelated(input: AppData, o: AppOrder, actor: Actor): AppData {
 
   // ── Payment ──────────────────────────────────────────────
   const rawWantPay = paymentStatusFor(o.status);
-  const hasPartialInstallment =
-    o.payment_method === 'installment' &&
-    (o.installments_paid ?? 0) > 0 &&
-    (o.installments_paid ?? 0) < (o.installment_count ?? 2);
+  const isInstallment = o.payment_method === 'installment';
+  const installmentCount = isInstallment ? Math.max(2, o.installment_count ?? 2) : 0;
+  const installmentsPaid = isInstallment ? (o.installments_paid ?? 0) : 0;
+  const hasFullInstallment = isInstallment && installmentsPaid >= installmentCount;
+  const hasPartialInstallment = isInstallment && installmentsPaid > 0 && installmentsPaid < installmentCount;
   const wantPay: PaymentStatus | null =
-    hasPartialInstallment && rawWantPay === 'pending' ? 'submitted' : rawWantPay;
+    hasFullInstallment
+      ? 'verified'
+      : hasPartialInstallment && (rawWantPay === 'pending' || rawWantPay === null)
+      ? 'submitted'
+      : rawWantPay;
   const pay = d.payments.find(p => p.order_ref === o.order_ref);
   const desiredMethod = o.payment_method ?? pay?.method ?? 'paynow';
   if (pay) {
@@ -795,10 +801,34 @@ function syncRelated(input: AppData, o: AppOrder, actor: Actor): AppData {
 function applyOrderStatus(d: AppData, id: string, status: OrderStatus, actor: Actor): AppData {
   const o = d.orders.find(x => x.id === id);
   if (!o || o.status === status) return d;
-  const updated = { ...o, status };
-  let next: AppData = { ...d, orders: d.orders.map(x => x.id === id ? updated : x) };
-  next = withLog(next, actor, 'order.status_changed', 'order', o.order_ref,
-    `Order ${o.order_ref}: ${getStatusLabel(o.status)} → ${getStatusLabel(status)}`);
+  const isInstallment = o.payment_method === 'installment';
+  const installmentCount = o.installment_count ?? o.installment_schedule?.length ?? 2;
+  const shouldMarkInstallmentsFull =
+    isInstallment &&
+    orderRank(status) >= R('payment_verified') &&
+    (o.installments_paid ?? 0) < installmentCount;
+
+  const updated: AppOrder = {
+    ...o,
+    status,
+    ...(shouldMarkInstallmentsFull
+      ? {
+          installments_paid: installmentCount,
+          installment_schedule: (
+            o.installment_schedule ?? buildInstallmentSchedule(o.total_amount, installmentCount, o.created_at, o.currency)
+          ).map(item => ({ ...item, status: 'verified' as const })),
+        }
+      : {}),
+  };
+  let next: AppData = { ...d, orders: d.orders.map(x => (x.id === id ? updated : x)) };
+  next = withLog(
+    next,
+    actor,
+    'order.status_changed',
+    'order',
+    o.order_ref,
+    `Order ${o.order_ref}: ${getStatusLabel(o.status)} → ${getStatusLabel(status)}`,
+  );
   return syncRelated(next, updated, actor);
 }
 
@@ -1159,9 +1189,22 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     const installmentCount = isInstallment
       ? Math.max(2, Math.min(6, Math.round(input.installment_count ?? 2)))
       : undefined;
-    const installmentSchedule = isInstallment && installmentCount
+    const installmentsPaid = isInstallment && input.installments_paid !== undefined
+      ? Math.max(0, Math.min(installmentCount ?? 2, Math.round(input.installments_paid)))
+      : 0;
+    const rawSchedule = isInstallment && installmentCount
       ? buildInstallmentSchedule(input.total_amount, installmentCount, nowIso(), orderCurrency)
       : undefined;
+    const installmentSchedule = rawSchedule
+      ? rawSchedule.map((item, idx) => ({
+          ...item,
+          status: idx < installmentsPaid ? ('verified' as const) : ('pending' as const),
+        }))
+      : undefined;
+    const resolvedStatus: OrderStatus =
+      isInstallment && installmentCount && installmentsPaid >= installmentCount && (targetStatus === 'draft' || targetStatus === 'pending_payment')
+        ? 'payment_verified'
+        : targetStatus;
     const order: AppOrder = {
       id: uid(),
       order_ref: orderRef,
@@ -1178,7 +1221,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       ...(isInstallment
         ? {
             installment_count: installmentCount,
-            installments_paid: 0,
+            installments_paid: installmentsPaid,
             installment_schedule: installmentSchedule,
           }
         : {}),
@@ -1187,7 +1230,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       number_of_qurbans: input.quantity,
       total_amount: input.total_amount,
       currency: orderCurrency,
-      status: targetStatus,
+      status: resolvedStatus,
       created_at: nowIso(),
       notes: input.notes?.trim() || undefined,
       client_request_id: reqId || undefined,
@@ -1200,7 +1243,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     // ── Create 1..N animals linked to the SAME Order Reference ──
     const animalType = matchedProg?.animal_type ?? inferAnimalType(d0, canonicalProgramme);
-    const initialAnimalStatus: AnimalStatus = animalStatusFor(targetStatus) ?? 'reserved';
+    const initialAnimalStatus: AnimalStatus = animalStatusFor(resolvedStatus) ?? 'reserved';
     const minWeight = animalType === 'cow' || animalType === 'buffalo' ? 350 : animalType === 'camel' ? 300 : 25;
     const approxWeightLabel =
       matchedProg?.approx_weight_label || defaultApproxWeight(canonicalProgramme, animalType);
@@ -1556,23 +1599,41 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const nextInstallmentCount = nextIsInstallment
         ? Math.max(2, Math.min(6, Math.round(patch.installment_count ?? cur.installment_count ?? 2)))
         : undefined;
-      const prevPaid = Math.min(cur.installments_paid ?? 0, nextInstallmentCount ?? 0);
+      const targetPaid = patch.installments_paid !== undefined
+        ? Math.max(0, Math.min(nextInstallmentCount ?? 2, Math.round(patch.installments_paid)))
+        : Math.min(cur.installments_paid ?? 0, nextInstallmentCount ?? 0);
+      const prevPaid = nextIsInstallment ? targetPaid : undefined;
       const needsScheduleRebuild =
         nextIsInstallment &&
         (!cur.installment_schedule ||
           cur.installment_count !== nextInstallmentCount ||
           cur.total_amount !== nextTotal ||
           cur.payment_method !== 'installment');
-      const nextInstallmentSchedule = nextIsInstallment
-        ? needsScheduleRebuild && nextInstallmentCount
-          ? buildInstallmentSchedule(nextTotal, nextInstallmentCount, cur.created_at, nextCurrency).map((item, idx) =>
-              idx < prevPaid ? { ...item, status: 'verified' as const } : item,
-            )
-          : cur.installment_schedule
+      const baseSchedule =
+        needsScheduleRebuild && nextInstallmentCount
+          ? buildInstallmentSchedule(nextTotal, nextInstallmentCount, cur.created_at, nextCurrency)
+          : cur.installment_schedule && cur.installment_schedule.length === nextInstallmentCount
+          ? cur.installment_schedule
+          : nextInstallmentCount
+          ? buildInstallmentSchedule(nextTotal, nextInstallmentCount, cur.created_at, nextCurrency)
+          : undefined;
+      const nextInstallmentSchedule = nextIsInstallment && baseSchedule
+        ? baseSchedule.map((item, idx) => ({
+            ...item,
+            status: idx < (prevPaid ?? 0) ? ('verified' as const) : ('pending' as const),
+          }))
         : undefined;
+
+      let nextOrderStatus = cur.status;
+      if (nextIsInstallment && prevPaid !== undefined && nextInstallmentCount && prevPaid >= nextInstallmentCount) {
+        if (orderRank(nextOrderStatus) < R('payment_verified') || nextOrderStatus === 'payment_rejected') {
+          nextOrderStatus = 'payment_verified';
+        }
+      }
 
       const updatedOrder: AppOrder = {
         ...cur,
+        status: nextOrderStatus,
         participant: participantName,
         participant_id: participantId,
         email: nextEmail,
@@ -1583,7 +1644,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         service_type: nextServiceType,
         payment_method: nextPaymentMethod,
         installment_count: nextInstallmentCount,
-        installments_paid: nextIsInstallment ? prevPaid : undefined,
+        installments_paid: prevPaid,
         installment_schedule: nextInstallmentSchedule,
         delivery_portion: validation.normalizedPortion,
         quantity: nextQuantity,

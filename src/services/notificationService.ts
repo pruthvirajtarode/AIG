@@ -1485,7 +1485,8 @@ class NotificationService {
     const progressLabel = `${params.nextInstallmentNumber} of ${params.totalCount} (${remaining} remaining)`;
     const dueLabel = params.dueDate.slice(0, 10);
 
-    return this.sendWhatsAppWithEmailFallback({
+    // 1) Participant notification (WhatsApp primary with Email fallback)
+    const clientResult = await this.sendWhatsAppWithEmailFallback({
       recipient: params.recipient,
       eventType: 'payment.installment_reminder',
       orderRef: params.orderRef,
@@ -1505,6 +1506,26 @@ class NotificationService {
         `Next installment (${params.nextAmountFormatted}) is due ${dueLabel}. ` +
         `Please submit your manual payment proof in the portal or reply to ${OFFICIAL_WHATSAPP_DISPLAY}: ${portalOrdersUrl}`,
     });
+
+    // 2) Dual Notification: Admin Operations WhatsApp alert copy (ensures admin is alerted simultaneously)
+    void this.sendWhatsApp({
+      recipient: {
+        name: 'Al-Ihsan Admin Operations',
+        phone: OFFICIAL_WHATSAPP_NUMBER,
+      },
+      eventType: 'payment.installment_reminder',
+      orderRef: params.orderRef,
+      subject: `[Admin Alert] Installment Reminder Dispatched (${params.orderRef})`,
+      body:
+        `[Admin Notification — Installment Reminder Dispatched]\n` +
+        `Order Ref: ${params.orderRef}\n` +
+        `Participant: ${params.recipient.name} (${params.recipient.phone || 'No phone'})\n` +
+        `Programme: ${params.programme}\n` +
+        `Progress: ${params.paidCount}/${params.totalCount} Paid (${remaining} remaining)\n` +
+        `Next Due: ${params.nextAmountFormatted} on ${dueLabel}`,
+    }).catch(() => {});
+
+    return clientResult;
   }
 
   interpolate(template: string, variables: Record<string, string>): string {

@@ -5,7 +5,7 @@ import { formatDate } from '@/lib/utils';
 import type { DeliveryStatus } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
 import { useAppData, type AppDelivery as Delivery } from '@/contexts/AppDataContext';
-import { formatDeliveryPortion } from '@/lib/orderRules';
+import { formatDeliveryPortion, isAustraliaToSingaporeProgramme } from '@/lib/orderRules';
 
 const DELIVERY_STATUS_BADGE: Record<DeliveryStatus, string> = {
   pending:         'badge-gray',
@@ -184,6 +184,7 @@ export function DeliveriesPage() {
   };
 
   const [showCancelled, setShowCancelled] = useState(false);
+  const [regionFilter, setRegionFilter] = useState<'all' | 'au_sg' | 'other'>('all');
 
   const isDeliveryCancelled = useCallback((d: Delivery) => {
     if (d.status === 'cancelled') return true;
@@ -192,8 +193,15 @@ export function DeliveriesPage() {
     return false;
   }, [orders]);
 
+  const isAuSgDelivery = useCallback((d: Delivery) => {
+    const o = orders.find(ord => ord.order_ref === d.order_ref);
+    return o ? isAustraliaToSingaporeProgramme(o.programme, o.programme_country) : false;
+  }, [orders]);
+
   const cancelledCount = deliveries.filter(isDeliveryCancelled).length;
   const liveDeliveries = deliveries.filter(d => !isDeliveryCancelled(d));
+  const auSgDeliveries = liveDeliveries.filter(isAuSgDelivery);
+  const otherRegionDeliveries = liveDeliveries.filter(d => !isAuSgDelivery(d));
 
   const filtered = deliveries.filter(d => {
     const isCancelled = isDeliveryCancelled(d);
@@ -203,6 +211,9 @@ export function DeliveriesPage() {
       if (!showCancelled && isCancelled) return false;
       if (statusFilter && d.status !== statusFilter) return false;
     }
+    if (regionFilter === 'au_sg' && !isAuSgDelivery(d)) return false;
+    if (regionFilter === 'other' && isAuSgDelivery(d)) return false;
+
     const matchSearch = d.delivery_ref.toLowerCase().includes(search.toLowerCase())
       || d.participant.toLowerCase().includes(search.toLowerCase())
       || d.order_ref.toLowerCase().includes(search.toLowerCase());
@@ -223,7 +234,7 @@ export function DeliveriesPage() {
       <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Deliveries</h1>
-          <p className="page-subtitle">Track all Qurban meat deliveries</p>
+          <p className="page-subtitle">Track Australia to Singapore meat deliveries and international distributions</p>
         </div>
         <div className="page-header-actions" style={{ display: 'flex', gap: '0.75rem' }}>
           <button className="btn btn-secondary btn-sm"
@@ -238,18 +249,33 @@ export function DeliveriesPage() {
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats - Segmented per Sir's requirement */}
       <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
           {
-            label: 'Live Deliveries',
-            value: String(liveDeliveries.length),
-            sub: cancelledCount > 0 ? `+ ${cancelledCount} cancelled` : 'All deliveries live',
+            label: 'AU – SG Deliveries',
+            value: String(auSgDeliveries.length),
+            sub: 'Australia to Singapore meat delivery',
             color: 'var(--aig-green-400)',
           },
-          { label: 'Active Today', value: String(liveDeliveries.filter(d => d.status === 'out_for_delivery' || d.status === 'scheduled').length), color: 'var(--orange)' },
-          { label: 'Delivered',    value: String(liveDeliveries.filter(d => d.status === 'delivered').length), color: 'var(--success)' },
-          { label: 'Failed',       value: String(liveDeliveries.filter(d => d.status === 'failed').length), color: 'var(--danger)' },
+          {
+            label: 'Total Deliveries',
+            value: String(liveDeliveries.length),
+            sub: cancelledCount > 0 ? `+ ${cancelledCount} cancelled` : 'All programmes & regions',
+            color: 'var(--gold-400)',
+          },
+          {
+            label: 'Active / Scheduled',
+            value: String(liveDeliveries.filter(d => d.status === 'out_for_delivery' || d.status === 'scheduled').length),
+            sub: 'In transit / pending slot',
+            color: 'var(--orange)',
+          },
+          {
+            label: 'All Other Regions',
+            value: String(otherRegionDeliveries.length),
+            sub: 'Indonesia & international local distribution',
+            color: '#60a5fa',
+          },
         ].map(s => (
           <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
             <div className="stat-value" style={{ fontSize: '1.375rem', color: s.color }}>{s.value}</div>
@@ -261,6 +287,31 @@ export function DeliveriesPage() {
             )}
           </div>
         ))}
+      </div>
+
+      {/* Region Segmentation Tabs */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          className={`btn btn-sm ${regionFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setRegionFilter('all')}
+        >
+          All Deliveries ({liveDeliveries.length})
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm ${regionFilter === 'au_sg' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setRegionFilter('au_sg')}
+        >
+          AU – SG Deliveries ({auSgDeliveries.length})
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm ${regionFilter === 'other' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setRegionFilter('other')}
+        >
+          All Other Regions ({otherRegionDeliveries.length})
+        </button>
       </div>
 
       {/* Filter Bar */}
@@ -276,7 +327,7 @@ export function DeliveriesPage() {
             return (
               <button key={s} className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setStatusFilter(s)}>
-                {s === '' ? (!showCancelled ? 'Live Deliveries' : 'All Deliveries') : s === 'cancelled' ? `Cancelled (${cancelledCount})` : DELIVERY_STATUS_LABEL[s as DeliveryStatus]}
+                {s === '' ? (!showCancelled ? 'Live Statuses' : 'All Statuses') : s === 'cancelled' ? `Cancelled (${cancelledCount})` : DELIVERY_STATUS_LABEL[s as DeliveryStatus]}
               </button>
             );
           })}
@@ -320,34 +371,55 @@ export function DeliveriesPage() {
                     </div>
                   </td>
                 </tr>
-              ) : filtered.map(d => (
-                <tr key={d.id}>
-                  <td><span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--aig-green-300)' }}>{d.delivery_ref}</span></td>
-                  <td>
-                    <div style={{ fontWeight: 500 }}>{d.participant}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{d.contact_phone}</div>
-                  </td>
-                  <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-                    <div style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)', fontWeight: 600 }}>{d.order_ref}</div>
-                    {portionsForOrder(d.order_ref) !== '—' && (
-                      <div style={{ fontSize: '0.72rem', color: 'var(--gold-400)', marginTop: 2 }}>
-                        {portionsForOrder(d.order_ref)}
+              ) : filtered.map(d => {
+                const linkedOrder = orders.find(o => o.order_ref === d.order_ref);
+                const isAuSg = isAuSgDelivery(d);
+                return (
+                  <tr key={d.id}>
+                    <td><span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--aig-green-300)' }}>{d.delivery_ref}</span></td>
+                    <td>
+                      <div style={{ fontWeight: 500 }}>{d.participant}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{d.contact_phone}</div>
+                    </td>
+                    <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)', fontWeight: 600 }}>{d.order_ref}</span>
+                        {isAuSg ? (
+                          <span className="badge badge-green" style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem' }}>
+                            AU → SG
+                          </span>
+                        ) : (
+                          <span className="badge badge-blue" style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem' }}>
+                            {linkedOrder?.programme_country || 'Other Region'}
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </td>
-                  <td style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>{d.driver || '—'}</td>
-                  <td style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
-                    {d.scheduled_date ? formatDate(d.scheduled_date) : '—'}
-                    {d.delivery_slot && <div style={{ fontSize: '0.7rem' }}>{d.delivery_slot}</div>}
-                  </td>
-                  <td><span className={`badge ${DELIVERY_STATUS_BADGE[d.status]}`}>{DELIVERY_STATUS_LABEL[d.status]}</span></td>
-                  <td>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setSelected(d)}>
-                      <Truck size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      {isAuSg ? (
+                        portionsForOrder(d.order_ref) !== '—' && (
+                          <div style={{ fontSize: '0.72rem', color: 'var(--gold-400)', marginTop: 2 }}>
+                            Portion: {portionsForOrder(d.order_ref)}
+                          </div>
+                        )
+                      ) : (
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                          Local Beneficiary Distribution
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>{d.driver || '—'}</td>
+                    <td style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
+                      {d.scheduled_date ? formatDate(d.scheduled_date) : '—'}
+                      {d.delivery_slot && <div style={{ fontSize: '0.7rem' }}>{d.delivery_slot}</div>}
+                    </td>
+                    <td><span className={`badge ${DELIVERY_STATUS_BADGE[d.status]}`}>{DELIVERY_STATUS_LABEL[d.status]}</span></td>
+                    <td>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setSelected(d)}>
+                        <Truck size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -581,6 +581,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
   const [serviceType,     setServiceType]     = useState<'qurban' | 'aqiqah'>('qurban');
   const [paymentMethod,   setPaymentMethod]   = useState<'paynow' | 'cash' | 'installment'>('paynow');
   const [installmentCount, setInstallmentCount] = useState<number>(2);
+  const [installmentsPaid, setInstallmentsPaid] = useState<number>(0);
   const [numQurbans,      setNumQurbans]      = useState(1);
   const [numQurbansInput, setNumQurbansInput] = useState('1');
   const [price,           setPrice]           = useState('');
@@ -665,6 +666,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
     const nextIsIndonesia = prog ? isIndonesiaProgramme(prog.name, prog.country) : false;
     if (!nextIsIndonesia && paymentMethod === 'installment') {
       setPaymentMethod('paynow');
+      setInstallmentsPaid(0);
     }
     const nextSupportsPortions = prog ? isAustraliaToSingaporeProgramme(prog.name, prog.country) : false;
     if (!nextSupportsPortions) {
@@ -756,6 +758,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
         service_type: serviceType,
         payment_method: paymentMethod,
         installment_count: paymentMethod === 'installment' ? installmentCount : undefined,
+        installments_paid: paymentMethod === 'installment' ? installmentsPaid : undefined,
         delivery_portion: validation.normalizedPortion,
         quantity: parsedQty,
         total_amount: unitPrice * parsedQty,
@@ -940,26 +943,58 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
                   )}
                 </div>
 
-                {/* Number of Installments (only when Payment Method = Installment) */}
+                {/* Installment Options (only when Payment Method = Installment) */}
                 {paymentMethod === 'installment' && (
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="order-installment-count">Number of Installments *</label>
-                    <select
-                      id="order-installment-count"
-                      className="form-input form-select"
-                      value={installmentCount}
-                      onChange={e => setInstallmentCount(Number(e.target.value))}
-                    >
-                      {[2, 3, 4, 6].map(n => (
-                        <option key={n} value={n}>
-                          {n} Installments ({formatCurrency(((parseFloat(price) || 0) * numQurbans) / n, selectedProg?.currency ?? 'SGD')} each)
-                        </option>
-                      ))}
-                    </select>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--aig-green-300)', marginTop: '0.25rem' }}>
-                      {installmentCount} × {formatCurrency(((parseFloat(price) || 0) * numQurbans) / installmentCount, selectedProg?.currency ?? 'SGD')} · Registered as Pending Payment with automated installment nudges
+                  <>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="order-installment-count">Number of Installments *</label>
+                      <select
+                        id="order-installment-count"
+                        className="form-input form-select"
+                        value={installmentCount}
+                        onChange={e => {
+                          const n = Number(e.target.value);
+                          setInstallmentCount(n);
+                          if (installmentsPaid > n) setInstallmentsPaid(n);
+                        }}
+                      >
+                        {[2, 3, 4, 6].map(n => (
+                          <option key={n} value={n}>
+                            {n} Installments ({formatCurrency(((parseFloat(price) || 0) * numQurbans) / n, selectedProg?.currency ?? 'SGD')} each)
+                          </option>
+                        ))}
+                      </select>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--aig-green-300)', marginTop: '0.25rem' }}>
+                        {installmentCount} × {formatCurrency(((parseFloat(price) || 0) * numQurbans) / installmentCount, selectedProg?.currency ?? 'SGD')} · Registered with automated installment nudges
+                      </div>
                     </div>
-                  </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="order-installments-paid">Installments Paid</label>
+                      <select
+                        id="order-installments-paid"
+                        className="form-input form-select"
+                        value={installmentsPaid}
+                        onChange={e => setInstallmentsPaid(Number(e.target.value))}
+                      >
+                        {Array.from({ length: installmentCount + 1 }, (_, i) => (
+                          <option key={i} value={i}>
+                            {i === 0
+                              ? `0 of ${installmentCount} Paid (Pending)`
+                              : i === installmentCount
+                              ? `${i} of ${installmentCount} Paid (Full Payment Verified)`
+                              : `${i} of ${installmentCount} Paid`}
+                          </option>
+                        ))}
+                      </select>
+                      <div style={{ fontSize: '0.7rem', color: installmentsPaid === installmentCount ? 'var(--success)' : 'var(--text-muted)', marginTop: '0.25rem' }}>
+                        {installmentsPaid === 0
+                          ? 'Starts as Pending Payment'
+                          : installmentsPaid === installmentCount
+                          ? '✓ Fully paid — order will start as Payment Verified'
+                          : `${installmentsPaid} of ${installmentCount} installments recorded as paid`}
+                      </div>
+                    </div>
+                  </>
                 )}
 
                 {/* Number of Qurbans */}
@@ -1164,6 +1199,7 @@ function EditOrderModal({ order, onClose, onSave }: {
   const [serviceType, setServiceType] = useState<'qurban' | 'aqiqah' | 'nazar'>(order.service_type ?? 'qurban');
   const [paymentMethod, setPaymentMethod] = useState<'paynow' | 'cash' | 'installment' | 'bank_transfer'>(order.payment_method ?? 'paynow');
   const [installmentCount, setInstallmentCount] = useState<number>(order.installment_count ?? 2);
+  const [installmentsPaid, setInstallmentsPaid] = useState<number>(order.installments_paid ?? 0);
   const [numQurbans, setNumQurbans] = useState(order.quantity);
   const [numQurbansInput, setNumQurbansInput] = useState(String(order.quantity));
   const [unitPrice, setUnitPrice] = useState(
@@ -1206,6 +1242,7 @@ function EditOrderModal({ order, onClose, onSave }: {
       setUnitPrice(String(prog.price_per_share));
       if (!isIndonesiaProgramme(prog.name, prog.country) && paymentMethod === 'installment') {
         setPaymentMethod('paynow');
+        setInstallmentsPaid(0);
       }
       if (!isAustraliaToSingaporeProgramme(prog.name, prog.country)) {
         setQurbanEntries(prev => prev.map(e => ({ ...e, delivery_portion: null })));
@@ -1253,6 +1290,7 @@ function EditOrderModal({ order, onClose, onSave }: {
         service_type: serviceType,
         payment_method: paymentMethod,
         installment_count: paymentMethod === 'installment' ? installmentCount : undefined,
+        installments_paid: paymentMethod === 'installment' ? installmentsPaid : undefined,
         delivery_portion: supportsPortions ? (preparedEntries[0]?.delivery_portion ?? null) : null,
         quantity: parsedQty,
         total_amount: priceNum * parsedQty,
@@ -1355,21 +1393,55 @@ function EditOrderModal({ order, onClose, onSave }: {
               </div>
 
               {paymentMethod === 'installment' && (
-                <div className="form-group">
-                  <label className="form-label" htmlFor="edit-order-installment-count">Number of Installments *</label>
-                  <select
-                    id="edit-order-installment-count"
-                    className="form-input form-select"
-                    value={installmentCount}
-                    onChange={e => setInstallmentCount(Number(e.target.value))}
-                  >
-                    {[2, 3, 4, 6].map(n => (
-                      <option key={n} value={n}>
-                        {n} Installments ({formatCurrency(((parseFloat(unitPrice) || 0) * numQurbans) / n, selectedProg?.currency ?? order.currency)} each)
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-order-installment-count">Number of Installments *</label>
+                    <select
+                      id="edit-order-installment-count"
+                      className="form-input form-select"
+                      value={installmentCount}
+                      onChange={e => {
+                        const newCount = Number(e.target.value);
+                        setInstallmentCount(newCount);
+                        if (installmentsPaid > newCount) {
+                          setInstallmentsPaid(newCount);
+                        }
+                      }}
+                    >
+                      {[2, 3, 4, 6].map(n => (
+                        <option key={n} value={n}>
+                          {n} Installments ({formatCurrency(((parseFloat(unitPrice) || 0) * numQurbans) / n, selectedProg?.currency ?? order.currency)} each)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-order-installments-paid">Installments Paid *</label>
+                    <select
+                      id="edit-order-installments-paid"
+                      className="form-input form-select"
+                      value={installmentsPaid}
+                      onChange={e => setInstallmentsPaid(Number(e.target.value))}
+                    >
+                      {Array.from({ length: installmentCount + 1 }, (_, i) => (
+                        <option key={i} value={i}>
+                          {i === 0
+                            ? `0 of ${installmentCount} Paid (Pending)`
+                            : i === installmentCount
+                            ? `${i} of ${installmentCount} Paid (Full Payment Verified)`
+                            : `${i} of ${installmentCount} Paid`}
+                        </option>
+                      ))}
+                    </select>
+                    <div style={{ fontSize: '0.7rem', color: installmentsPaid === installmentCount ? 'var(--success)' : 'var(--text-muted)', marginTop: '0.25rem' }}>
+                      {installmentsPaid === 0
+                        ? 'Status: Pending payment'
+                        : installmentsPaid === installmentCount
+                        ? '✓ All installments paid — order payment fully verified'
+                        : `${installmentsPaid} of ${installmentCount} installments recorded (${installmentCount - installmentsPaid} remaining)`}
+                    </div>
+                  </div>
+                </>
               )}
 
               <div className="form-group">
