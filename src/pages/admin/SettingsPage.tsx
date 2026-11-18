@@ -336,6 +336,22 @@ function IntegrationsSettings() {
             <input className="form-input" value={OFFICIAL_WHATSAPP_NUMBER} readOnly style={{ fontFamily: 'monospace' }} />
           </div>
           <div className="form-group">
+            <label className="form-label">Phone Number ID (Meta Cloud API)</label>
+            <input className="form-input" value={diag.phoneNumberId} readOnly style={{ fontFamily: 'monospace' }} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">WhatsApp Business Account (WABA ID)</label>
+            <input className="form-input" value={diag.wabaId} readOnly style={{ fontFamily: 'monospace' }} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Meta Business Portfolio (AIG PTE LTD)</label>
+            <input className="form-input" value={diag.businessPortfolioId} readOnly style={{ fontFamily: 'monospace' }} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Meta Developer App (AIG Connect)</label>
+            <input className="form-input" value={diag.metaAppId} readOnly style={{ fontFamily: 'monospace' }} />
+          </div>
+          <div className="form-group">
             <label className="form-label">Onboarding Architecture</label>
             <select className="form-input form-select" defaultValue="coexistence">
               <option value="coexistence">Option A — Meta Coexistence (Keep WhatsApp Business App on +65 8545 6783 + Cloud API)</option>
