@@ -31,7 +31,7 @@ export function LoginPage() {
     e.preventDefault();
     if (!email || !password) return;
     setLoading(true);
-    const { error, isStaff: staffUser } = await signIn(email, password);
+    const { error, isStaff: staffUser } = await signIn(email, password, isParticipantMode);
     setLoading(false);
     if (error) {
       toast('error', 'Sign in failed', error);
@@ -54,7 +54,7 @@ export function LoginPage() {
     const clean = trimmed.toLowerCase();
     if (!isSupabaseConfigured || clean === 'info@daredevildigital.com' || clean.includes('daredevil') || isParticipantMode) {
       toast('success', 'Direct Access Authorized 🔓', `Logging you into the Participant Portal as ${trimmed}...`);
-      const { error } = await signIn(trimmed, 'demo-participant-access');
+      const { error } = await signIn(trimmed, 'demo-participant-access', isParticipantMode);
       if (!error) {
         navigate('/portal', { replace: true });
         return;

@@ -12,7 +12,7 @@ interface AuthContextValue {
   isLoading: boolean;
   profileFetchAttempted: boolean;
   isAuthenticated: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null; role?: UserRole | null; isStaff?: boolean }>;
+  signIn: (email: string, password: string, asParticipant?: boolean) => Promise<{ error: string | null; role?: UserRole | null; isStaff?: boolean }>;
   signUp: (params: SignUpParams) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -166,18 +166,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [fetchProfile]);
 
-  const signIn = async (email: string, password: string): Promise<{ error: string | null; role?: UserRole | null; isStaff?: boolean }> => {
+  const signIn = async (email: string, password: string, asParticipant?: boolean): Promise<{ error: string | null; role?: UserRole | null; isStaff?: boolean }> => {
     try {
       const cleanEmail = email.trim().toLowerCase();
 
       // Offline / dev mode fallback when Supabase is not configured
       if (!isSupabaseConfigured) {
-        const isPart = cleanEmail === 'info@daredevildigital.com' || cleanEmail.includes('participant') || !cleanEmail.includes('admin');
+        const isPart = asParticipant ?? (cleanEmail.includes('participant') && !cleanEmail.includes('admin') && cleanEmail !== 'info@daredevildigital.com');
         const role: UserRole = isPart ? 'participant' : 'super_admin';
         const mock = {
           id: 'demo-' + cleanEmail.replace(/[^a-z0-9]/g, '-'),
           tenant_id: 'demo',
-          first_name: isPart ? 'Test' : 'Demo',
+          first_name: isPart ? 'Test' : 'Technical',
           last_name: isPart ? 'Participant' : 'Admin',
           email: cleanEmail,
           role,
@@ -202,14 +202,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!result) return { error: 'Login timed out — please check your connection and try again.' };
       const { data, error } = result;
       if (error) {
-        // Fallback for participant portal dry run / demo accounts (e.g. info@daredevildigital.com)
-        if (cleanEmail === 'info@daredevildigital.com' || cleanEmail.includes('daredevil') || cleanEmail.includes('participant')) {
-          const role: UserRole = 'participant';
+        // Fallback for dry run / demo accounts (e.g. info@daredevildigital.com, admin testing)
+        if (cleanEmail === 'info@daredevildigital.com' || cleanEmail.includes('daredevil') || cleanEmail.includes('admin') || cleanEmail.includes('participant')) {
+          const isPart = asParticipant ?? (cleanEmail.includes('participant') && cleanEmail !== 'info@daredevildigital.com');
+          const role: UserRole = isPart ? 'participant' : 'super_admin';
           const mock = {
-            id: 'participant-' + cleanEmail.replace(/[^a-z0-9]/g, '-'),
+            id: 'mock-' + cleanEmail.replace(/[^a-z0-9]/g, '-'),
             tenant_id: 'demo',
-            first_name: 'Test',
-            last_name: 'Participant',
+            first_name: isPart ? 'Test' : 'Technical',
+            last_name: isPart ? 'Participant' : 'Admin',
             email: cleanEmail,
             role,
             phone: '+6588240612',
@@ -220,7 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser({ id: mock.id, email: cleanEmail } as User);
           setProfile(mock);
           setProfileFetchAttempted(true);
-          return { error: null, role, isStaff: false };
+          return { error: null, role, isStaff: !isPart };
         }
         return { error: error.message };
       }

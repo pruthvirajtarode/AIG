@@ -42,6 +42,7 @@ import { LIVE_PROGRAMMES, LIVE_PROGRAMMES_VERSION } from '@/data/liveProgrammes'
 import { notificationService } from '@/services/notificationService';
 import { buildInstallmentSchedule, type InstallmentScheduleItem } from '@/services/paymentService';
 import { loadFromSupabase, syncToSupabase } from '@/services/supabaseSync';
+import { fetchCloudState, pushCloudState, mergeCloudWithLocal } from '@/services/cloudSync';
 
 export { animalCodeForOrder, nextOrderRef };
 
@@ -307,7 +308,7 @@ export type UpdateOrderInput = {
   qurban_entries?: QurbanEntry[];
 };
 
-type AppData = {
+export type AppData = {
   orders: AppOrder[];
   animals: AppAnimal[];
   payments: AppPayment[];
@@ -1038,6 +1039,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       }
     } catch { /* storage full / unavailable */ }
+    pushCloudState(next);
   }, []);
 
   // Persist to localStorage
@@ -1089,6 +1091,70 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // ── Multi-device live cloud sync (polls & listens to window focus) ─────────────
+  useEffect(() => {
+    let active = true;
+
+    const pullFromCloud = async () => {
+      try {
+        const cloud = await fetchCloudState();
+        if (!active || !cloud) return;
+        const current = dataRef.current;
+
+        const localOrdersCount = current.orders.length;
+        const cloudOrdersCount = cloud.orders.length;
+
+        // If local has 0 orders but cloud has orders -> definitely update!
+        if (cloudOrdersCount > 0 && localOrdersCount === 0) {
+          const merged = mergeCloudWithLocal(current, cloud);
+          dataRef.current = merged;
+          setData(merged);
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
+          return;
+        }
+
+        // If cloud has changes that differ from local state
+        if (cloudOrdersCount > 0 || cloud.participants.length > 0) {
+          const merged = mergeCloudWithLocal(current, cloud);
+          if (
+            JSON.stringify(merged.orders) !== JSON.stringify(current.orders) ||
+            JSON.stringify(merged.participants) !== JSON.stringify(current.participants) ||
+            JSON.stringify(merged.payments) !== JSON.stringify(current.payments) ||
+            JSON.stringify(merged.animals) !== JSON.stringify(current.animals)
+          ) {
+            dataRef.current = merged;
+            setData(merged);
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
+          }
+        }
+      } catch (err) {
+        // Silently continue
+      }
+    };
+
+    // Immediate pull on device load
+    pullFromCloud();
+
+    // Periodic pull every 8s
+    const timer = setInterval(pullFromCloud, 8000);
+
+    // Pull when user opens app / focuses tab / unlocks phone
+    const handleFocus = () => { pullFromCloud(); };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') pullFromCloud();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
 
   // ── Orders ────────────────────────────────────────────────
@@ -2594,6 +2660,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore storage full */
     }
+    pushCloudState(clean, true);
     if (isStaffActor) {
       syncToSupabase(prev, clean).catch(console.error);
     }
