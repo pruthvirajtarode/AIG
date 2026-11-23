@@ -326,7 +326,7 @@ type Actor = { email: string; role: UserRole };
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'aigms-data-v1';
+const STORAGE_KEY = 'aigms-data-v2';
 const MAX_AUDIT_LOGS = 2000;
 
 const EMPTY: AppData = {
@@ -892,6 +892,9 @@ export function sanitizeOrphanRecords(d: AppData): AppData {
 
 function loadData(): AppData {
   try {
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.removeItem('aigms-data-v1'); } catch { /* noop */ }
+    }
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
     if (!raw) return ensureLiveProgrammes(EMPTY);
     const parsed = JSON.parse(raw) as Partial<AppData>;
@@ -941,6 +944,10 @@ type AppDataContextType = AppData & {
   // Participant actions
   addParticipant: (p: AppParticipant) => void;
   updateParticipant: (id: string, patch: Partial<AppParticipant>) => void;
+  deleteParticipant: (id: string) => void;
+
+  // Global reset / clear action
+  clearAllData: () => void;
 
   // Supplier actions
   addSupplier: (s: AppSupplier) => void;
@@ -2554,6 +2561,44 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     });
   }, [commit]);
 
+  const deleteParticipant = useCallback((id: string) => {
+    commit((d, actor) => {
+      const p = d.participants.find(x => x.id === id);
+      if (!p) return d;
+      const next: AppData = {
+        ...d,
+        participants: d.participants.filter(x => x.id !== id),
+        orders: d.orders.map(o => (o.participant_id === id ? { ...o, participant_id: undefined } : o)),
+      };
+      return withLog(
+        next,
+        actor,
+        'participant.deleted',
+        'participant',
+        p.participant_ref,
+        `Participant ${p.first_name} ${p.last_name} (${p.email}) deleted`,
+      );
+    });
+  }, [commit]);
+
+  const clearAllData = useCallback(() => {
+    const clean = ensureLiveProgrammes(EMPTY);
+    const prev = dataRef.current;
+    dataRef.current = clean;
+    setData(clean);
+    try {
+      if (typeof localStorage !== 'undefined') {
+        try { localStorage.removeItem('aigms-data-v1'); } catch { /* noop */ }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+      }
+    } catch {
+      /* ignore storage full */
+    }
+    if (isStaffActor) {
+      syncToSupabase(prev, clean).catch(console.error);
+    }
+  }, [isStaffActor]);
+
   // ── Suppliers ─────────────────────────────────────────────
   const addSupplier = useCallback((s: AppSupplier) => {
     commit((d, actor) => withLog({ ...d, suppliers: [s, ...d.suppliers] }, actor, 'supplier.created', 'supplier', s.supplier_ref, `Supplier ${s.name} added`));
@@ -2657,7 +2702,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     addPayment, verifyPayment, rejectPayment, deletePayment, recordInstallmentPayment, sendInstallmentReminder,
     updateDeliveryStatus, updateDelivery,
     updateCertStatus,
-    addParticipant, updateParticipant,
+    addParticipant, updateParticipant, deleteParticipant, clearAllData,
     addSupplier, updateSupplier,
     addProgramme, updateProgramme,
     resolveException, assignException,
@@ -2668,7 +2713,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     addPayment, verifyPayment, rejectPayment, deletePayment, recordInstallmentPayment, sendInstallmentReminder,
     updateDeliveryStatus, updateDelivery,
     updateCertStatus,
-    addParticipant, updateParticipant,
+    addParticipant, updateParticipant, deleteParticipant, clearAllData,
     addSupplier, updateSupplier,
     addProgramme, updateProgramme,
     resolveException, assignException,

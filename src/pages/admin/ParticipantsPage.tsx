@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { Search, Plus, Eye, X, Send, ShieldCheck, ShoppingCart } from 'lucide-react';
+import { Search, Plus, Eye, X, Send, ShieldCheck, ShoppingCart, Trash2, RotateCcw } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { formatServiceType, participantsMatch } from '@/lib/orderRules';
 import { useToast } from '@/contexts/ToastContext';
@@ -8,12 +8,13 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useAppData, nextRef, uid, type AppParticipant as Participant, type AppOrder } from '@/contexts/AppDataContext';
 
 
-function ParticipantModal({ participant, orders, onClose, onSave, onSendInvite, isDuplicate }: {
+function ParticipantModal({ participant, orders, onClose, onSave, onSendInvite, onDelete, isDuplicate }: {
   participant?: Participant;
   orders?: AppOrder[];
   onClose: () => void;
   onSave: (data: Omit<Participant, 'id' | 'participant_ref' | 'orders_count' | 'total_spent' | 'is_active' | 'portal_access' | 'created_at'>) => void;
   onSendInvite?: (id: string) => void;
+  onDelete?: (id: string) => void;
   isDuplicate?: (fullName: string, email: string, phone: string) => boolean;
 }) {
   const { toast } = useToast();
@@ -166,23 +167,43 @@ function ParticipantModal({ participant, orders, onClose, onSave, onSendInvite, 
           )}
         </div>
 
-        <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          {!isNew && participant && !participant.portal_access && onSendInvite && (
-            <button className="btn btn-secondary" style={{ gap: '0.5rem', color: 'var(--info)', borderColor: 'rgba(59,130,246,0.4)' }}
-              onClick={() => { onSendInvite(participant.id); onClose(); }}>
-              <Send size={14} /> Send Portal Invite
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            {!isNew && participant && onDelete && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ color: 'var(--danger)', gap: '0.4rem' }}
+                onClick={() => {
+                  if (window.confirm(`Are you sure you want to delete participant ${participant.first_name} ${participant.last_name}? This cannot be undone.`)) {
+                    onDelete(participant.id);
+                    toast('success', 'Participant deleted', `${participant.first_name} ${participant.last_name} removed`);
+                    onClose();
+                  }
+                }}
+              >
+                <Trash2 size={14} /> Delete Participant
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            {!isNew && participant && !participant.portal_access && onSendInvite && (
+              <button className="btn btn-secondary" style={{ gap: '0.5rem', color: 'var(--info)', borderColor: 'rgba(59,130,246,0.4)' }}
+                onClick={() => { onSendInvite(participant.id); onClose(); }}>
+                <Send size={14} /> Send Portal Invite
+              </button>
+            )}
+            {!isNew && participant && participant.portal_access && onSendInvite && (
+              <button className="btn btn-secondary" style={{ gap: '0.5rem' }}
+                onClick={() => { toast('info', 'Invite resent', `Login credentials resent to ${participant.email}`); onClose(); }}>
+                <Send size={14} /> Resend Invite
+              </button>
+            )}
+            <button className="btn btn-primary" onClick={handleSave}>
+              {isNew ? 'Add Participant' : 'Save Changes'}
             </button>
-          )}
-          {!isNew && participant && participant.portal_access && onSendInvite && (
-            <button className="btn btn-secondary" style={{ gap: '0.5rem' }}
-              onClick={() => { toast('info', 'Invite resent', `Login credentials resent to ${participant.email}`); onClose(); }}>
-              <Send size={14} /> Resend Invite
-            </button>
-          )}
-          <button className="btn btn-primary" onClick={handleSave}>
-            {isNew ? 'Add Participant' : 'Save Changes'}
-          </button>
+          </div>
         </div>
       </div>
     </div>
@@ -192,7 +213,7 @@ function ParticipantModal({ participant, orders, onClose, onSave, onSendInvite, 
 export function ParticipantsPage() {
   usePageTitle('Participants');
   const { toast } = useToast();
-  const { participants, orders, addParticipant, updateParticipant } = useAppData();
+  const { participants, orders, addParticipant, updateParticipant, deleteParticipant, clearAllData } = useAppData();
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editP, setEditP] = useState<Participant | undefined>();
@@ -259,19 +280,35 @@ export function ParticipantsPage() {
           onClose={() => { setShowModal(false); setEditP(undefined); }}
           onSave={handleSave}
           onSendInvite={sendPortalInvite}
+          onDelete={deleteParticipant}
           isDuplicate={isDuplicate}
         />
       )}
 
-      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h1 className="page-title">Participants</h1>
           <p className="page-subtitle">Registered Qurban participants across all programmes</p>
         </div>
-        <button className="btn btn-primary" onClick={() => { setEditP(undefined); setShowModal(true); }}>
-          <Plus size={16} />
-          Add Participant
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-secondary btn-sm"
+            style={{ color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.35)', gap: '0.4rem' }}
+            title="Wipe test data across orders, participants, and exceptions"
+            onClick={() => {
+              if (window.confirm('Wipe all test data? This will clear all test orders, participants, animals, and exceptions for a completely fresh start.')) {
+                clearAllData();
+                toast('success', 'Test Data Cleared', 'All test orders, participants, and exceptions have been wiped.');
+              }
+            }}
+          >
+            <RotateCcw size={14} /> Clear All Test Data
+          </button>
+          <button className="btn btn-primary" onClick={() => { setEditP(undefined); setShowModal(true); }}>
+            <Plus size={16} />
+            Add Participant
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -359,9 +396,24 @@ export function ParticipantsPage() {
                     )}
                   </td>
                   <td>
-                    <button className="btn btn-ghost btn-sm" onClick={() => { setEditP(p); setShowModal(true); }}>
-                      <Eye size={14} />
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center', justifyContent: 'flex-end' }}>
+                      <button className="btn btn-ghost btn-sm" title="View details" onClick={() => { setEditP(p); setShowModal(true); }}>
+                        <Eye size={14} />
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        title="Delete participant"
+                        style={{ color: 'var(--danger)' }}
+                        onClick={() => {
+                          if (window.confirm(`Are you sure you want to delete participant ${p.first_name} ${p.last_name}?`)) {
+                            deleteParticipant(p.id);
+                            toast('success', 'Participant deleted', `${p.first_name} ${p.last_name} removed`);
+                          }
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

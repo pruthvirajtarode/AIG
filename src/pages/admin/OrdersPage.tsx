@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import {
   Search, Plus, X, ChevronDown, ChevronUp, CheckCircle2,
-  XCircle, RefreshCw, Eye, Users, Package, Edit3, AlertCircle, Trash2,
+  XCircle, RefreshCw, Eye, Users, Package, Edit3, AlertCircle, Trash2, RotateCcw,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import type { OrderStatus, PaymentStatus } from '@/lib/database.types';
@@ -947,7 +947,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
                 {paymentMethod === 'installment' && (
                   <>
                     <div className="form-group">
-                      <label className="form-label" htmlFor="order-installment-count">Number of Installments *</label>
+                      <label className="form-label" htmlFor="order-installment-count">Number of Installments / Portions *</label>
                       <select
                         id="order-installment-count"
                         className="form-input form-select"
@@ -958,9 +958,9 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
                           if (installmentsPaid > n) setInstallmentsPaid(n);
                         }}
                       >
-                        {[2, 3, 4, 6].map(n => (
+                        {[2, 3, 4, 5, 6, 7, 8, 9, 10, 12].map(n => (
                           <option key={n} value={n}>
-                            {n} Installments ({formatCurrency(((parseFloat(price) || 0) * numQurbans) / n, selectedProg?.currency ?? 'SGD')} each)
+                            {n} Installments / Portions ({formatCurrency(((parseFloat(price) || 0) * numQurbans) / n, selectedProg?.currency ?? 'SGD')} each)
                           </option>
                         ))}
                       </select>
@@ -969,22 +969,31 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
                       </div>
                     </div>
                     <div className="form-group">
-                      <label className="form-label" htmlFor="order-installments-paid">Installments Paid</label>
+                      <label className="form-label" htmlFor="order-installments-paid">Installments Paid *</label>
                       <select
                         id="order-installments-paid"
                         className="form-input form-select"
                         value={installmentsPaid}
-                        onChange={e => setInstallmentsPaid(Number(e.target.value))}
+                        onChange={e => {
+                          const val = Number(e.target.value);
+                          setInstallmentsPaid(val);
+                          if (val > installmentCount) {
+                            setInstallmentCount(val);
+                          }
+                        }}
                       >
-                        {Array.from({ length: installmentCount + 1 }, (_, i) => (
-                          <option key={i} value={i}>
-                            {i === 0
-                              ? `0 of ${installmentCount} Paid (Pending)`
-                              : i === installmentCount
-                              ? `${i} of ${installmentCount} Paid (Full Payment Verified)`
-                              : `${i} of ${installmentCount} Paid`}
-                          </option>
-                        ))}
+                        {Array.from({ length: Math.max(installmentCount, 3) + 1 }, (_, i) => {
+                          const maxCount = Math.max(installmentCount, i);
+                          return (
+                            <option key={i} value={i}>
+                              {i === 0
+                                ? `0 of ${maxCount} Paid (0 Portions Paid · Pending)`
+                                : i === maxCount
+                                ? `${i} of ${maxCount} Paid (${i} of ${maxCount} Portions Paid · Full Payment Verified)`
+                                : `${i} of ${maxCount} Paid (${i} of ${maxCount} Portions Paid)`}
+                            </option>
+                          );
+                        })}
                       </select>
                       <div style={{ fontSize: '0.7rem', color: installmentsPaid === installmentCount ? 'var(--success)' : 'var(--text-muted)', marginTop: '0.25rem' }}>
                         {installmentsPaid === 0
@@ -1395,7 +1404,7 @@ function EditOrderModal({ order, onClose, onSave }: {
               {paymentMethod === 'installment' && (
                 <>
                   <div className="form-group">
-                    <label className="form-label" htmlFor="edit-order-installment-count">Number of Installments *</label>
+                    <label className="form-label" htmlFor="edit-order-installment-count">Number of Installments / Portions *</label>
                     <select
                       id="edit-order-installment-count"
                       className="form-input form-select"
@@ -1408,9 +1417,9 @@ function EditOrderModal({ order, onClose, onSave }: {
                         }
                       }}
                     >
-                      {[2, 3, 4, 6].map(n => (
+                      {[2, 3, 4, 5, 6, 7, 8, 9, 10, 12].map(n => (
                         <option key={n} value={n}>
-                          {n} Installments ({formatCurrency(((parseFloat(unitPrice) || 0) * numQurbans) / n, selectedProg?.currency ?? order.currency)} each)
+                          {n} Installments / Portions ({formatCurrency(((parseFloat(unitPrice) || 0) * numQurbans) / n, selectedProg?.currency ?? order.currency)} each)
                         </option>
                       ))}
                     </select>
@@ -1421,17 +1430,26 @@ function EditOrderModal({ order, onClose, onSave }: {
                       id="edit-order-installments-paid"
                       className="form-input form-select"
                       value={installmentsPaid}
-                      onChange={e => setInstallmentsPaid(Number(e.target.value))}
+                      onChange={e => {
+                        const val = Number(e.target.value);
+                        setInstallmentsPaid(val);
+                        if (val > installmentCount) {
+                          setInstallmentCount(val);
+                        }
+                      }}
                     >
-                      {Array.from({ length: installmentCount + 1 }, (_, i) => (
-                        <option key={i} value={i}>
-                          {i === 0
-                            ? `0 of ${installmentCount} Paid (Pending)`
-                            : i === installmentCount
-                            ? `${i} of ${installmentCount} Paid (Full Payment Verified)`
-                            : `${i} of ${installmentCount} Paid`}
-                        </option>
-                      ))}
+                      {Array.from({ length: Math.max(installmentCount, 3) + 1 }, (_, i) => {
+                        const maxCount = Math.max(installmentCount, i);
+                        return (
+                          <option key={i} value={i}>
+                            {i === 0
+                              ? `0 of ${maxCount} Paid (0 Portions Paid · Pending)`
+                              : i === maxCount
+                              ? `${i} of ${maxCount} Paid (${i} of ${maxCount} Portions Paid · Full Payment Verified)`
+                              : `${i} of ${maxCount} Paid (${i} of ${maxCount} Portions Paid)`}
+                          </option>
+                        );
+                      })}
                     </select>
                     <div style={{ fontSize: '0.7rem', color: installmentsPaid === installmentCount ? 'var(--success)' : 'var(--text-muted)', marginTop: '0.25rem' }}>
                       {installmentsPaid === 0
@@ -1624,6 +1642,7 @@ export function OrdersPage() {
     updateOrderStatus,
     cancelOrder: ctxCancelOrder,
     deleteOrder: ctxDeleteOrder,
+    clearAllData,
   } = useAppData();
 
   const [search, setSearch] = useState('');
@@ -1754,14 +1773,29 @@ export function OrdersPage() {
       )}
 
       {/* Header */}
-      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h1 className="page-title">Orders</h1>
           <p className="page-subtitle">Manage all Qurban & Aqiqah orders across programmes</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-          <Plus size={16} /> New Order
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-secondary btn-sm"
+            style={{ color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.35)', gap: '0.4rem' }}
+            title="Wipe test data across orders, participants, and exceptions"
+            onClick={() => {
+              if (window.confirm('Wipe all test data? This will clear all test orders, participants, animals, and exceptions for a completely fresh start.')) {
+                clearAllData();
+                toast('success', 'Test Data Cleared', 'All test orders, participants, and exceptions have been wiped.');
+              }
+            }}
+          >
+            <RotateCcw size={14} /> Clear All Test Data
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+            <Plus size={16} /> New Order
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
