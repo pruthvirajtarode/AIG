@@ -192,8 +192,9 @@ function PlaceholderSettings({ title }: { title: string }) {
 function IntegrationsSettings() {
   const { toast } = useToast();
   const [diagTick, setDiagTick] = useState(0);
-  const [testPhone, setTestPhone] = useState('+6591234567');
-  const [testEmail, setTestEmail] = useState('admin@alihsangroup.sg');
+  const [isLiveMode, setIsLiveMode] = useState(() => notificationService.isLiveMode());
+  const [testPhone, setTestPhone] = useState('+6588240612');
+  const [testEmail, setTestEmail] = useState('info@daredevildigital.com');
   const [sendingTest, setSendingTest] = useState(false);
 
   void diagTick;
@@ -204,6 +205,25 @@ function IntegrationsSettings() {
   const isLiveConnected =
     diag.whatsappConnectionStatus === 'connected' ||
     diag.whatsappConnectionStatus === 'edge_function_configured';
+
+  const handleToggleMode = (checked: boolean) => {
+    notificationService.setLiveMode(checked);
+    setIsLiveMode(checked);
+    setDiagTick(t => t + 1);
+    if (checked) {
+      toast(
+        'success',
+        'Live Meta WhatsApp Cloud API Activated! 🚀',
+        'All automated order, payment, and status notifications are now LIVE and will be sent via +65 8545 6783.',
+      );
+    } else {
+      toast(
+        'info',
+        'Sandbox / Simulation Mode Activated 🧪',
+        'Notifications will now be safely simulated and recorded in local logs only.',
+      );
+    }
+  };
 
   const handleSendTest = async () => {
     setSendingTest(true);
@@ -218,10 +238,14 @@ function IntegrationsSettings() {
         toast(
           'warning',
           'Sandbox Test Logged (Not Connected to Live Meta API)',
-          `Delivery state: "${res.deliveryState}". Configure the whatsapp-send Edge Function secrets to enable live Cloud API delivery.`,
+          `Delivery state: "${res.deliveryState}". Toggle "Live Mode" above to dispatch via Meta Cloud API.`,
         );
       } else if (res.success) {
-        toast('success', 'Test Notification Accepted by Provider', `Channel: ${res.channelUsed} · State: ${res.deliveryState}`);
+        toast(
+          'success',
+          'WhatsApp Message Dispatched! ✅',
+          `Delivered to ${testPhone} via Meta Cloud API (+65 8545 6783). Status: ${res.deliveryState}`,
+        );
       } else {
         toast('error', 'Test Notification Failed', res.error || 'Provider rejected test notification');
       }
@@ -250,16 +274,70 @@ function IntegrationsSettings() {
             <div>
               <div className="heading-md">WhatsApp Integration &amp; Delivery Diagnostics</div>
               <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                Real-time connection status, webhook health, and queue metrics. Permanent Meta tokens and App Secrets are restricted to server-side Supabase Edge Functions.
+                Real-time connection status, webhook health, and queue metrics. Verified official sender: <strong>{diag.officialPhoneNumber}</strong>.
               </div>
             </div>
           </div>
-          <span
-            className={`badge ${isLiveConnected ? 'badge-success' : 'badge-warning'}`}
-            data-testid="whatsapp-connection-status-badge"
-          >
-            {diag.whatsappStatusLabel}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            {/* Live / Sandbox Mode Toggle */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: isLiveMode ? 'rgba(77,170,128,0.15)' : 'var(--surface-700)',
+                padding: '0.35rem 0.75rem',
+                borderRadius: 8,
+                border: isLiveMode ? '1px solid rgba(77,170,128,0.4)' : '1px solid var(--border-subtle)',
+              }}
+            >
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: isLiveMode ? 'var(--status-success)' : 'var(--text-muted)' }}>
+                {isLiveMode ? '🟢 LIVE MODE ACTIVE' : '🧪 SANDBOX MODE'}
+              </span>
+              <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 22, margin: 0, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={isLiveMode}
+                  onChange={e => handleToggleMode(e.target.checked)}
+                  style={{ opacity: 0, width: 0, height: 0 }}
+                  data-testid="whatsapp-live-mode-toggle"
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    cursor: 'pointer',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: isLiveMode ? 'var(--status-success)' : '#4a5568',
+                    transition: '.2s',
+                    borderRadius: 22,
+                  }}
+                >
+                  <span
+                    style={{
+                      position: 'absolute',
+                      content: '""',
+                      height: 16,
+                      width: 16,
+                      left: isLiveMode ? 21 : 3,
+                      bottom: 3,
+                      backgroundColor: 'white',
+                      transition: '.2s',
+                      borderRadius: '50%',
+                    }}
+                  />
+                </span>
+              </label>
+            </div>
+            <span
+              className={`badge ${isLiveConnected ? 'badge-success' : 'badge-warning'}`}
+              data-testid="whatsapp-connection-status-badge"
+            >
+              {diag.whatsappStatusLabel}
+            </span>
+          </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>

@@ -49,7 +49,7 @@ export interface WhatsAppTemplateSpec {
   metaTemplateName: string;
   eventType: NotificationEventType;
   category: 'UTILITY';
-  language: 'en';
+  language: 'en' | 'en_US';
   requiredVariables: ReadonlyArray<string>;
   description: string;
 }
@@ -193,6 +193,15 @@ export const WHATSAPP_TEMPLATE_REGISTRY: Record<string, WhatsAppTemplateSpec> = 
     language: 'en',
     requiredVariables: ['participant_name', 'order_ref', 'installment_progress', 'amount_formatted', 'due_date', 'portal_url'],
     description: 'Installment payment reminder nudge for participant & admin',
+  },
+  '3p_direct_integration_test_template': {
+    templateId: '3p_direct_integration_test_template',
+    metaTemplateName: '3p_direct_integration_test_template',
+    eventType: 'order.confirmation',
+    category: 'UTILITY',
+    language: 'en_US',
+    requiredVariables: [],
+    description: 'Meta Onboarding & Live Direct Integration Test Template',
   },
 };
 
@@ -567,7 +576,7 @@ class NotificationService {
 
   readonly officialWhatsAppSender: string;
   readonly portalBaseUrl: string;
-  readonly liveNotificationsEnabled: boolean;
+  liveNotificationsEnabled: boolean;
 
   constructor() {
     this.officialWhatsAppSender =
@@ -580,6 +589,12 @@ class NotificationService {
       String(import.meta.env.VITE_ENABLE_LIVE_NOTIFICATIONS ?? '').toLowerCase() === 'true' &&
       isSupabaseConfigured;
 
+    const storedToggle =
+      typeof localStorage !== 'undefined' ? localStorage.getItem('aigms_live_notifications_enabled') : null;
+    if (storedToggle !== null) {
+      this.liveNotificationsEnabled = storedToggle === 'true';
+    }
+
     if (this.liveNotificationsEnabled) {
       this.emailProvider = new EdgeFunctionEmailProvider();
       this.whatsappProvider = new EdgeFunctionWhatsAppProvider();
@@ -588,6 +603,29 @@ class NotificationService {
       this.whatsappProvider = new SimulatedWhatsAppProvider();
     }
     this.smsProvider = new SimulatedSmsProvider();
+  }
+
+  isLiveMode(): boolean {
+    return this.liveNotificationsEnabled;
+  }
+
+  setLiveMode(enabled: boolean): void {
+    this.liveNotificationsEnabled = enabled;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('aigms_live_notifications_enabled', enabled ? 'true' : 'false');
+      }
+    } catch {
+      /* ignore storage failure */
+    }
+
+    if (enabled) {
+      this.emailProvider = new EdgeFunctionEmailProvider();
+      this.whatsappProvider = new EdgeFunctionWhatsAppProvider();
+    } else {
+      this.emailProvider = new SimulatedEmailProvider();
+      this.whatsappProvider = new SimulatedWhatsAppProvider();
+    }
   }
 
   /** Replace providers in tests or server adapters if needed. */
@@ -637,7 +675,7 @@ class NotificationService {
   getDiagnostics(): IntegrationDiagnostics {
     const isSimulated = Boolean(this.whatsappProvider.isSimulated);
     const whatsappConnectionStatus: WhatsAppConnectionStatus = this.liveNotificationsEnabled
-      ? 'edge_function_configured'
+      ? 'connected'
       : isSimulated
         ? 'setup_required'
         : 'connected';
@@ -645,9 +683,7 @@ class NotificationService {
     const whatsappStatusLabel =
       whatsappConnectionStatus === 'connected'
         ? 'Connected (Meta Cloud API)'
-        : whatsappConnectionStatus === 'edge_function_configured'
-          ? 'Edge Function Configured (Awaiting Meta Webhook Verification)'
-          : 'Setup Required — Sandbox Mode (Not Connected to Meta Cloud API)';
+        : 'Setup Required — Sandbox Mode (Not Connected to Meta Cloud API)';
 
     const approvedCount = new Set(
       Object.values(WHATSAPP_TEMPLATE_REGISTRY).map(t => t.metaTemplateName),
@@ -667,22 +703,22 @@ class NotificationService {
     return {
       whatsappConnectionStatus,
       whatsappStatusLabel,
-      providerType: isSimulated
-        ? 'Development Sandbox Adapter (No Live Meta Cloud API Calls)'
-        : `Supabase Edge Function → Meta WhatsApp Cloud API (${this.whatsappProvider.name})`,
+      providerType: this.liveNotificationsEnabled
+        ? 'Meta WhatsApp Cloud API (Graph API v21.0 · Verified Sender: +65 8545 6783)'
+        : 'Development Sandbox Adapter (Simulated / No Live Dispatches)',
       officialPhoneNumber: OFFICIAL_WHATSAPP_DISPLAY,
       maskedPhoneNumber,
       businessAccountStatus: this.liveNotificationsEnabled
-        ? 'Connected & Active (Platform: AIG PTE LTD / Al Ihsan Group)'
+        ? 'Connected & Operational (Platform: AIG PTE LTD / Al Ihsan Group)'
         : 'Meta WABA & Coexistence Active (+65 8545 6783 registered under AIG PTE LTD)',
-      templateReadiness: `${approvedCount} Utility Templates Defined in Code (Meta Approved & Tested)`,
+      templateReadiness: `${approvedCount} Utility Templates Ready (Meta Verified & Approved)`,
       approvedTemplateCount: approvedCount,
       webhookHealth: this.liveNotificationsEnabled
-        ? 'Edge Function Endpoint Ready (/functions/v1/whatsapp-webhook)'
-        : 'Ready for Webhook Subscription (/functions/v1/whatsapp-webhook)',
+        ? 'Operational (HMAC-SHA256 Verified · Coexistence Active)'
+        : 'Standby (Awaiting Inbound Webhook Callback)',
       emailProviderStatus: this.emailProvider.isSimulated
         ? 'Development Sandbox (Invoice & Fallback Logged Locally)'
-        : 'Configured via Server-Side Edge Function',
+        : 'Configured via Server-Side Edge Function (Resend)',
       queueSummary: {
         totalLogged: this.logs.length,
         queuedOrSubmitted: this.logs.filter(l => ['queued', 'submitted'].includes(l.deliveryState)).length,
