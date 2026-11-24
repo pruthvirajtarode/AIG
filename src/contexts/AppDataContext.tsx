@@ -908,10 +908,21 @@ function loadData(): AppData {
     const isTest = import.meta.env.MODE === 'test';
     if (!raw) return ensureLiveProgrammes(isTest ? EMPTY : CANONICAL_SEED_DATA);
     const parsed = JSON.parse(raw) as Partial<AppData>;
-    // If local storage has 0 orders, fall back to CANONICAL_SEED_DATA in production so device boots with the full test dataset
+    
+    // In production, if local storage has 0 orders, restore CANONICAL_SEED_DATA so device boots with the full test dataset
     const hasExistingOrders = Array.isArray(parsed.orders) && parsed.orders.length > 0;
-    const baseObj = (hasExistingOrders || isTest) ? EMPTY : CANONICAL_SEED_DATA;
-    const base: AppData = ensureLiveProgrammes({ ...baseObj, ...parsed });
+    const effectiveParsed: Partial<AppData> = (!hasExistingOrders && !isTest)
+      ? {
+          ...parsed,
+          orders: CANONICAL_SEED_DATA.orders,
+          animals: CANONICAL_SEED_DATA.animals,
+          payments: CANONICAL_SEED_DATA.payments,
+          participants: CANONICAL_SEED_DATA.participants,
+          auditLogs: CANONICAL_SEED_DATA.auditLogs,
+        }
+      : parsed;
+
+    const base: AppData = ensureLiveProgrammes({ ...EMPTY, ...effectiveParsed });
     const sanitized = sanitizeOrphanRecords(base);
     // Repair any orders whose related records are missing (idempotent)
     return sanitized.orders.reduce((acc, o) => syncRelated(acc, o, SYSTEM_ACTOR), sanitized);
@@ -1096,7 +1107,19 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== STORAGE_KEY || !e.newValue) return;
       try {
-        const next: AppData = ensureLiveProgrammes({ ...EMPTY, ...(JSON.parse(e.newValue) as Partial<AppData>) });
+        const parsed = JSON.parse(e.newValue) as Partial<AppData>;
+        const hasExistingOrders = Array.isArray(parsed.orders) && parsed.orders.length > 0;
+        const effectiveParsed: Partial<AppData> = (!hasExistingOrders && import.meta.env.MODE !== 'test')
+          ? {
+              ...parsed,
+              orders: CANONICAL_SEED_DATA.orders,
+              animals: CANONICAL_SEED_DATA.animals,
+              payments: CANONICAL_SEED_DATA.payments,
+              participants: CANONICAL_SEED_DATA.participants,
+              auditLogs: CANONICAL_SEED_DATA.auditLogs,
+            }
+          : parsed;
+        const next: AppData = ensureLiveProgrammes({ ...EMPTY, ...effectiveParsed });
         dataRef.current = next;
         setData(next);
       } catch { /* ignore malformed */ }
