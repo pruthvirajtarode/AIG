@@ -585,8 +585,9 @@ class NotificationService {
     this.portalBaseUrl =
       (import.meta.env.VITE_APP_URL as string | undefined)?.replace(/\/$/, '') ||
       (typeof window !== 'undefined' ? window.location.origin : 'https://www.aigsuite.com');
+    const defaultLive = (import.meta.env.VITE_ENABLE_LIVE_NOTIFICATIONS ?? 'true').toLowerCase() === 'true';
     this.liveNotificationsEnabled =
-      String(import.meta.env.VITE_ENABLE_LIVE_NOTIFICATIONS ?? '').toLowerCase() === 'true' &&
+      defaultLive &&
       isSupabaseConfigured &&
       import.meta.env.MODE !== 'test';
 
