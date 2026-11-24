@@ -39,6 +39,7 @@ import {
 } from '@/lib/orderRules';
 import { useAuth } from '@/contexts/AuthContext';
 import { LIVE_PROGRAMMES, LIVE_PROGRAMMES_VERSION } from '@/data/liveProgrammes';
+import { CANONICAL_SEED_DATA } from '@/data/seedData';
 import { notificationService } from '@/services/notificationService';
 import { buildInstallmentSchedule, type InstallmentScheduleItem } from '@/services/paymentService';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -904,14 +905,19 @@ function loadData(): AppData {
       try { localStorage.removeItem('aigms-data-v1'); } catch { /* noop */ }
     }
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
-    if (!raw) return ensureLiveProgrammes(EMPTY);
+    const isTest = import.meta.env.MODE === 'test';
+    if (!raw) return ensureLiveProgrammes(isTest ? EMPTY : CANONICAL_SEED_DATA);
     const parsed = JSON.parse(raw) as Partial<AppData>;
-    const base: AppData = ensureLiveProgrammes({ ...EMPTY, ...parsed });
+    // If local storage has 0 orders, fall back to CANONICAL_SEED_DATA in production so device boots with the full test dataset
+    const hasExistingOrders = Array.isArray(parsed.orders) && parsed.orders.length > 0;
+    const baseObj = (hasExistingOrders || isTest) ? EMPTY : CANONICAL_SEED_DATA;
+    const base: AppData = ensureLiveProgrammes({ ...baseObj, ...parsed });
     const sanitized = sanitizeOrphanRecords(base);
     // Repair any orders whose related records are missing (idempotent)
     return sanitized.orders.reduce((acc, o) => syncRelated(acc, o, SYSTEM_ACTOR), sanitized);
   } catch {
-    return ensureLiveProgrammes(EMPTY);
+    const isTest = import.meta.env.MODE === 'test';
+    return ensureLiveProgrammes(isTest ? EMPTY : CANONICAL_SEED_DATA);
   }
 }
 
@@ -1065,8 +1071,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       supabaseSyncPending.current = true;
       return;
     }
-    const prev = supabaseSnapshotRef.current;
-    if (!prev) return; // Not yet initialised from Supabase
+    const prev = supabaseSnapshotRef.current ?? EMPTY;
     const next = dataRef.current;
     if (prev === next) return;
     supabaseSyncing.current = true;
@@ -1131,6 +1136,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
                 JSON.stringify(merged.animals) !== JSON.stringify(current.animals) ||
                 JSON.stringify(merged.auditLogs) !== JSON.stringify(current.auditLogs)
               ) {
+                supabaseSnapshotRef.current = merged;
                 dataRef.current = merged;
                 setData(merged);
                 try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
