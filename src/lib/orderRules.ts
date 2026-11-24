@@ -330,6 +330,42 @@ export function isAustraliaToSingaporeProgramme(
 }
 
 /**
+ * True when the selected programme is Australia -> Palestine.
+ * Animals are slaughtered in Australia and distributed in Palestine,
+ * with optional 1/3 or 2/3 portion delivered to Singapore per client specification.
+ */
+export function isAustraliaToPalestineProgramme(
+  programmeName: string,
+  country?: string | null,
+): boolean {
+  const n = (programmeName ?? '').trim();
+  const lower = n.toLowerCase();
+  if (/australia\s*(to|→|->|-|—)+\s*palestine/i.test(n)) {
+    return true;
+  }
+  const c = (country ?? '').trim().toLowerCase();
+  if (c === 'palestine' || (lower.includes('palestine') && lower.includes('australia'))) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * True for programmes that support delivery portion selection in Singapore:
+ * - Australia -> Singapore (Full, 1/3, 2/3, NIL)
+ * - Australia -> Palestine (1/3 or 2/3 delivered to SG; Full or NIL)
+ */
+export function isPortionSupportedProgramme(
+  programmeName: string,
+  country?: string | null,
+): boolean {
+  return (
+    isAustraliaToSingaporeProgramme(programmeName, country) ||
+    isAustraliaToPalestineProgramme(programmeName, country)
+  );
+}
+
+/**
  * True ONLY for breeding programmes (e.g. Indonesia - Breeding Programme) where
  * ongoing weight updates / weight timeline are tracked and shown to the participant.
  * All standard Qurban programmes display approximate weight only (no weight timeline).
@@ -592,19 +628,24 @@ export function validateOrderCandidate(
     return { valid: false, error: 'Order total amount must be greater than 0.' };
   }
 
-  const isAuSg = isAustraliaToSingaporeProgramme(progName, resolvedCountry);
-  if (isAuSg) {
+  const isPortionSupported = isPortionSupportedProgramme(progName, resolvedCountry);
+  if (isPortionSupported) {
+    const isAuPal = isAustraliaToPalestineProgramme(progName, resolvedCountry);
     const normalizedPortions: OrderDeliveryPortion[] = [];
     for (let i = 0; i < input.qurban_entries.length; i++) {
-      const rawPortion = input.qurban_entries[i]?.delivery_portion ?? input.delivery_portion ?? '';
+      let rawPortion = input.qurban_entries[i]?.delivery_portion ?? input.delivery_portion ?? '';
+      // If Australia to Palestine and no portion selected, default to 'nil' (100% distributed in Palestine)
+      if (!rawPortion && isAuPal) {
+        rawPortion = 'nil';
+      }
       const dp = rawPortion.trim().toLowerCase();
       if (!dp || !['full', 'one_third', 'two_thirds', 'nil'].includes(dp)) {
         return {
           valid: false,
           error:
             input.quantity > 1
-              ? `Portion to be Delivered (Full, 1/3, 2/3, or NIL) is required for Qurban ${i + 1} (Australia → Singapore).`
-              : 'Portion to be Delivered (Full, 1/3, 2/3, or NIL) is required for Australia → Singapore orders.',
+              ? `Portion to be Delivered (Full, 1/3, 2/3, or NIL) is required for Qurban ${i + 1} (${isAuPal ? 'Australia → Palestine' : 'Australia → Singapore'}).`
+              : `Portion to be Delivered (Full, 1/3, 2/3, or NIL) is required for ${isAuPal ? 'Australia → Palestine' : 'Australia → Singapore'} orders.`,
         };
       }
       normalizedPortions.push(dp as OrderDeliveryPortion);

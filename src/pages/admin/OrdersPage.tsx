@@ -17,9 +17,11 @@ import {
   formatDeliveryPortion,
   formatPaymentMethod,
   formatServiceType,
+  isAustraliaToPalestineProgramme,
   isAustraliaToSingaporeProgramme,
   isBreedingProgramme,
   isIndonesiaProgramme,
+  isPortionSupportedProgramme,
   nextOrderRef,
   normaliseOrderRef,
   participantsMatch,
@@ -69,8 +71,9 @@ const PICKER_STATUSES: OrderStatus[] = [
 
 const STATUS_FILTERS = [
   { label: 'All',              value: '' },
-  { label: 'Draft',            value: 'draft' },
   { label: 'Pending Payment',  value: 'pending_payment' },
+  { label: 'In Progress',      value: 'in_progress' },
+  { label: 'Draft',            value: 'draft' },
   { label: 'Submitted',        value: 'payment_submitted' },
   { label: 'Verified',         value: 'payment_verified' },
   { label: 'Confirmed',        value: 'confirmed' },
@@ -153,6 +156,8 @@ function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel, on
   const linkedPayment = payments.find(p => p.order_ref === order.order_ref);
   const payStatus = derivePaymentStatus(order, linkedPayment);
   const isAuSg = isAustraliaToSingaporeProgramme(order.programme, order.programme_country);
+  const isAuPal = isAustraliaToPalestineProgramme(order.programme, order.programme_country);
+  const supportsPortion = isPortionSupportedProgramme(order.programme, order.programme_country);
   const matchedProg = programmes.find(p => (order.programme_id && p.id === order.programme_id) || p.name === order.programme);
   const isBreeding = isBreedingProgramme(order.programme, matchedProg?.supports_weight_timeline);
   const portionSummary = summarizeOrderPortions(orderAnimals.map(a => a.delivery_portion), order.delivery_portion);
@@ -226,9 +231,11 @@ function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel, on
                 <div className="detail-key">Total Amount</div>
                 <div className="detail-val" style={{ fontWeight: 700 }}>{formatCurrency(order.total_amount, order.currency)}</div>
               </div>
-              {(isAuSg || portionSummary !== '—') && (
+              {(supportsPortion || portionSummary !== '—') && (
                 <div className="detail-row" style={{ gridColumn: '1 / -1' }}>
-                  <div className="detail-key">Portion to be Delivered (Australia → Singapore)</div>
+                  <div className="detail-key">
+                    Portion to be Delivered in SG ({isAuPal ? 'Australia → Palestine' : 'Australia → Singapore'})
+                  </div>
                   <div className="detail-val" style={{ fontWeight: 600, color: 'var(--aig-green-300)' }}>
                     {portionSummary}
                   </div>
@@ -362,7 +369,7 @@ function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel, on
                 {orderAnimals.map((a, i) => {
                   const code = a.animal_code || a.animal_ref;
                   const portion = a.delivery_portion ?? order.delivery_portion;
-                  const approxLabel = a.approx_weight || matchedProg?.approx_weight_label || defaultApproxWeight(a.programme || order.programme, a.animal_type);
+                  const approxLabel = matchedProg?.approx_weight_label || a.approx_weight || defaultApproxWeight(a.programme || order.programme, a.animal_type);
                   return (
                     <div
                       key={a.id}
@@ -421,7 +428,7 @@ function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel, on
                               : approxLabel}
                           </span>
                         </div>
-                        {(isAuSg || portion) && (
+                        {(supportsPortion || portion) && (
                           <div>
                             <span style={{ color: 'var(--text-muted)' }}>Portion to be Delivered: </span>
                             <span style={{ color: 'var(--aig-green-300)', fontWeight: 600 }}>{formatDeliveryPortion(portion)}</span>
@@ -595,8 +602,9 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
 
   const selectedProg = activeProgrammes.find(p => p.id === programmeId);
   const isIndonesia = selectedProg ? isIndonesiaProgramme(selectedProg.name, selectedProg.country) : false;
+  const isAuPal = selectedProg ? isAustraliaToPalestineProgramme(selectedProg.name, selectedProg.country) : false;
   const supportsPortions = selectedProg
-    ? isAustraliaToSingaporeProgramme(selectedProg.name, selectedProg.country)
+    ? isPortionSupportedProgramme(selectedProg.name, selectedProg.country)
     : false;
 
   // Live participant match preview (Full Name + Email + Contact Number)
@@ -668,7 +676,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
       setPaymentMethod('paynow');
       setInstallmentsPaid(0);
     }
-    const nextSupportsPortions = prog ? isAustraliaToSingaporeProgramme(prog.name, prog.country) : false;
+    const nextSupportsPortions = prog ? isPortionSupportedProgramme(prog.name, prog.country) : false;
     if (!nextSupportsPortions) {
       setQurbanEntries(prev => prev.map(e => ({ ...e, delivery_portion: null })));
     }
@@ -947,7 +955,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
                 {paymentMethod === 'installment' && (
                   <>
                     <div className="form-group">
-                      <label className="form-label" htmlFor="order-installment-count">Number of Installments / Portions *</label>
+                      <label className="form-label" htmlFor="order-installment-count">Installment Period / Cycles *</label>
                       <select
                         id="order-installment-count"
                         className="form-input form-select"
@@ -960,10 +968,26 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
                       >
                         {[2, 3, 4, 5, 6, 7, 8, 9, 10, 12].map(n => (
                           <option key={n} value={n}>
-                            {n} Installments / Portions ({formatCurrency(((parseFloat(price) || 0) * numQurbans) / n, selectedProg?.currency ?? 'SGD')} each)
+                            {n} Cycles ({n} Monthly Installments · {formatCurrency(((parseFloat(price) || 0) * numQurbans) / n, selectedProg?.currency ?? 'SGD')}/cycle)
                           </option>
                         ))}
                       </select>
+                      <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                        {[2, 3, 4].map(c => (
+                          <button
+                            key={c}
+                            type="button"
+                            className={`btn btn-xs ${installmentCount === c ? 'btn-primary' : 'btn-ghost'}`}
+                            style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                            onClick={() => {
+                              setInstallmentCount(c);
+                              if (installmentsPaid > c) setInstallmentsPaid(c);
+                            }}
+                          >
+                            {c} Cycles ({formatCurrency(((parseFloat(price) || 0) * numQurbans) / c, selectedProg?.currency ?? 'SGD')}/mo)
+                          </button>
+                        ))}
+                      </div>
                       <div style={{ fontSize: '0.7rem', color: 'var(--aig-green-300)', marginTop: '0.25rem' }}>
                         {installmentCount} × {formatCurrency(((parseFloat(price) || 0) * numQurbans) / installmentCount, selectedProg?.currency ?? 'SGD')} · Registered with automated installment nudges
                       </div>
@@ -1120,11 +1144,23 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
                       {supportsPortions && (
                         <div className="form-group" style={{ margin: '0.625rem 0 0' }}>
                           <label className="form-label" style={{ fontSize: '0.75rem' }}>
-                            Portion to be Delivered * <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Australia → Singapore)</span>
+                            Portion to be Delivered in SG *{' '}
+                            <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>
+                              ({isAuPal ? 'Australia → Palestine · 1/3 or 2/3 to SG' : 'Australia → Singapore'})
+                            </span>
                           </label>
                           <div className="portion-btn-group">
                             {AUSTRALIA_SINGAPORE_PORTION_OPTIONS.map(dp => {
                               const active = entry.delivery_portion === dp.value;
+                              const label = isAuPal
+                                ? dp.value === 'one_third'
+                                  ? '1/3 (SG)'
+                                  : dp.value === 'two_thirds'
+                                    ? '2/3 (SG)'
+                                    : dp.value === 'full'
+                                      ? 'Full (SG)'
+                                      : 'NIL (Palestine)'
+                                : dp.label;
                               return (
                                 <button
                                   key={dp.value}
@@ -1142,7 +1178,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
                                     fontWeight: active ? 600 : 400,
                                   }}
                                 >
-                                  {dp.label}
+                                  {label}
                                 </button>
                               );
                             })}
@@ -1227,7 +1263,8 @@ function EditOrderModal({ order, onClose, onSave }: {
   const progName = selectedProg?.name ?? order.programme;
   const progCountry = selectedProg?.country ?? order.programme_country ?? '';
   const isIndonesia = isIndonesiaProgramme(progName, progCountry);
-  const supportsPortions = isAustraliaToSingaporeProgramme(progName, progCountry);
+  const isAuPal = isAustraliaToPalestineProgramme(progName, progCountry);
+  const supportsPortions = isPortionSupportedProgramme(progName, progCountry);
 
   const syncCount = (n: number) => {
     const count = Math.min(50, Math.max(1, Math.floor(n)));
@@ -1253,7 +1290,7 @@ function EditOrderModal({ order, onClose, onSave }: {
         setPaymentMethod('paynow');
         setInstallmentsPaid(0);
       }
-      if (!isAustraliaToSingaporeProgramme(prog.name, prog.country)) {
+      if (!isPortionSupportedProgramme(prog.name, prog.country)) {
         setQurbanEntries(prev => prev.map(e => ({ ...e, delivery_portion: null })));
       }
     }
@@ -1404,7 +1441,7 @@ function EditOrderModal({ order, onClose, onSave }: {
               {paymentMethod === 'installment' && (
                 <>
                   <div className="form-group">
-                    <label className="form-label" htmlFor="edit-order-installment-count">Number of Installments / Portions *</label>
+                    <label className="form-label" htmlFor="edit-order-installment-count">Installment Period / Cycles *</label>
                     <select
                       id="edit-order-installment-count"
                       className="form-input form-select"
@@ -1419,7 +1456,7 @@ function EditOrderModal({ order, onClose, onSave }: {
                     >
                       {[2, 3, 4, 5, 6, 7, 8, 9, 10, 12].map(n => (
                         <option key={n} value={n}>
-                          {n} Installments / Portions ({formatCurrency(((parseFloat(unitPrice) || 0) * numQurbans) / n, selectedProg?.currency ?? order.currency)} each)
+                          {n} Cycles ({n} Monthly Installments · {formatCurrency(((parseFloat(unitPrice) || 0) * numQurbans) / n, selectedProg?.currency ?? order.currency)}/cycle)
                         </option>
                       ))}
                     </select>
@@ -1515,11 +1552,23 @@ function EditOrderModal({ order, onClose, onSave }: {
                       {supportsPortions && (
                         <div style={{ marginTop: '0.5rem' }}>
                           <label className="form-label" style={{ fontSize: '0.75rem' }}>
-                            Portion to be Delivered * <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Australia → Singapore)</span>
+                            Portion to be Delivered in SG *{' '}
+                            <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>
+                              ({isAuPal ? 'Australia → Palestine · 1/3 or 2/3 to SG' : 'Australia → Singapore'})
+                            </span>
                           </label>
                           <div className="portion-btn-group">
                             {AUSTRALIA_SINGAPORE_PORTION_OPTIONS.map(dp => {
                               const active = entry.delivery_portion === dp.value;
+                              const label = isAuPal
+                                ? dp.value === 'one_third'
+                                  ? '1/3 (SG)'
+                                  : dp.value === 'two_thirds'
+                                    ? '2/3 (SG)'
+                                    : dp.value === 'full'
+                                      ? 'Full (SG)'
+                                      : 'NIL (Palestine)'
+                                : dp.label;
                               return (
                                 <button
                                   key={dp.value}
@@ -1541,7 +1590,7 @@ function EditOrderModal({ order, onClose, onSave }: {
                                     fontWeight: active ? 600 : 400,
                                   }}
                                 >
-                                  {dp.label}
+                                  {label}
                                 </button>
                               );
                             })}
@@ -1723,7 +1772,14 @@ export function OrdersPage() {
       holdersAndCodes.includes(q);
     // Hide cancelled orders by default unless user explicitly selects 'cancelled' status or toggles Show Cancelled
     const matchVisibility = statusFilter === 'cancelled' || showCancelled || o.status !== 'cancelled';
-    const matchStatus = !statusFilter || o.status === statusFilter;
+    const matchStatus =
+      !statusFilter
+        ? true
+        : statusFilter === 'in_progress'
+          ? orderRank(o.status) >= orderRank('payment_verified') && orderRank(o.status) < orderRank('completed')
+          : statusFilter === 'pending_payment'
+            ? ['pending_payment', 'payment_submitted', 'payment_under_review', 'payment_rejected'].includes(o.status)
+            : o.status === statusFilter;
     const matchProgramme = !programmeFilter || o.programme === programmeFilter;
     return matchSearch && matchVisibility && matchStatus && matchProgramme;
   });
@@ -1806,36 +1862,58 @@ export function OrdersPage() {
             value: String(orders.filter(o => o.status !== 'cancelled').length),
             sub: cancelledCount > 0 ? `+ ${cancelledCount} cancelled` : 'All orders live',
             color: 'var(--aig-green-400)',
+            filter: '',
           },
           {
             label: 'Pending Payment',
             value: String(orders.filter(o => ['pending_payment', 'payment_submitted', 'payment_under_review', 'payment_rejected'].includes(o.status)).length),
-            sub: undefined,
+            sub: 'Awaiting customer payment',
             color: 'var(--warning)',
+            filter: 'pending_payment',
           },
           {
             label: 'In Progress',
             value: String(orders.filter(o => orderRank(o.status) >= orderRank('payment_verified') && orderRank(o.status) < orderRank('completed')).length),
-            sub: undefined,
+            sub: 'Payment verified · Livestock in progress',
             color: 'var(--info)',
+            filter: 'in_progress',
           },
           {
             label: 'Completed',
             value: String(orders.filter(o => o.status === 'completed').length),
-            sub: undefined,
+            sub: 'Fulfilled & certified',
             color: 'var(--success)',
+            filter: 'completed',
           },
-        ].map(s => (
-          <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
-            <div className="stat-value" style={{ fontSize: '1.5rem', color: s.color }}>{s.value}</div>
-            <div className="stat-label">{s.label}</div>
-            {s.sub && (
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                {s.sub}
-              </div>
-            )}
-          </div>
-        ))}
+        ].map(s => {
+          const isActive = statusFilter === s.filter;
+          return (
+            <div
+              key={s.label}
+              className="stat-card"
+              style={{
+                padding: '1rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                border: isActive ? '1.5px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+                background: isActive ? 'rgba(47,168,118,0.08)' : undefined,
+              }}
+              onClick={() => {
+                setStatusFilter(prev => prev === s.filter ? '' : s.filter);
+                setPage(1);
+              }}
+              title={`Click to filter by ${s.label}`}
+            >
+              <div className="stat-value" style={{ fontSize: '1.5rem', color: s.color }}>{s.value}</div>
+              <div className="stat-label">{s.label}</div>
+              {s.sub && (
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                  {s.sub}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Filter */}

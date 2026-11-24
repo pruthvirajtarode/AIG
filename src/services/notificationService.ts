@@ -587,7 +587,8 @@ class NotificationService {
       (typeof window !== 'undefined' ? window.location.origin : 'https://www.aigsuite.com');
     this.liveNotificationsEnabled =
       String(import.meta.env.VITE_ENABLE_LIVE_NOTIFICATIONS ?? '').toLowerCase() === 'true' &&
-      isSupabaseConfigured;
+      isSupabaseConfigured &&
+      import.meta.env.MODE !== 'test';
 
     const storedToggle =
       typeof localStorage !== 'undefined' ? localStorage.getItem('aigms_live_notifications_enabled') : null;

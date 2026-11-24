@@ -216,7 +216,7 @@ CREATE POLICY "aigms_programmes_participant_select"
 CREATE POLICY "aigms_participants_participant_select"
   ON aigms_participants FOR SELECT TO authenticated
   USING (
-    profile_id = auth.uid()::text
+    profile_id = auth.uid()
     OR LOWER(COALESCE(email, '')) = LOWER(COALESCE(auth.jwt()->>'email', ''))
   );
 
@@ -227,7 +227,7 @@ CREATE POLICY "aigms_orders_participant_select"
     OR participant_id IN (
       SELECT p.id
       FROM aigms_participants p
-      WHERE p.profile_id = auth.uid()::text
+      WHERE p.profile_id = auth.uid()
          OR LOWER(COALESCE(p.email, '')) = LOWER(COALESCE(auth.jwt()->>'email', ''))
     )
   );
@@ -243,7 +243,7 @@ CREATE POLICY "aigms_animals_participant_select"
          OR o.participant_id IN (
            SELECT p.id
            FROM aigms_participants p
-           WHERE p.profile_id = auth.uid()::text
+           WHERE p.profile_id = auth.uid()
               OR LOWER(COALESCE(p.email, '')) = LOWER(COALESCE(auth.jwt()->>'email', ''))
          )
     )
@@ -259,7 +259,7 @@ CREATE POLICY "aigms_payments_participant_select"
          OR o.participant_id IN (
            SELECT p.id
            FROM aigms_participants p
-           WHERE p.profile_id = auth.uid()::text
+           WHERE p.profile_id = auth.uid()
               OR LOWER(COALESCE(p.email, '')) = LOWER(COALESCE(auth.jwt()->>'email', ''))
          )
     )
@@ -275,7 +275,7 @@ CREATE POLICY "aigms_deliveries_participant_select"
          OR o.participant_id IN (
            SELECT p.id
            FROM aigms_participants p
-           WHERE p.profile_id = auth.uid()::text
+           WHERE p.profile_id = auth.uid()
               OR LOWER(COALESCE(p.email, '')) = LOWER(COALESCE(auth.jwt()->>'email', ''))
          )
     )
@@ -292,7 +292,7 @@ CREATE POLICY "aigms_certificates_participant_select"
          OR o.participant_id IN (
            SELECT p.id
            FROM aigms_participants p
-           WHERE p.profile_id = auth.uid()::text
+           WHERE p.profile_id = auth.uid()
               OR LOWER(COALESCE(p.email, '')) = LOWER(COALESCE(auth.jwt()->>'email', ''))
          )
     )
@@ -320,11 +320,11 @@ CREATE POLICY "animal_weights_breeding_participant_read"
   USING (
     EXISTS (
       SELECT 1
-      FROM order_items oi
-      JOIN orders o ON o.id = oi.order_id
+      FROM animal_allocations aa
+      JOIN orders o ON o.id = aa.order_id
       JOIN participants p ON p.id = o.participant_id
       JOIN programmes prog ON prog.id = o.programme_id
-      WHERE oi.animal_id = animal_weights.animal_id
+      WHERE aa.animal_id = animal_weights.animal_id
         AND prog.supports_weight_timeline = TRUE
         AND p.profile_id = auth.uid()
     )

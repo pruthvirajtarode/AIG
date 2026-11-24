@@ -204,7 +204,8 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
     expect(next.animals[0].order_id).toBe(created.id);
     expect(next.animals[0].qurban_name_holder).toBe('Ahmad Rizal');
     expect(next.animals[0].programme).toBe('Yemen/Tarim - Goat (M)');
-    expect(next.animals[0].status).toBe('reserved');
+    // Client rule: all programmes except Indonesia Breeding are allocated directly
+    expect(next.animals[0].status).toBe('allocated');
 
     expect(next.payments).toHaveLength(1);
     expect(next.payments[0].order_ref).toBe('ORD-10001');
@@ -534,7 +535,7 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
       expect(animal.delivery_portion).toBe(p.value);
     }
 
-    // Australia to Palestine must NOT retain delivery_portion
+    // Client requirement: Australia to Palestine supports 1/3 or 2/3 delivery portion to Singapore
     ctx = store.getState();
     const auPal = ctx.programmes.find(p => p.name === 'Australia to Palestine - Lamb')!;
     const palOrder = ctx.addOrder({
@@ -547,13 +548,33 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
       programme_country: auPal.country,
       service_type: 'qurban',
       payment_method: 'paynow',
-      delivery_portion: 'full',
+      delivery_portion: 'one_third',
       quantity: 1,
-      qurban_entries: [{ qurban_name_holder: 'Palestine Holder' }],
+      qurban_entries: [{ qurban_name_holder: 'Palestine Holder', delivery_portion: 'one_third' }],
       total_amount: auPal.price_per_share,
       currency: auPal.currency,
     });
-    expect(palOrder.delivery_portion).toBeNull();
+    expect(palOrder.delivery_portion).toBe('one_third');
+
+    // Non-portion programmes like Uganda must NOT retain delivery_portion (cleared to null)
+    const ugandaProg = ctx.programmes.find(p => p.name === 'Uganda - Goat')!;
+    const ugandaOrder = ctx.addOrder({
+      order_ref: 'ORD-UG-01',
+      full_name: 'Halimah Yacob',
+      email: 'halimah@example.com',
+      contact_number: '+65 9222 3333',
+      programme: ugandaProg.name,
+      programme_id: ugandaProg.id,
+      programme_country: ugandaProg.country,
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      delivery_portion: 'full',
+      quantity: 1,
+      qurban_entries: [{ qurban_name_holder: 'Uganda Holder' }],
+      total_amount: ugandaProg.price_per_share,
+      currency: ugandaProg.currency,
+    });
+    expect(ugandaOrder.delivery_portion).toBeNull();
   });
 
   it('TEST 8 & TEST 9: Service Type supports Qurban and Aqiqah across order and animal records', () => {

@@ -41,6 +41,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { LIVE_PROGRAMMES, LIVE_PROGRAMMES_VERSION } from '@/data/liveProgrammes';
 import { notificationService } from '@/services/notificationService';
 import { buildInstallmentSchedule, type InstallmentScheduleItem } from '@/services/paymentService';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { loadFromSupabase, syncToSupabase } from '@/services/supabaseSync';
 import { fetchCloudState, pushCloudState, mergeCloudWithLocal } from '@/services/cloudSync';
 
@@ -862,6 +863,12 @@ export function sanitizeOrphanRecords(d: AppData): AppData {
     // If animal has order_ref but the order was deleted or doesn't exist, remove it
     if (a.order_ref && !orderRefs.has(a.order_ref)) return false;
     return true;
+  }).map(a => {
+    // Client requirement: for all programmes except Indonesia Breeding, linked animals should be allocated
+    if (a.order_ref && a.status === 'reserved' && !isBreedingProgramme(a.programme)) {
+      return { ...a, status: 'allocated' as AnimalStatus };
+    }
+    return a;
   });
 
   // Purge payments whose order was deleted
@@ -1099,6 +1106,41 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     const pullFromCloud = async () => {
       try {
+        // Priority 1: Supabase central cloud database (realtime sync across devices)
+        if (isSupabaseConfigured) {
+          const remote = await loadFromSupabase();
+          if (remote && active) {
+            const hasRemoteData = remote.orders.length > 0 || remote.participants.length > 0;
+            if (hasRemoteData) {
+              const current = dataRef.current;
+              const merged: AppData = sanitizeOrphanRecords(ensureLiveProgrammes({
+                ...current,
+                orders: remote.orders.length > 0 ? remote.orders : current.orders,
+                animals: remote.animals.length > 0 ? remote.animals : current.animals,
+                payments: remote.payments.length > 0 ? remote.payments : current.payments,
+                deliveries: remote.deliveries.length > 0 ? remote.deliveries : current.deliveries,
+                certificates: remote.certificates.length > 0 ? remote.certificates : current.certificates,
+                participants: remote.participants.length > 0 ? remote.participants : current.participants,
+                auditLogs: remote.auditLogs.length > 0 ? remote.auditLogs : current.auditLogs,
+              }));
+
+              if (
+                current.orders.length === 0 ||
+                JSON.stringify(merged.orders) !== JSON.stringify(current.orders) ||
+                JSON.stringify(merged.payments) !== JSON.stringify(current.payments) ||
+                JSON.stringify(merged.animals) !== JSON.stringify(current.animals) ||
+                JSON.stringify(merged.auditLogs) !== JSON.stringify(current.auditLogs)
+              ) {
+                dataRef.current = merged;
+                setData(merged);
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
+                return;
+              }
+            }
+          }
+        }
+
+        // Priority 2: KVDB fallback if configured
         const cloud = await fetchCloudState();
         if (!active || !cloud) return;
         const current = dataRef.current;
@@ -1316,7 +1358,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     // ── Create 1..N animals linked to the SAME Order Reference ──
     const animalType = matchedProg?.animal_type ?? inferAnimalType(d0, canonicalProgramme);
-    const initialAnimalStatus: AnimalStatus = animalStatusFor(resolvedStatus) ?? 'reserved';
+    const isBreeding = isBreedingProgramme(canonicalProgramme, matchedProg?.supports_weight_timeline);
+    // Client requirement: for all programmes except Indonesia Breeding, animals are directly allocated (not kept in reserved)
+    const initialAnimalStatus: AnimalStatus = isBreeding
+      ? (animalStatusFor(resolvedStatus) ?? 'reserved')
+      : 'allocated';
     const minWeight = animalType === 'cow' || animalType === 'buffalo' ? 350 : animalType === 'camel' ? 300 : 25;
     const approxWeightLabel =
       matchedProg?.approx_weight_label || defaultApproxWeight(canonicalProgramme, animalType);
@@ -1780,7 +1826,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
       // Add additional animals only if Number of Qurbans increased
       if (nextQuantity > orderAnimals.length) {
-        const defaultStatus: AnimalStatus = animalStatusFor(updatedOrder.status) ?? 'reserved';
+        const isTargetBreeding = isBreedingProgramme(nextProgramme, matchedProg?.supports_weight_timeline);
+        const defaultStatus: AnimalStatus = isTargetBreeding
+          ? (animalStatusFor(updatedOrder.status) ?? 'reserved')
+          : 'allocated';
         const added: AppAnimal[] = [];
         for (let i = orderAnimals.length; i < nextQuantity; i++) {
           const code = animalCodeForOrder(cur.order_ref, i);
@@ -2691,25 +2740,31 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     commit((d, actor) => {
       const old = d.programmes.find(x => x.id === p.id);
       let next: AppData = { ...d, programmes: d.programmes.map(x => x.id === p.id ? p : x) };
-      if (old && (old.name !== p.name || old.country !== p.country)) {
-        next = {
-          ...next,
-          orders: next.orders.map(o =>
-            o.programme_id === p.id || o.programme === old.name
-              ? { ...o, programme: p.name, programme_country: p.country }
-              : o,
-          ),
-          animals: next.animals.map(a =>
-            a.programme_id === p.id || a.programme === old.name
-              ? { ...a, programme: p.name }
-              : a,
-          ),
-          certificates: next.certificates.map(c =>
-            c.programme_name === old.name ? { ...c, programme_name: p.name, country: p.country } : c,
-          ),
-        };
-      }
-      return withLog(next, actor, 'programme.updated', 'programme', p.id, `Programme "${p.name}" updated`);
+      // Propagate programme updates (name, country, approx_weight_label) to linked orders, animals, and certs
+      next = {
+        ...next,
+        orders: next.orders.map(o =>
+          o.programme_id === p.id || (old && o.programme === old.name) || o.programme === p.name
+            ? { ...o, programme: p.name, programme_country: p.country, programme_id: p.id }
+            : o,
+        ),
+        animals: next.animals.map(a =>
+          a.programme_id === p.id || (old && a.programme === old.name) || a.programme === p.name
+            ? {
+                ...a,
+                programme: p.name,
+                programme_id: p.id,
+                approx_weight: p.approx_weight_label || a.approx_weight,
+              }
+            : a,
+        ),
+        certificates: next.certificates.map(c =>
+          (old && c.programme_name === old.name) || c.programme_name === p.name
+            ? { ...c, programme_name: p.name, country: p.country }
+            : c,
+        ),
+      };
+      return withLog(next, actor, 'programme.updated', 'programme', p.id, `Programme "${p.name}" updated (weight: ${p.approx_weight_label || 'standard'})`);
     });
   }, [commit]);
 

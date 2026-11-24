@@ -531,7 +531,7 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
     p => (animal.programme_id && p.id === animal.programme_id) || p.name === animal.programme,
   );
   const supportsWeightTimeline = !animal.programme || isBreedingProgramme(animal.programme, matchedProg?.supports_weight_timeline);
-  const approxLabel = animal.approx_weight || matchedProg?.approx_weight_label || defaultApproxWeight(animal.programme, animal.animal_type);
+  const approxLabel = matchedProg?.approx_weight_label || animal.approx_weight || defaultApproxWeight(animal.programme, animal.animal_type);
   const weightPct = animal.min_weight_kg > 0 ? Math.min(100, Math.round((animal.current_weight_kg / animal.min_weight_kg) * 100)) : 100;
   const belowMin = animal.current_weight_kg < animal.min_weight_kg;
 
@@ -790,7 +790,11 @@ export function AnimalsPage() {
     const matchType = !typeFilter || a.animal_type === typeFilter;
     const matchProgramme = !programmeFilter || (programmeFilter === '__none' ? !a.programme : a.programme === programmeFilter);
     const matchService = !serviceFilter || a.service_type === serviceFilter;
-    const matchStatus = !statusFilter || a.status === statusFilter;
+    const matchStatus = !statusFilter
+      ? true
+      : statusFilter === 'exceptions'
+        ? ['rejected', 'inspection_pending'].includes(a.status)
+        : a.status === statusFilter;
     return matchSearch && matchType && matchProgramme && matchService && matchStatus;
   });
 
@@ -867,23 +871,43 @@ export function AnimalsPage() {
                 value: String(liveAnimals.length),
                 sub: cancelledCount > 0 ? `+ ${cancelledCount} cancelled` : 'All animals live',
                 color: 'var(--aig-green-400)',
+                filter: '',
               },
               { label: '1/7 Cattle Shares', value: cattleShares > 0 ? `${cattleShares} (${physicalCattleEquiv} cow${physicalCattleEquiv === 1 ? '' : 's'})` : '0', color: 'var(--gold-400)' },
-              { label: 'Available', value: String(liveAnimals.filter(a => a.status === 'available').length), color: 'var(--success)' },
-              { label: 'Allocated', value: String(liveAnimals.filter(a => a.status === 'allocated').length), color: 'var(--purple, #a855f7)' },
-              { label: 'Completed', value: String(liveAnimals.filter(a => a.status === 'completed').length), color: 'var(--aig-green-300)' },
-              { label: 'Exceptions', value: String(liveAnimals.filter(a => ['rejected','inspection_pending'].includes(a.status)).length), color: 'var(--danger)' },
-            ].map(s => (
-              <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
-                <div className="stat-value" style={{ fontSize: '1.25rem', color: s.color }}>{s.value}</div>
-                <div className="stat-label">{s.label}</div>
-                {s.sub && (
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                    {s.sub}
-                  </div>
-                )}
-              </div>
-            ))}
+              { label: 'Available', value: String(liveAnimals.filter(a => a.status === 'available').length), color: 'var(--success)', filter: 'available' },
+              { label: 'Allocated', value: String(liveAnimals.filter(a => a.status === 'allocated').length), color: 'var(--purple, #a855f7)', filter: 'allocated' },
+              { label: 'Completed', value: String(liveAnimals.filter(a => a.status === 'completed').length), color: 'var(--aig-green-300)', filter: 'completed' },
+              { label: 'Exceptions', value: String(liveAnimals.filter(a => ['rejected','inspection_pending'].includes(a.status)).length), color: 'var(--danger)', filter: 'exceptions' },
+            ].map(s => {
+              const isActive = statusFilter === s.filter && s.filter !== '';
+              return (
+                <div
+                  key={s.label}
+                  className="stat-card"
+                  style={{
+                    padding: '1rem',
+                    cursor: s.filter !== undefined ? 'pointer' : 'default',
+                    transition: 'all 0.15s ease',
+                    border: isActive ? '1.5px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+                    background: isActive ? 'rgba(47,168,118,0.08)' : undefined,
+                  }}
+                  onClick={() => {
+                    if (s.filter !== undefined) {
+                      setStatusFilter(prev => prev === s.filter ? '' : s.filter);
+                    }
+                  }}
+                  title={s.filter !== undefined ? `Click to filter by ${s.label}` : undefined}
+                >
+                  <div className="stat-value" style={{ fontSize: '1.25rem', color: s.color }}>{s.value}</div>
+                  <div className="stat-label">{s.label}</div>
+                  {s.sub && (
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                      {s.sub}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         );
       })()}
@@ -942,7 +966,7 @@ export function AnimalsPage() {
           );
           const supportsWeightTimeline = !a.programme || isBreedingProgramme(a.programme, matchedProg?.supports_weight_timeline);
           const shareMeta = getProgrammeShareMetadata(a.programme, a.animals_per_share ?? matchedProg?.animals_per_share);
-          const approxLabel = a.approx_weight || matchedProg?.approx_weight_label || defaultApproxWeight(a.programme, a.animal_type);
+          const approxLabel = matchedProg?.approx_weight_label || a.approx_weight || defaultApproxWeight(a.programme, a.animal_type);
           const weightPct = a.min_weight_kg > 0 ? Math.min(100, Math.round((a.current_weight_kg / a.min_weight_kg) * 100)) : 100;
           const belowMin = a.current_weight_kg < a.min_weight_kg;
           const displayCode = a.animal_code || a.animal_ref;

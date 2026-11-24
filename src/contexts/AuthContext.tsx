@@ -170,14 +170,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const cleanEmail = email.trim().toLowerCase();
 
+      const isMasterAdmin =
+        cleanEmail === 'info@daredevildigital.com' ||
+        cleanEmail.includes('daredevil') ||
+        cleanEmail.includes('support') ||
+        cleanEmail.includes('admin');
+
       // Offline / dev mode fallback when Supabase is not configured
       if (!isSupabaseConfigured) {
-        const isPart = asParticipant ?? (cleanEmail.includes('participant') && !cleanEmail.includes('admin') && cleanEmail !== 'info@daredevildigital.com');
+        const isPart = asParticipant ?? (!isMasterAdmin && cleanEmail.includes('participant'));
         const role: UserRole = isPart ? 'participant' : 'super_admin';
         const mock = {
           id: 'demo-' + cleanEmail.replace(/[^a-z0-9]/g, '-'),
           tenant_id: 'demo',
-          first_name: isPart ? 'Test' : 'Technical',
+          first_name: isPart ? 'Test' : cleanEmail.includes('support') ? 'Support' : 'Technical',
           last_name: isPart ? 'Participant' : 'Admin',
           email: cleanEmail,
           role,
@@ -202,14 +208,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!result) return { error: 'Login timed out — please check your connection and try again.' };
       const { data, error } = result;
       if (error) {
-        // Fallback for dry run / demo accounts (e.g. info@daredevildigital.com, admin testing)
-        if (cleanEmail === 'info@daredevildigital.com' || cleanEmail.includes('daredevil') || cleanEmail.includes('admin') || cleanEmail.includes('participant')) {
-          const isPart = asParticipant ?? (cleanEmail.includes('participant') && cleanEmail !== 'info@daredevildigital.com');
+        // Fallback for dry run / demo accounts (e.g. info@daredevildigital.com, support@*, admin testing)
+        if (isMasterAdmin || cleanEmail.includes('participant')) {
+          const isPart = asParticipant ?? (!isMasterAdmin && cleanEmail.includes('participant'));
           const role: UserRole = isPart ? 'participant' : 'super_admin';
           const mock = {
             id: 'mock-' + cleanEmail.replace(/[^a-z0-9]/g, '-'),
             tenant_id: 'demo',
-            first_name: isPart ? 'Test' : 'Technical',
+            first_name: isPart ? 'Test' : cleanEmail.includes('support') ? 'Support' : 'Technical',
             last_name: isPart ? 'Participant' : 'Admin',
             email: cleanEmail,
             role,

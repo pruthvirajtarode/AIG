@@ -278,6 +278,9 @@ export function PaymentsPage() {
     const isCancelled = isPaymentCancelled(p);
     if (statusFilter === 'cancelled') {
       if (!isCancelled) return false;
+    } else if (statusFilter === 'pending_review') {
+      if (isCancelled) return false;
+      if (p.status !== 'submitted' && p.status !== 'under_review') return false;
     } else {
       if (!showCancelled && isCancelled) return false;
       if (statusFilter && p.status !== statusFilter) return false;
@@ -316,10 +319,25 @@ export function PaymentsPage() {
           <p className="page-subtitle">Review and verify payment submissions</p>
         </div>
         {pendingReview > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 1rem', background: 'var(--warning-bg)', border: '1px solid rgba(234,179,8,0.25)', borderRadius: 8 }}>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => setStatusFilter(prev => prev === 'pending_review' ? '' : 'pending_review')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.625rem 1rem',
+              background: statusFilter === 'pending_review' ? 'rgba(234,179,8,0.25)' : 'var(--warning-bg)',
+              border: statusFilter === 'pending_review' ? '1.5px solid var(--warning)' : '1px solid rgba(234,179,8,0.25)',
+              borderRadius: 8,
+              cursor: 'pointer',
+            }}
+            title="Click to filter by payments awaiting review"
+          >
             <Clock size={16} color="var(--warning)" />
             <span style={{ fontSize: '0.875rem', color: 'var(--warning)', fontWeight: 600 }}>{pendingReview} awaiting review</span>
-          </div>
+          </button>
         )}
       </div>
 
@@ -331,21 +349,37 @@ export function PaymentsPage() {
             value: `SGD ${totalCollected.toLocaleString()}`,
             sub: cancelledCount > 0 ? `+ ${cancelledCount} cancelled` : 'All payments live',
             color: 'var(--aig-green-400)',
+            filter: 'verified',
           },
-          { label: 'Pending Review', value: String(pendingReview), sub: undefined, color: 'var(--warning)' },
-          { label: 'Verified',       value: String(verifiedCount), sub: undefined, color: 'var(--success)' },
-          { label: 'Rejected',       value: String(rejectedCount), sub: undefined, color: 'var(--danger)' },
-        ].map(s => (
-          <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
-            <div className="stat-value" style={{ fontSize: '1.375rem', color: s.color }}>{s.value}</div>
-            <div className="stat-label">{s.label}</div>
-            {s.sub && (
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                {s.sub}
-              </div>
-            )}
-          </div>
-        ))}
+          { label: 'Pending Review', value: String(pendingReview), sub: 'Awaiting review', color: 'var(--warning)', filter: 'pending_review' },
+          { label: 'Verified',       value: String(verifiedCount), sub: 'Payment verified', color: 'var(--success)', filter: 'verified' },
+          { label: 'Rejected',       value: String(rejectedCount), sub: 'Action required', color: 'var(--danger)', filter: 'rejected' },
+        ].map(s => {
+          const isActive = statusFilter === s.filter;
+          return (
+            <div
+              key={s.label}
+              className="stat-card"
+              style={{
+                padding: '1rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                border: isActive ? '1.5px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+                background: isActive ? 'rgba(47,168,118,0.08)' : undefined,
+              }}
+              onClick={() => setStatusFilter(prev => prev === s.filter ? '' : s.filter)}
+              title={`Click to filter by ${s.label}`}
+            >
+              <div className="stat-value" style={{ fontSize: '1.375rem', color: s.color }}>{s.value}</div>
+              <div className="stat-label">{s.label}</div>
+              {s.sub && (
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                  {s.sub}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Filter Bar */}
@@ -363,15 +397,22 @@ export function PaymentsPage() {
           />
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {(['', 'pending', 'submitted', 'under_review', 'verified', 'rejected', 'cancelled'] as const).map(s => {
+          {(['', 'pending_review', 'pending', 'submitted', 'under_review', 'verified', 'rejected', 'cancelled'] as const).map(s => {
             if (s === 'cancelled' && cancelledCount === 0) return null;
+            const isTabActive = statusFilter === s;
             return (
               <button
                 key={s}
-                className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`}
+                className={`btn btn-sm ${isTabActive ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setStatusFilter(s)}
               >
-                {s === '' ? (!showCancelled ? 'Live Payments' : 'All Payments') : s === 'cancelled' ? `Cancelled (${cancelledCount})` : STATUS_LABEL[s as PaymentStatus]}
+                {s === ''
+                  ? (!showCancelled ? 'Live Payments' : 'All Payments')
+                  : s === 'pending_review'
+                    ? `Pending Review (${pendingReview})`
+                    : s === 'cancelled'
+                      ? `Cancelled (${cancelledCount})`
+                      : STATUS_LABEL[s as PaymentStatus]}
               </button>
             );
           })}

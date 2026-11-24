@@ -260,7 +260,12 @@ export function ParticipantsPage() {
     );
   };
 
+  const [filterMode, setFilterMode] = useState<'all' | 'active' | 'portal' | 'pending'>('all');
+
   const filtered = participants.filter(p => {
+    if (filterMode === 'active' && !p.is_active) return false;
+    if (filterMode === 'portal' && !p.portal_access) return false;
+    if (filterMode === 'pending' && p.portal_access) return false;
     const q = search.toLowerCase();
     return (
       `${p.first_name} ${p.last_name}`.toLowerCase().includes(q) ||
@@ -314,16 +319,31 @@ export function ParticipantsPage() {
       {/* Stats */}
       <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
         {[
-          { label: 'Total Participants', value: String(participants.length),                                     color: 'var(--aig-green-400)' },
-          { label: 'Active',             value: String(participants.filter(p => p.is_active).length),            color: 'var(--success)' },
-          { label: 'Portal Access',      value: String(participants.filter(p => p.portal_access).length),       color: 'var(--info)' },
-          { label: 'Invite Pending',     value: String(participants.filter(p => !p.portal_access).length),      color: 'var(--warning)' },
-        ].map(s => (
-          <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
-            <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
-            <div className="stat-label">{s.label}</div>
-          </div>
-        ))}
+          { label: 'Total Participants', value: String(participants.length),                                color: 'var(--aig-green-400)', mode: 'all' as const },
+          { label: 'Active',             value: String(participants.filter(p => p.is_active).length),       color: 'var(--success)',       mode: 'active' as const },
+          { label: 'Portal Access',      value: String(participants.filter(p => p.portal_access).length),  color: 'var(--info)',          mode: 'portal' as const },
+          { label: 'Invite Pending',     value: String(participants.filter(p => !p.portal_access).length), color: 'var(--warning)',       mode: 'pending' as const },
+        ].map(s => {
+          const isActive = filterMode === s.mode && s.mode !== 'all';
+          return (
+            <div
+              key={s.label}
+              className="stat-card"
+              style={{
+                padding: '1rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                border: isActive ? '1.5px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+                background: isActive ? 'rgba(47,168,118,0.08)' : undefined,
+              }}
+              onClick={() => setFilterMode(prev => prev === s.mode ? 'all' : s.mode)}
+              title={`Click to filter by ${s.label}`}
+            >
+              <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
+              <div className="stat-label">{s.label}</div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Filter Bar */}

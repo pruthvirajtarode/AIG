@@ -257,27 +257,47 @@ export function DeliveriesPage() {
             value: String(auSgDeliveries.length),
             sub: 'Australia to Singapore meat delivery',
             color: 'var(--aig-green-400)',
+            onClick: () => setRegionFilter(prev => prev === 'au_sg' ? 'all' : 'au_sg'),
+            isActive: regionFilter === 'au_sg',
           },
           {
             label: 'Total Deliveries',
             value: String(liveDeliveries.length),
             sub: cancelledCount > 0 ? `+ ${cancelledCount} cancelled` : 'All programmes & regions',
             color: 'var(--gold-400)',
+            onClick: () => { setRegionFilter('all'); setStatusFilter(''); },
+            isActive: regionFilter === 'all' && !statusFilter,
           },
           {
             label: 'Active / Scheduled',
             value: String(liveDeliveries.filter(d => d.status === 'out_for_delivery' || d.status === 'scheduled').length),
             sub: 'In transit / pending slot',
             color: 'var(--orange)',
+            onClick: () => setStatusFilter(prev => prev === 'out_for_delivery' ? '' : 'out_for_delivery'),
+            isActive: statusFilter === 'out_for_delivery',
           },
           {
             label: 'All Other Regions',
             value: String(otherRegionDeliveries.length),
             sub: 'Indonesia & international local distribution',
             color: '#60a5fa',
+            onClick: () => setRegionFilter(prev => prev === 'other' ? 'all' : 'other'),
+            isActive: regionFilter === 'other',
           },
         ].map(s => (
-          <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
+          <div
+            key={s.label}
+            className="stat-card"
+            style={{
+              padding: '1rem',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              border: s.isActive ? '1.5px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+              background: s.isActive ? 'rgba(47,168,118,0.08)' : undefined,
+            }}
+            onClick={s.onClick}
+            title={`Click to filter by ${s.label}`}
+          >
             <div className="stat-value" style={{ fontSize: '1.375rem', color: s.color }}>{s.value}</div>
             <div className="stat-label">{s.label}</div>
             {s.sub && (
