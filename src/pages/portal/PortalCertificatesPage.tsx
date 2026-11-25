@@ -9,27 +9,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAppData } from '@/contexts/AppDataContext';
 import { normaliseEmail, normaliseName, participantFullName } from '@/lib/orderRules';
 
-// Same shape as the admin certificates, so the participant sees the identical certificate.
-const DEMO_PARTICIPANT_CERTS: Certificate[] = [
-  {
-    id: 'c1',
-    certificate_ref: 'CERT-2024-00042',
-    order_ref: 'AIG-2024-000110',
-    participant_name: 'Ahmad Rizal bin Yusof',
-    programme_name: 'Goat — Malaysia',
-    country: 'Malaysia',
-    animal_ref: 'A-2024-087',
-    animal_type: 'goat',
-    animal_label: 'Goat',
-    qurban_date: '2024-06-30',
-    status: 'sent',
-    generated_at: '2024-07-01T09:00:00Z',
-    sent_at: '2024-07-01T09:05:00Z',
-    verification_code: 'AIGCERT-A7B2-X9Q1',
-    year: '2024/1445H',
-  },
-];
-
 // ── Certificate viewer (same design as the admin preview) ─────
 function CertViewModal({ cert, onClose }: { cert: Certificate; onClose: () => void }) {
   const { toast } = useToast();
@@ -72,7 +51,7 @@ function CertViewModal({ cert, onClose }: { cert: Certificate; onClose: () => vo
 export function PortalCertificatesPage() {
   usePageTitle('My Certificates');
   const { toast } = useToast();
-  const { user, profile } = useAuth();
+  const { user, profile, isStaff } = useAuth();
   const { orders, participants, certificates } = useAppData();
   const [selected, setSelected] = useState<Certificate | null>(null);
 
@@ -95,12 +74,18 @@ export function PortalCertificatesPage() {
         .map(o => o.order_ref),
     );
 
-    if (myOrderRefs.size === 0) return DEMO_PARTICIPANT_CERTS;
+    const isStaffUser = Boolean(isStaff() || (profile?.role && profile.role !== 'participant'));
+
+    if (myOrderRefs.size === 0 && isStaffUser) {
+      return certificates.filter(c => ['generated', 'sent', 'regenerated'].includes(c.status));
+    }
+
+    if (myOrderRefs.size === 0) return [];
 
     return certificates.filter(
       c => myOrderRefs.has(c.order_ref) && ['generated', 'sent', 'regenerated'].includes(c.status),
     );
-  }, [user, profile, orders, participants, certificates]);
+  }, [user, profile, isStaff, orders, participants, certificates]);
 
   // Download = open the viewer first (so the certificate is rendered), then print/save as PDF
   const handleDownload = (cert: Certificate) => {

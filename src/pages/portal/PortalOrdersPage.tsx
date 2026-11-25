@@ -48,55 +48,6 @@ interface PortalOrderView {
   steps: { label: string; done: boolean; date: string | null }[];
 }
 
-const DEMO_PARTICIPANT_ORDERS: PortalOrderView[] = [
-  {
-    id: 'o1',
-    order_ref: 'AIG-2025-000158',
-    programme: 'Cow Share — Somalia',
-    service_type: 'Qurban',
-    supports_weight_timeline: false,
-    certificate_ready: false,
-    animal_type: 'cow',
-    quantity: 1,
-    total_amount: 850,
-    currency: 'SGD',
-    status: 'payment_verified' as OrderStatus,
-    created_at: '2025-05-14T08:22:00Z',
-    qurban_date: '28 Jun 2025',
-    animals: [],
-    steps: [
-      { label: 'Order Placed', done: true, date: '14 May 2025' },
-      { label: 'Payment Verified', done: true, date: '14 May 2025' },
-      { label: 'Animal Allocated', done: false, date: null },
-      { label: 'Qurban Performed', done: false, date: null },
-      { label: 'Certificate Issued', done: false, date: null },
-    ],
-  },
-  {
-    id: 'o2',
-    order_ref: 'AIG-2025-000110',
-    programme: 'Goat — Malaysia',
-    service_type: 'Qurban',
-    supports_weight_timeline: false,
-    certificate_ready: true,
-    animal_type: 'goat',
-    quantity: 2,
-    total_amount: 840,
-    currency: 'SGD',
-    status: 'completed' as OrderStatus,
-    created_at: '2024-06-10T09:00:00Z',
-    qurban_date: '30 Jun 2024',
-    animals: [],
-    steps: [
-      { label: 'Order Placed', done: true, date: '10 Jun 2024' },
-      { label: 'Payment Verified', done: true, date: '11 Jun 2024' },
-      { label: 'Animal Allocated', done: true, date: '15 Jun 2024' },
-      { label: 'Qurban Performed', done: true, date: '30 Jun 2024' },
-      { label: 'Certificate Issued', done: true, date: '01 Jul 2024' },
-    ],
-  },
-];
-
 const STATUS_STEP_RANK: Partial<Record<OrderStatus, number>> = {
   draft: 1,
   pending_payment: 1,
@@ -121,8 +72,10 @@ const STATUS_STEP_RANK: Partial<Record<OrderStatus, number>> = {
 
 export function PortalOrdersPage() {
   usePageTitle('My Orders');
-  const { user, profile } = useAuth();
+  const { user, profile, isStaff } = useAuth();
   const { orders, animals, programmes, participants, certificates } = useAppData();
+
+  const isStaffUser = Boolean(isStaff() || (profile?.role && profile.role !== 'participant'));
 
   const participantOrders = useMemo<PortalOrderView[]>(() => {
     const authEmail = normaliseEmail(profile?.email ?? user?.email);
@@ -131,7 +84,7 @@ export function PortalOrdersPage() {
       ? participants.find(p => normaliseEmail(p.email) === authEmail)
       : undefined;
 
-    const realOrders = orders.filter(o => {
+    let realOrders = orders.filter(o => {
       if (matchedParticipant && o.participant_id === matchedParticipant.id) return true;
       if (authEmail && o.email && normaliseEmail(o.email) === authEmail) return true;
       if (matchedParticipant && normaliseName(o.participant) === normaliseName(participantFullName(matchedParticipant))) return true;
@@ -139,7 +92,9 @@ export function PortalOrdersPage() {
       return false;
     });
 
-    if (realOrders.length === 0) return DEMO_PARTICIPANT_ORDERS;
+    if (realOrders.length === 0 && isStaffUser && orders.length > 0) {
+      realOrders = orders.filter(o => o.status !== 'cancelled');
+    }
 
     return realOrders.map(o => {
       const linkedAnimals = animals
@@ -220,8 +175,22 @@ export function PortalOrdersPage() {
       </div>
 
       {/* Order Cards */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {participantOrders.map(order => (
+      {participantOrders.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: '3rem 1.5rem' }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: '50%', background: 'var(--surface-700)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem',
+          }}>
+            <ShoppingCart size={24} color="var(--text-muted)" />
+          </div>
+          <div className="heading-md" style={{ marginBottom: '0.5rem' }}>No Orders Placed Yet</div>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', maxWidth: 420, margin: '0 auto 1.5rem', lineHeight: 1.5 }}>
+            Your 2026 Qurban and Aqiqah orders will appear here once submitted. You will be able to track livestock fulfillment, animal weights, and certificate status.
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {participantOrders.map(order => (
           <div key={order.id} className="card">
             {/* Header */}
             <div
@@ -379,6 +348,7 @@ export function PortalOrdersPage() {
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }

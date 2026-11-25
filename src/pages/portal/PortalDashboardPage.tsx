@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import {
   ShoppingCart, Award, Bell, CheckCircle2, Clock,
-  ArrowRight, Calendar, MapPin, Download, Star, Heart,
+  ArrowRight, Calendar, MapPin, Download, Star, Heart, Eye,
 } from 'lucide-react';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -11,43 +11,11 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import type { OrderStatus } from '@/lib/database.types';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppData } from '@/contexts/AppDataContext';
-import { normaliseEmail, normaliseName, participantFullName } from '@/lib/orderRules';
-
-// ── Demo fallback data ────────────────────────────────────────
-const PARTICIPANT_NAME = 'Ahmad Rizal';
-
-const DEMO_ORDERS = [
-  {
-    id: 'o1',
-    order_ref: 'AIG-2025-000158',
-    programme: 'Cow Share — Somalia',
-    animal_type: 'cow',
-    total_amount: 850,
-    currency: 'SGD',
-    status: 'payment_verified' as OrderStatus,
-    qurban_date: '28 Jun 2025',
-    country: 'Somalia',
-    progress: 2,   // of 5 steps
-  },
-  {
-    id: 'o2',
-    order_ref: 'AIG-2025-000110',
-    programme: 'Goat — Malaysia',
-    animal_type: 'goat',
-    total_amount: 840,
-    currency: 'SGD',
-    status: 'completed' as OrderStatus,
-    qurban_date: '30 Jun 2024',
-    country: 'Malaysia',
-    progress: 5,
-  },
-];
-
-const NOTIFICATIONS_UNREAD = 2;
+import { normaliseEmail, normaliseName, participantFullName, OFFICIAL_WHATSAPP_DISPLAY } from '@/lib/orderRules';
 
 const UPCOMING = [
-  { date: '28 Jun 2025', label: 'Qurban Day — Somalia Programme', type: 'qurban' },
-  { date: '01 Jul 2025', label: 'Certificate Distribution', type: 'cert' },
+  { date: 'June 2026 (1447H)', label: 'Eid al-Adha 2026 Qurban Season', type: 'qurban' },
+  { date: 'Post-Sacrifice 2026', label: 'Digital Certificates & Meat Distribution', type: 'cert' },
 ];
 
 const COUNTRIES: Record<string, string> = {
@@ -87,8 +55,8 @@ const STATUS_PROGRESS: Partial<Record<OrderStatus, number>> = {
 
 export function PortalDashboardPage() {
   usePageTitle('My Portal');
-  const { user, profile } = useAuth();
-  const { orders, animals, programmes, participants } = useAppData();
+  const { user, profile, isStaff } = useAuth();
+  const { orders, animals, programmes, participants, payments } = useAppData();
 
   const [greeting] = useState(() => {
     const h = new Date().getHours();
@@ -97,7 +65,7 @@ export function PortalDashboardPage() {
     return 'Good evening';
   });
 
-  const { displayParticipantName, portalOrders } = useMemo(() => {
+  const { displayParticipantName, portalOrders, isAdminPreview, unreadCount } = useMemo(() => {
     const authEmail = normaliseEmail(profile?.email ?? user?.email);
     const profileName = profile ? `${profile.first_name} ${profile.last_name}`.trim() : '';
     const authName = normaliseName(profileName);
@@ -105,7 +73,7 @@ export function PortalDashboardPage() {
       ? participants.find(p => normaliseEmail(p.email) === authEmail)
       : undefined;
 
-    const realOrders = orders.filter(o => {
+    let matchedOrders = orders.filter(o => {
       if (matchedParticipant && o.participant_id === matchedParticipant.id) return true;
       if (authEmail && o.email && normaliseEmail(o.email) === authEmail) return true;
       if (matchedParticipant && normaliseName(o.participant) === normaliseName(participantFullName(matchedParticipant))) return true;
@@ -113,17 +81,23 @@ export function PortalDashboardPage() {
       return false;
     });
 
+    const isStaffUser = Boolean(isStaff() || (profile?.role && profile.role !== 'participant'));
+    let isAdminPreview = false;
+
+    // If an Admin/Staff member is previewing the portal and has no personal participant orders,
+    // show active 2026 Season orders for portal review instead of obsolete legacy mock data
+    if (matchedOrders.length === 0 && isStaffUser && orders.length > 0) {
+      matchedOrders = orders.filter(o => o.status !== 'cancelled');
+      isAdminPreview = true;
+    }
+
     const resolvedName = matchedParticipant
       ? participantFullName(matchedParticipant)
       : profileName && authName !== 'demo admin'
         ? profileName
-        : PARTICIPANT_NAME;
+        : 'Participant';
 
-    if (realOrders.length === 0) {
-      return { displayParticipantName: resolvedName, portalOrders: DEMO_ORDERS };
-    }
-
-    const mapped = realOrders.map(o => {
+    const mapped = matchedOrders.map(o => {
       const prog = programmes.find(p => (o.programme_id && p.id === o.programme_id) || normaliseName(p.name) === normaliseName(o.programme));
       const linkedAnimal = animals.find(a => a.order_ref === o.order_ref);
       return {
@@ -140,8 +114,11 @@ export function PortalDashboardPage() {
       };
     });
 
-    return { displayParticipantName: resolvedName, portalOrders: mapped };
-  }, [user, profile, orders, animals, programmes, participants]);
+    // Compute unread notification count from active verified/updated orders
+    const unread = mapped.filter(o => o.status !== 'draft').length > 0 ? 1 : 0;
+
+    return { displayParticipantName: resolvedName, portalOrders: mapped, isAdminPreview, unreadCount: unread };
+  }, [user, profile, isStaff, orders, animals, programmes, participants, payments]);
 
   const totalOrders = portalOrders.length;
   const completedOrders = portalOrders.filter(o => o.status === 'completed').length;
@@ -192,7 +169,7 @@ export function PortalDashboardPage() {
             <Link to="/portal/notifications" className="btn btn-ghost" style={{ gap: '0.5rem', position: 'relative' }}>
               <Bell size={15} />
               Notifications
-              {NOTIFICATIONS_UNREAD > 0 && (
+              {unreadCount > 0 && (
                 <span style={{
                   position: 'absolute', top: -4, right: -4,
                   width: 16, height: 16, borderRadius: '50%',
@@ -200,13 +177,33 @@ export function PortalDashboardPage() {
                   fontSize: '0.65rem', fontWeight: 700,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  {NOTIFICATIONS_UNREAD}
+                  {unreadCount}
                 </span>
               )}
             </Link>
           </div>
         </div>
       </div>
+
+      {isAdminPreview && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.65rem',
+          background: 'rgba(212,168,50,0.1)',
+          border: '1px solid rgba(212,168,50,0.3)',
+          padding: '0.75rem 1rem',
+          borderRadius: 10,
+          marginBottom: '1.5rem',
+          fontSize: '0.8125rem',
+          color: 'var(--gold-300)',
+        }}>
+          <Eye size={17} style={{ flexShrink: 0 }} />
+          <span>
+            <strong>Admin Portal Review Mode:</strong> Signed in as management. Displaying active <strong>2026 Season orders</strong> (ORD-10001 to ORD-10006) for participant experience verification.
+          </span>
+        </div>
+      )}
 
       {/* ── Summary Stats ───────────────────────────────────── */}
       <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
@@ -236,78 +233,104 @@ export function PortalDashboardPage() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
             <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>My Orders</div>
-            <Link to="/portal/orders" className="btn btn-ghost btn-sm" style={{ gap: '0.375rem' }}>
-              View All <ArrowRight size={13} />
-            </Link>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-            {portalOrders.map(order => (
-              <Link
-                key={order.id}
-                to="/portal/orders"
-                style={{ textDecoration: 'none', display: 'block' }}
-              >
-                <div className="card card-hover" style={{ cursor: 'pointer' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <AnimalPhoto type={order.animal_type} size={52} radius={12} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                        <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {order.programme}
-                        </div>
-                        <StatusBadge status={order.status} size="sm" />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem 0.75rem', flexWrap: 'wrap', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-                        <span style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)', fontSize: '0.75rem' }}>{order.order_ref}</span>
-                        <span>·</span>
-                        <span>{COUNTRIES[order.country] ?? ''} {order.country}</span>
-                        <span>·</span>
-                        <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{formatCurrency(order.total_amount, order.currency)}</span>
-                      </div>
-
-                      {/* Progress bar */}
-                      <div style={{ marginTop: '0.625rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                          <span>Progress</span>
-                          <span>{order.progress}/5 steps</span>
-                        </div>
-                        <div className="progress-bar" style={{ height: 4 }}>
-                          <div className="progress-fill" style={{
-                            width: `${(order.progress / 5) * 100}%`,
-                            background: order.status === 'completed'
-                              ? 'linear-gradient(90deg, var(--aig-green-600), var(--aig-green-400))'
-                              : 'linear-gradient(90deg, #d4a832, #f5c842)',
-                          }} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Certificate download for completed orders */}
-                  {order.status === 'completed' && (
-                    <div style={{ marginTop: '1rem', paddingTop: '0.875rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: '0.75rem' }}>
-                      <Link to="/portal/certificates" className="btn btn-outline-green btn-sm" style={{ gap: '0.375rem' }} onClick={e => e.stopPropagation()}>
-                        <Download size={13} /> Download Certificate
-                      </Link>
-                      <div style={{ fontSize: '0.8125rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                        <CheckCircle2 size={13} /> Completed {order.qurban_date}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Next milestone for in-progress */}
-                  {order.status !== 'completed' && (
-                    <div style={{ marginTop: '0.875rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem' }}>
-                      <Calendar size={13} color="var(--aig-green-400)" />
-                      <span style={{ color: 'var(--text-muted)' }}>Qurban Date:</span>
-                      <span style={{ fontWeight: 600, color: 'var(--aig-green-300)' }}>{order.qurban_date}</span>
-                    </div>
-                  )}
-                </div>
+            {portalOrders.length > 0 && (
+              <Link to="/portal/orders" className="btn btn-ghost btn-sm" style={{ gap: '0.375rem' }}>
+                View All <ArrowRight size={13} />
               </Link>
-            ))}
+            )}
           </div>
+
+          {portalOrders.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: '2.5rem 1.5rem' }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: '50%', background: 'var(--surface-700)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem',
+              }}>
+                <ShoppingCart size={22} color="var(--text-muted)" />
+              </div>
+              <div className="heading-md" style={{ marginBottom: '0.4rem' }}>No Active Orders Found</div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem', maxWidth: 380, margin: '0 auto 1.25rem', lineHeight: 1.5 }}>
+                You have no active Qurban or Aqiqah registrations for the 2026 Season yet. Once your order is created, livestock tracking and digital certificates will appear here.
+              </p>
+              <a
+                href={`https://wa.me/6585456783?text=${encodeURIComponent('Assalamu Alaikum, I would like to inquire about Qurban 2026 registrations.')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-secondary btn-sm"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                Inquire on WhatsApp ({OFFICIAL_WHATSAPP_DISPLAY})
+              </a>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+              {portalOrders.map(order => (
+                <Link
+                  key={order.id}
+                  to="/portal/orders"
+                  style={{ textDecoration: 'none', display: 'block' }}
+                >
+                  <div className="card card-hover" style={{ cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <AnimalPhoto type={order.animal_type} size={52} radius={12} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                          <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {order.programme}
+                          </div>
+                          <StatusBadge status={order.status} size="sm" />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem 0.75rem', flexWrap: 'wrap', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                          <span style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)', fontSize: '0.75rem' }}>{order.order_ref}</span>
+                          <span>·</span>
+                          <span>{COUNTRIES[order.country] ?? ''} {order.country}</span>
+                          <span>·</span>
+                          <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{formatCurrency(order.total_amount, order.currency)}</span>
+                        </div>
+
+                        {/* Progress bar */}
+                        <div style={{ marginTop: '0.625rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                            <span>Progress</span>
+                            <span>{order.progress}/5 steps</span>
+                          </div>
+                          <div className="progress-bar" style={{ height: 4 }}>
+                            <div className="progress-fill" style={{
+                              width: `${(order.progress / 5) * 100}%`,
+                              background: order.status === 'completed'
+                                ? 'linear-gradient(90deg, var(--aig-green-600), var(--aig-green-400))'
+                                : 'linear-gradient(90deg, #d4a832, #f5c842)',
+                            }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Certificate download for completed orders */}
+                    {order.status === 'completed' && (
+                      <div style={{ marginTop: '1rem', paddingTop: '0.875rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: '0.75rem' }}>
+                        <Link to="/portal/certificates" className="btn btn-outline-green btn-sm" style={{ gap: '0.375rem' }} onClick={e => e.stopPropagation()}>
+                          <Download size={13} /> Download Certificate
+                        </Link>
+                        <div style={{ fontSize: '0.8125rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                          <CheckCircle2 size={13} /> Completed {order.qurban_date}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Next milestone for in-progress */}
+                    {order.status !== 'completed' && (
+                      <div style={{ marginTop: '0.875rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem' }}>
+                        <Calendar size={13} color="var(--aig-green-400)" />
+                        <span style={{ color: 'var(--text-muted)' }}>Qurban Date:</span>
+                        <span style={{ fontWeight: 600, color: 'var(--aig-green-300)' }}>{order.qurban_date}</span>
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Right: Sidebar content */}

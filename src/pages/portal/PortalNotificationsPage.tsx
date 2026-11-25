@@ -53,19 +53,11 @@ const NOTIF_BG: Record<NotifType, string> = {
   certificate: 'var(--warning-bg)',
 };
 
-const MOCK_NOTIFICATIONS: PortalNotificationItem[] = [
-  { id: 'n1', type: 'payment', title: 'Payment Verified ✓', body: 'Your payment of SGD 850 for Order AIG-2025-000158 (Cow Share — Somalia) has been verified. Your order is now confirmed.', time: '2025-05-14T10:05:00Z', channelLabel: `WhatsApp (${OFFICIAL_WHATSAPP_DISPLAY})` },
-  { id: 'n2', type: 'info', title: 'Animal Allocation Update', body: 'Great news! An animal is being allocated for your Cow Share — Somalia order. You will receive an update shortly.', time: '2025-05-14T10:10:00Z', channelLabel: `WhatsApp (${OFFICIAL_WHATSAPP_DISPLAY})` },
-  { id: 'n3', type: 'success', title: 'Order Confirmation & Invoice', body: 'Your Qurban order AIG-2025-000158 and official invoice have been emailed once to your registered address and confirmed via WhatsApp.', time: '2025-05-14T10:08:00Z', channelLabel: 'Email (Invoice) + WhatsApp' },
-  { id: 'n4', type: 'certificate', title: 'Certificate Ready 🎉', body: 'Your Qurban Certificate for Order AIG-2024-000110 (Goat — Malaysia) is ready to download as a PDF directly from the portal.', time: '2024-07-01T09:05:00Z', channelLabel: `WhatsApp (${OFFICIAL_WHATSAPP_DISPLAY})`, certificateLink: true },
-  { id: 'n5', type: 'delivery', title: 'Delivery Completed', body: 'Your Qurban meat package has been successfully delivered. Order AIG-2024-000110. JazakAllahu Khayran for your contribution.', time: '2024-06-30T15:00:00Z', channelLabel: `WhatsApp (${OFFICIAL_WHATSAPP_DISPLAY})` },
-];
-
 export function PortalNotificationsPage() {
   usePageTitle('Notifications');
-  const { user, profile } = useAuth();
+  const { user, profile, isStaff } = useAuth();
   const { orders, payments, animals, programmes, certificates, participants } = useAppData();
-  const [readIds, setReadIds] = useState<Set<string>>(() => new Set(['n3', 'n4', 'n5']));
+  const [readIds, setReadIds] = useState<Set<string>>(() => new Set());
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
   const items = useMemo<PortalNotificationItem[]>(() => {
@@ -75,7 +67,9 @@ export function PortalNotificationsPage() {
       ? participants.find(p => normaliseEmail(p.email) === authEmail)
       : undefined;
 
-    const myOrders = orders.filter(o => {
+    const isStaffUser = Boolean(isStaff() || (profile?.role && profile.role !== 'participant'));
+
+    let myOrders = orders.filter(o => {
       if (matchedParticipant && o.participant_id === matchedParticipant.id) return true;
       if (authEmail && o.email && normaliseEmail(o.email) === authEmail) return true;
       if (matchedParticipant && normaliseName(o.participant) === normaliseName(participantFullName(matchedParticipant))) return true;
@@ -83,7 +77,11 @@ export function PortalNotificationsPage() {
       return false;
     });
 
-    if (myOrders.length === 0) return MOCK_NOTIFICATIONS;
+    if (myOrders.length === 0 && isStaffUser && orders.length > 0) {
+      myOrders = orders.filter(o => o.status !== 'cancelled');
+    }
+
+    if (myOrders.length === 0) return [];
 
     const built: PortalNotificationItem[] = [];
     for (const o of myOrders) {
