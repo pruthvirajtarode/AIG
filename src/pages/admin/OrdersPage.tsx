@@ -1927,7 +1927,7 @@ export function OrdersPage() {
             placeholder="Search by order ref, participant, animal code, or programme..."
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
-            style={{ height: 38 }}
+            style={{ height: 38, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
           />
         </div>
         <select

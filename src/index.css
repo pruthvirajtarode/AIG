@@ -1154,6 +1154,8 @@ h1, h2, h3, h4, h5, h6 {
   position: relative;
   flex: 1;
   max-width: 360px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .search-bar .search-icon {
@@ -1167,6 +1169,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .search-bar .form-input {
   padding-left: 2.5rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* ── Filter Bar ────────────────────────────────────────────── */
@@ -1250,10 +1254,11 @@ h1, h2, h3, h4, h5, h6 {
   position: fixed;
   top: 1.25rem;
   right: 1.25rem;
-  z-index: 999;
+  z-index: 9999;
   display: flex;
   flex-direction: column;
   gap: 0.625rem;
+  max-width: min(420px, calc(100vw - 2rem));
 }
 
 .toast {
@@ -1603,12 +1608,22 @@ h1, h2, h3, h4, h5, h6 {
   .filter-bar {
     flex-direction: column;
     align-items: stretch;
+    width: 100%;
+    box-sizing: border-box;
   }
   .search-bar {
-    max-width: none;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .search-bar .form-input {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
   }
   .filter-bar .form-select {
     width: 100% !important;
+    box-sizing: border-box !important;
   }
   /* Filter pill strip: single scrollable row, no wrapping */
   .filter-bar > div:last-child {
