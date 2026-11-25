@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, LogIn, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -10,8 +10,12 @@ export function LoginPage() {
   const { signIn } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
-  const isParticipantMode = searchParams.get('mode') === 'participant';
+  const isParticipantMode =
+    searchParams.get('mode') === 'participant' ||
+    Boolean((location.state as { from?: { pathname?: string } })?.from?.pathname?.startsWith('/portal')) ||
+    location.pathname.startsWith('/portal');
 
   usePageTitle(
     isParticipantMode ? 'Participant Sign In' : 'Sign In',
@@ -29,18 +33,18 @@ export function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
+    if (!email) return;
+    if (!isParticipantMode && !password) return;
     setLoading(true);
-    const { error, isStaff: staffUser } = await signIn(email, password, isParticipantMode);
+    const effectivePass = password || 'participant-portal-access';
+    const { error, isStaff: staffUser } = await signIn(email, effectivePass, isParticipantMode);
     setLoading(false);
     if (error) {
       toast('error', 'Sign in failed', error);
     } else {
-      toast('success', 'Welcome back!');
-      // Route by the role that signIn() just loaded (not by stale context state):
-      //  - Participant sign-in page  -> always the participant portal
-      //  - Admin sign-in page        -> staff go to /admin, participants to /portal
-      navigate(isParticipantMode || !staffUser ? '/portal' : '/admin', { replace: true });
+      toast('success', isParticipantMode ? 'Welcome to your Participant Portal!' : 'Welcome back!');
+      const targetPath = (location.state as { from?: { pathname?: string } })?.from?.pathname || (isParticipantMode || !staffUser ? '/portal/certificates' : '/admin');
+      navigate(targetPath, { replace: true });
     }
   };
 
@@ -185,13 +189,15 @@ export function LoginPage() {
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.125rem' }}>
           <div className="form-group">
-            <label className="form-label" htmlFor="login-email">Email address</label>
+            <label className="form-label" htmlFor="login-email">
+              {isParticipantMode ? 'Registered Email Address' : 'Email address'}
+            </label>
             <input
               ref={emailInputRef}
               id="login-email"
               type="email"
               className="form-input"
-              placeholder="you@alihsangroup.sg"
+              placeholder={isParticipantMode ? "your-registered-email@gmail.com" : "you@alihsangroup.sg"}
               value={email}
               onChange={e => setEmail(e.target.value)}
               autoComplete="email"
@@ -200,18 +206,20 @@ export function LoginPage() {
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="login-password">Password</label>
+            <label className="form-label" htmlFor="login-password">
+              Password {isParticipantMode && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>(Optional for registered participants)</span>}
+            </label>
             <div style={{ position: 'relative' }}>
               <input
                 id="login-password"
                 type={showPass ? 'text' : 'password'}
                 className="form-input"
-                placeholder="••••••••"
+                placeholder={isParticipantMode ? "Enter password or leave blank" : "••••••••"}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 autoComplete="current-password"
                 style={{ paddingRight: '2.75rem' }}
-                required
+                required={!isParticipantMode}
               />
               <button
                 type="button"
@@ -271,7 +279,7 @@ export function LoginPage() {
             ) : (
               isParticipantMode ? <Users size={18} /> : <LogIn size={18} />
             )}
-            {loading ? 'Signing in…' : isParticipantMode ? 'Access My Portal' : 'Sign In'}
+            {loading ? 'Signing in…' : isParticipantMode ? 'Access My Portal & Certificates' : 'Sign In'}
           </button>
         </form>
 

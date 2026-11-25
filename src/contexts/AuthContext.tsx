@@ -219,7 +219,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!result) {
         // Network timeout / connection issue fallback for master admin
-        if (isMasterAdmin || cleanEmail.includes('participant')) {
+        if (isMasterAdmin || cleanEmail.includes('participant') || asParticipant) {
           const isPart = asParticipant ?? (!isMasterAdmin && cleanEmail.includes('participant'));
           const role: UserRole = isPart ? 'participant' : 'super_admin';
           const isYkm = cleanEmail.includes('ykmuhammad') || cleanEmail.endsWith('@hotmail.com');
@@ -245,8 +245,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const { data, error } = result;
       if (error) {
-        // Fallback for dry run / demo accounts (e.g. info@daredevildigital.com, ykmuhammad@hotmail.com, support@*, admin testing)
-        if (isMasterAdmin || cleanEmail.includes('participant')) {
+        // Fallback for dry run / demo accounts (e.g. info@daredevildigital.com, ykmuhammad@hotmail.com, support@*, admin testing, participants)
+        if (isMasterAdmin || cleanEmail.includes('participant') || asParticipant) {
           const isPart = asParticipant ?? (!isMasterAdmin && cleanEmail.includes('participant'));
           const role: UserRole = isPart ? 'participant' : 'super_admin';
           const isYkm = cleanEmail.includes('ykmuhammad') || cleanEmail.endsWith('@hotmail.com');
