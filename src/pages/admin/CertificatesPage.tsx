@@ -71,10 +71,10 @@ function CertPreviewModal({
       <div
         className="modal"
         onClick={e => e.stopPropagation()}
-        style={{ maxWidth: 860, width: '95%', background: '#111' }}
+        style={{ maxWidth: 860, width: '95%', maxHeight: '92vh', display: 'flex', flexDirection: 'column', background: '#111' }}
       >
         {/* Header */}
-        <div className="modal-header" style={{ background: '#0a0a0a', borderBottom: '1px solid rgba(212,168,50,0.15)' }}>
+        <div className="modal-header" style={{ background: '#0a0a0a', borderBottom: '1px solid rgba(212,168,50,0.15)', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             <Award size={18} color="#d4a832" />
             <div className="heading-md" style={{ color: '#fff' }}>Certificate Preview</div>
@@ -84,12 +84,12 @@ function CertPreviewModal({
         </div>
 
         {/* Certificate design */}
-        <div style={{ padding: 'clamp(0.625rem, 2.5vw, 1.25rem)', background: '#0d0d0d' }}>
+        <div style={{ padding: 'clamp(0.625rem, 2.5vw, 1.25rem)', background: '#0d0d0d', overflowY: 'auto', flex: 1 }}>
           <CertificateDesign cert={cert} />
         </div>
 
         {/* Footer actions */}
-        <div className="modal-footer" style={{ background: '#0a0a0a', borderTop: '1px solid rgba(212,168,50,0.15)', justifyContent: 'flex-end' }}>
+        <div className="modal-footer" style={{ background: '#0a0a0a', borderTop: '1px solid rgba(212,168,50,0.15)', flexShrink: 0, justifyContent: 'flex-end' }}>
           <button type="button" className="btn btn-secondary" onClick={onClose}>Close</button>
 
           {/* Download / Print */}

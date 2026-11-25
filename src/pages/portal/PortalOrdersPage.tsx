@@ -333,11 +333,11 @@ export function PortalOrdersPage() {
 
                 {order.certificate_ready && (
                   <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                    <Link to="/portal/certificates" className="btn btn-outline-green btn-sm">
+                    <Link to={`/portal/certificates?order=${order.order_ref}`} className="btn btn-outline-green btn-sm">
                       <Download size={14} />
                       Download Certificate (PDF)
                     </Link>
-                    <Link to="/portal/certificates" className="btn btn-ghost btn-sm">
+                    <Link to={`/portal/certificates?order=${order.order_ref}`} className="btn btn-ghost btn-sm">
                       <Eye size={14} />
                       View Certificate
                     </Link>

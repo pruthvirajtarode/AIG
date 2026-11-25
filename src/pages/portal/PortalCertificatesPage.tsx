@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { Award, Eye, X, Printer } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
@@ -23,9 +24,9 @@ function CertViewModal({ cert, onClose }: { cert: Certificate; onClose: () => vo
       <div
         className="modal"
         onClick={e => e.stopPropagation()}
-        style={{ maxWidth: 860, width: '95%', background: '#111' }}
+        style={{ maxWidth: 860, width: '95%', maxHeight: '92vh', display: 'flex', flexDirection: 'column', background: '#111' }}
       >
-        <div className="modal-header" style={{ background: '#0a0a0a', borderBottom: '1px solid rgba(212,168,50,0.15)' }}>
+        <div className="modal-header" style={{ background: '#0a0a0a', borderBottom: '1px solid rgba(212,168,50,0.15)', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <Award size={18} color="#d4a832" />
             <div className="heading-md" style={{ color: '#fff' }}>Qurban Certificate</div>
@@ -33,11 +34,11 @@ function CertViewModal({ cert, onClose }: { cert: Certificate; onClose: () => vo
           <button className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close"><X size={18} /></button>
         </div>
 
-        <div style={{ padding: 'clamp(0.625rem, 2.5vw, 1.25rem)', background: '#0d0d0d' }}>
+        <div style={{ padding: 'clamp(0.625rem, 2.5vw, 1.25rem)', background: '#0d0d0d', overflowY: 'auto', flex: 1 }}>
           <CertificateDesign cert={cert} />
         </div>
 
-        <div className="modal-footer" style={{ background: '#0a0a0a', borderTop: '1px solid rgba(212,168,50,0.15)' }}>
+        <div className="modal-footer" style={{ background: '#0a0a0a', borderTop: '1px solid rgba(212,168,50,0.15)', flexShrink: 0 }}>
           <button className="btn btn-secondary" onClick={onClose}>Close</button>
           <button className="btn btn-secondary" onClick={handlePrint} style={{ gap: '0.5rem' }}>
             <Printer size={15} /> Download / Print
@@ -51,6 +52,7 @@ function CertViewModal({ cert, onClose }: { cert: Certificate; onClose: () => vo
 export function PortalCertificatesPage() {
   usePageTitle('My Certificates');
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
   const { user, profile, isStaff } = useAuth();
   const { orders, participants, certificates } = useAppData();
   const [selected, setSelected] = useState<Certificate | null>(null);
@@ -86,6 +88,14 @@ export function PortalCertificatesPage() {
       c => myOrderRefs.has(c.order_ref) && ['generated', 'sent', 'regenerated'].includes(c.status),
     );
   }, [user, profile, isStaff, orders, participants, certificates]);
+
+  const orderParam = searchParams.get('order');
+  useEffect(() => {
+    if (orderParam && participantCerts.length > 0) {
+      const match = participantCerts.find(c => c.order_ref === orderParam);
+      if (match) setSelected(match);
+    }
+  }, [orderParam, participantCerts]);
 
   // Download = open the viewer first (so the certificate is rendered), then print/save as PDF
   const handleDownload = (cert: Certificate) => {
