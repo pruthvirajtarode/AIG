@@ -114,8 +114,14 @@ export function PortalDashboardPage() {
       };
     });
 
-    // Compute unread notification count from active verified/updated orders
-    const unread = mapped.filter(o => o.status !== 'draft').length > 0 ? 1 : 0;
+    // Compute unread notification count matching active order milestones
+    const unread = mapped.reduce((acc, o) => {
+      let count = 0;
+      if (o.status !== 'draft') count += 1; // Order Confirmation & Invoice
+      if (o.status === 'completed' || o.status === 'certificate_generated') count += 3; // Payment, Status Update, Certificate Ready
+      else if (o.status !== 'pending_payment') count += 1;
+      return acc + count;
+    }, 0);
 
     return { displayParticipantName: resolvedName, portalOrders: mapped, isAdminPreview, unreadCount: unread };
   }, [user, profile, isStaff, orders, animals, programmes, participants, payments]);

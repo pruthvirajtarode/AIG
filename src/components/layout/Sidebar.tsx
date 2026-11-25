@@ -221,7 +221,7 @@ export function Sidebar({
             )}
             {group.items.map(item => {
               const Icon = item.icon;
-              const isActive = item.path === rootPath || item.path === '/admin'
+              const isActive = item.path === '/portal' || item.path === '/admin'
                 ? location.pathname === item.path
                 : location.pathname.startsWith(item.path);
 
