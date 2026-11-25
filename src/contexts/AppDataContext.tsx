@@ -890,13 +890,16 @@ export function sanitizeOrphanRecords(d: AppData): AppData {
     return true;
   });
 
-  return {
+  const base: AppData = {
     ...d,
     animals: cleanAnimals,
     payments: cleanPayments,
     deliveries: cleanDeliveries,
     certificates: cleanCertificates,
   };
+
+  // Self-heal: ensure every active order has its associated payment, delivery, and certificate
+  return base.orders.reduce((acc, o) => syncRelated(acc, o, SYSTEM_ACTOR), base);
 }
 
 function loadData(): AppData {
@@ -909,16 +912,23 @@ function loadData(): AppData {
     if (!raw) return ensureLiveProgrammes(isTest ? EMPTY : CANONICAL_SEED_DATA);
     const parsed = JSON.parse(raw) as Partial<AppData>;
     
-    // In production, if local storage has 0 orders, restore CANONICAL_SEED_DATA so device boots with the full test dataset
+    // In production, if local storage has 0 orders or 0 certificates, restore from CANONICAL_SEED_DATA
     const hasExistingOrders = Array.isArray(parsed.orders) && parsed.orders.length > 0;
+    const hasExistingCerts = Array.isArray(parsed.certificates) && parsed.certificates.length > 0;
     const effectiveParsed: Partial<AppData> = (!hasExistingOrders && !isTest)
       ? {
           ...parsed,
           orders: CANONICAL_SEED_DATA.orders,
           animals: CANONICAL_SEED_DATA.animals,
           payments: CANONICAL_SEED_DATA.payments,
+          certificates: CANONICAL_SEED_DATA.certificates,
           participants: CANONICAL_SEED_DATA.participants,
           auditLogs: CANONICAL_SEED_DATA.auditLogs,
+        }
+      : (!hasExistingCerts && !isTest)
+      ? {
+          ...parsed,
+          certificates: CANONICAL_SEED_DATA.certificates,
         }
       : parsed;
 
@@ -1109,14 +1119,21 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       try {
         const parsed = JSON.parse(e.newValue) as Partial<AppData>;
         const hasExistingOrders = Array.isArray(parsed.orders) && parsed.orders.length > 0;
+        const hasExistingCerts = Array.isArray(parsed.certificates) && parsed.certificates.length > 0;
         const effectiveParsed: Partial<AppData> = (!hasExistingOrders && import.meta.env.MODE !== 'test')
           ? {
               ...parsed,
               orders: CANONICAL_SEED_DATA.orders,
               animals: CANONICAL_SEED_DATA.animals,
               payments: CANONICAL_SEED_DATA.payments,
+              certificates: CANONICAL_SEED_DATA.certificates,
               participants: CANONICAL_SEED_DATA.participants,
               auditLogs: CANONICAL_SEED_DATA.auditLogs,
+            }
+          : (!hasExistingCerts && import.meta.env.MODE !== 'test')
+          ? {
+              ...parsed,
+              certificates: CANONICAL_SEED_DATA.certificates,
             }
           : parsed;
         const next: AppData = ensureLiveProgrammes({ ...EMPTY, ...effectiveParsed });
@@ -1157,6 +1174,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
                 JSON.stringify(merged.orders) !== JSON.stringify(current.orders) ||
                 JSON.stringify(merged.payments) !== JSON.stringify(current.payments) ||
                 JSON.stringify(merged.animals) !== JSON.stringify(current.animals) ||
+                JSON.stringify(merged.certificates) !== JSON.stringify(current.certificates) ||
+                JSON.stringify(merged.deliveries) !== JSON.stringify(current.deliveries) ||
+                JSON.stringify(merged.participants) !== JSON.stringify(current.participants) ||
                 JSON.stringify(merged.auditLogs) !== JSON.stringify(current.auditLogs)
               ) {
                 supabaseSnapshotRef.current = merged;
