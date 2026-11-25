@@ -41,6 +41,65 @@ const STAFF_ROLES: UserRole[] = [
   'super_admin', 'operations_admin', 'supplier_manager', 'field_team', 'driver', 'd3_technical_admin',
 ];
 
+async function resolveMockProfile(cleanEmail: string, isPart: boolean): Promise<Profile> {
+  const isYkm = cleanEmail.includes('ykmuhammad') || cleanEmail.endsWith('@hotmail.com');
+  const role: UserRole = isPart ? 'participant' : 'super_admin';
+  let firstName = isYkm ? 'Muhammad Yusuf' : isPart ? 'Participant' : cleanEmail.includes('support') ? 'Support' : 'Technical';
+  let lastName = isYkm ? '(Al Ihsan Group)' : isPart ? '' : 'Admin';
+  let phone = isPart ? '+6588240612' : '+6597123295';
+
+  if (isPart && isSupabaseConfigured) {
+    try {
+      const resp = await supabase
+        .from('aigms_participants')
+        .select('first_name, last_name, full_name, phone')
+        .ilike('email', cleanEmail)
+        .maybeSingle();
+
+      const partRow = resp.data as { first_name?: string | null; last_name?: string | null; full_name?: string | null; phone?: string | null } | null;
+
+      if (partRow) {
+        if (partRow.first_name) {
+          firstName = partRow.first_name;
+          lastName = partRow.last_name || '';
+        } else if (partRow.full_name) {
+          const parts = partRow.full_name.trim().split(/\s+/);
+          firstName = parts[0];
+          lastName = parts.slice(1).join(' ');
+        }
+        if (partRow.phone) phone = partRow.phone;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // If still generic "Participant", try deriving from email username
+  if (isPart && firstName === 'Participant') {
+    const rawUser = cleanEmail.split('@')[0].replace(/[0-9_.-]+/g, ' ').trim();
+    if (rawUser) {
+      const parts = rawUser.split(/\s+/);
+      firstName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+      if (parts.length > 1) {
+        lastName = parts.slice(1).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+      }
+    }
+  }
+
+  return {
+    id: 'mock-' + cleanEmail.replace(/[^a-z0-9]/g, '-'),
+    tenant_id: 'demo',
+    first_name: firstName,
+    last_name: lastName,
+    email: cleanEmail,
+    role,
+    phone,
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  } as Profile;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -133,10 +192,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsLoading(false);
         });
       } else {
+        try {
+          const cachedProfile = localStorage.getItem('aigms_auth_profile');
+          const cachedUser = localStorage.getItem('aigms_auth_user');
+          if (cachedProfile && cachedUser) {
+            setProfile(JSON.parse(cachedProfile));
+            setUser(JSON.parse(cachedUser));
+            setProfileFetchAttempted(true);
+          }
+        } catch {}
         clearTimeout(hardTimeout);
         setIsLoading(false);
       }
     }).catch(() => {
+      try {
+        const cachedProfile = localStorage.getItem('aigms_auth_profile');
+        const cachedUser = localStorage.getItem('aigms_auth_user');
+        if (cachedProfile && cachedUser) {
+          setProfile(JSON.parse(cachedProfile));
+          setUser(JSON.parse(cachedUser));
+          setProfileFetchAttempted(true);
+        }
+      } catch {}
       clearTimeout(hardTimeout);
       setIsLoading(false);
     });
@@ -184,24 +261,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Offline / dev mode fallback when Supabase is not configured
       if (!isSupabaseConfigured) {
         const isPart = asParticipant ?? (!isMasterAdmin && cleanEmail.includes('participant'));
-        const role: UserRole = isPart ? 'participant' : 'super_admin';
-        const isYkm = cleanEmail.includes('ykmuhammad') || cleanEmail.endsWith('@hotmail.com');
-        const mock = {
-          id: 'demo-' + cleanEmail.replace(/[^a-z0-9]/g, '-'),
-          tenant_id: 'demo',
-          first_name: isYkm ? 'Muhammad Yusuf' : isPart ? 'Test' : cleanEmail.includes('support') ? 'Support' : 'Technical',
-          last_name: isYkm ? '(Al Ihsan Group)' : isPart ? 'Participant' : 'Admin',
-          email: cleanEmail,
-          role,
-          phone: isPart ? '+6588240612' : '+6597123295',
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        } as Profile;
+        const mock = await resolveMockProfile(cleanEmail, isPart);
+        try {
+          localStorage.setItem('aigms_auth_profile', JSON.stringify(mock));
+          localStorage.setItem('aigms_auth_user', JSON.stringify({ id: mock.id, email: mock.email }));
+        } catch {}
         setUser({ id: mock.id, email: cleanEmail } as User);
         setProfile(mock);
         setProfileFetchAttempted(true);
-        return { error: null, role, isStaff: !isPart };
+        return { error: null, role: mock.role, isStaff: !isPart };
       }
 
       const race = <T,>(p: Promise<T>, ms: number): Promise<T | null> =>
@@ -221,24 +289,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Network timeout / connection issue fallback for master admin
         if (isMasterAdmin || cleanEmail.includes('participant') || asParticipant) {
           const isPart = asParticipant ?? (!isMasterAdmin && cleanEmail.includes('participant'));
-          const role: UserRole = isPart ? 'participant' : 'super_admin';
-          const isYkm = cleanEmail.includes('ykmuhammad') || cleanEmail.endsWith('@hotmail.com');
-          const mock = {
-            id: 'mock-' + cleanEmail.replace(/[^a-z0-9]/g, '-'),
-            tenant_id: 'demo',
-            first_name: isYkm ? 'Muhammad Yusuf' : isPart ? 'Test' : cleanEmail.includes('support') ? 'Support' : 'Technical',
-            last_name: isYkm ? '(Al Ihsan Group)' : isPart ? 'Participant' : 'Admin',
-            email: cleanEmail,
-            role,
-            phone: isPart ? '+6588240612' : '+6597123295',
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          } as Profile;
+          const mock = await resolveMockProfile(cleanEmail, isPart);
+          try {
+            localStorage.setItem('aigms_auth_profile', JSON.stringify(mock));
+            localStorage.setItem('aigms_auth_user', JSON.stringify({ id: mock.id, email: mock.email }));
+          } catch {}
           setUser({ id: mock.id, email: cleanEmail } as User);
           setProfile(mock);
           setProfileFetchAttempted(true);
-          return { error: null, role, isStaff: !isPart };
+          return { error: null, role: mock.role, isStaff: !isPart };
         }
         return { error: 'Login timed out — please check your connection and try again.' };
       }
@@ -248,24 +307,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Fallback for dry run / demo accounts (e.g. info@daredevildigital.com, ykmuhammad@hotmail.com, support@*, admin testing, participants)
         if (isMasterAdmin || cleanEmail.includes('participant') || asParticipant) {
           const isPart = asParticipant ?? (!isMasterAdmin && cleanEmail.includes('participant'));
-          const role: UserRole = isPart ? 'participant' : 'super_admin';
-          const isYkm = cleanEmail.includes('ykmuhammad') || cleanEmail.endsWith('@hotmail.com');
-          const mock = {
-            id: 'mock-' + cleanEmail.replace(/[^a-z0-9]/g, '-'),
-            tenant_id: 'demo',
-            first_name: isYkm ? 'Muhammad Yusuf' : isPart ? 'Test' : cleanEmail.includes('support') ? 'Support' : 'Technical',
-            last_name: isYkm ? '(Al Ihsan Group)' : isPart ? 'Participant' : 'Admin',
-            email: cleanEmail,
-            role,
-            phone: isPart ? '+6588240612' : '+6597123295',
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          } as Profile;
+          const mock = await resolveMockProfile(cleanEmail, isPart);
+          try {
+            localStorage.setItem('aigms_auth_profile', JSON.stringify(mock));
+            localStorage.setItem('aigms_auth_user', JSON.stringify({ id: mock.id, email: mock.email }));
+          } catch {}
           setUser({ id: mock.id, email: cleanEmail } as User);
           setProfile(mock);
           setProfileFetchAttempted(true);
-          return { error: null, role, isStaff: !isPart };
+          return { error: null, role: mock.role, isStaff: !isPart };
         }
         return { error: error.message };
       }
@@ -317,7 +367,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    try {
+      localStorage.removeItem('aigms_auth_profile');
+      localStorage.removeItem('aigms_auth_user');
+    } catch {}
     setProfile(null);
+    setUser(null);
+    setSession(null);
     setProfileFetchAttempted(false);
     await supabase.auth.signOut();
   };

@@ -41,9 +41,16 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
   const searchRef = useRef<HTMLDivElement | null>(null);
 
   const fullName = `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim();
-  const initials = fullName
-    ? `${profile!.first_name.charAt(0)}${profile!.last_name.charAt(0)}`.toUpperCase()
-    : (profile?.email?.charAt(0).toUpperCase() ?? 'U');
+  const initials = (() => {
+    if (fullName) {
+      const parts = fullName.split(/\s+/).filter(Boolean);
+      if (parts.length >= 2) {
+        return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
+      }
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    return profile?.email?.charAt(0).toUpperCase() ?? 'U';
+  })();
 
   // Close popovers on outside click or Escape
   useEffect(() => {

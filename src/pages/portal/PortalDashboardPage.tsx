@@ -121,8 +121,9 @@ export function PortalDashboardPage() {
   }, [user, profile, isStaff, orders, animals, programmes, participants, payments]);
 
   const totalOrders = portalOrders.length;
-  const completedOrders = portalOrders.filter(o => o.status === 'completed').length;
-  const inProgressOrders = portalOrders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length;
+  const isOrderCompleted = (status: OrderStatus) => status === 'completed' || status === 'certificate_generated';
+  const completedOrders = portalOrders.filter(o => isOrderCompleted(o.status)).length;
+  const inProgressOrders = portalOrders.filter(o => !isOrderCompleted(o.status) && o.status !== 'cancelled').length;
   const totalSpent = portalOrders.reduce((a, o) => a + o.total_amount, 0);
 
   return (
@@ -297,7 +298,7 @@ export function PortalDashboardPage() {
                           <div className="progress-bar" style={{ height: 4 }}>
                             <div className="progress-fill" style={{
                               width: `${(order.progress / 5) * 100}%`,
-                              background: order.status === 'completed'
+                              background: isOrderCompleted(order.status)
                                 ? 'linear-gradient(90deg, var(--aig-green-600), var(--aig-green-400))'
                                 : 'linear-gradient(90deg, #d4a832, #f5c842)',
                             }} />
@@ -307,19 +308,19 @@ export function PortalDashboardPage() {
                     </div>
 
                     {/* Certificate download for completed orders */}
-                    {order.status === 'completed' && (
-                      <div style={{ marginTop: '1rem', paddingTop: '0.875rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: '0.75rem' }}>
-                        <Link to="/portal/certificates" className="btn btn-outline-green btn-sm" style={{ gap: '0.375rem' }} onClick={e => e.stopPropagation()}>
+                    {isOrderCompleted(order.status) && (
+                      <div style={{ marginTop: '1rem', paddingTop: '0.875rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <Link to={`/portal/certificates?order=${order.order_ref}`} className="btn btn-outline-green btn-sm" style={{ gap: '0.375rem' }} onClick={e => e.stopPropagation()}>
                           <Download size={13} /> Download Certificate
                         </Link>
                         <div style={{ fontSize: '0.8125rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                          <CheckCircle2 size={13} /> Completed {order.qurban_date}
+                          <CheckCircle2 size={13} /> Completed · {order.qurban_date}
                         </div>
                       </div>
                     )}
 
                     {/* Next milestone for in-progress */}
-                    {order.status !== 'completed' && (
+                    {!isOrderCompleted(order.status) && (
                       <div style={{ marginTop: '0.875rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem' }}>
                         <Calendar size={13} color="var(--aig-green-400)" />
                         <span style={{ color: 'var(--text-muted)' }}>Qurban Date:</span>

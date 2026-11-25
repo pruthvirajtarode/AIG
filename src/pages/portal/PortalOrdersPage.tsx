@@ -156,11 +156,14 @@ export function PortalOrdersPage() {
 
       {/* Summary Cards */}
       <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
-        {[
-          { label: 'Total Orders', value: String(participantOrders.length), icon: ShoppingCart, color: 'var(--aig-green-400)' },
-          { label: 'In Progress', value: String(participantOrders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length), icon: Clock, color: 'var(--warning)' },
-          { label: 'Completed', value: String(participantOrders.filter(o => o.status === 'completed').length), icon: CheckCircle2, color: 'var(--success)' },
-        ].map(s => {
+        {(() => {
+          const isCompleted = (status: OrderStatus) => status === 'completed' || status === 'certificate_generated';
+          return [
+            { label: 'Total Orders', value: String(participantOrders.length), icon: ShoppingCart, color: 'var(--aig-green-400)' },
+            { label: 'In Progress', value: String(participantOrders.filter(o => !isCompleted(o.status) && o.status !== 'cancelled').length), icon: Clock, color: 'var(--warning)' },
+            { label: 'Completed', value: String(participantOrders.filter(o => isCompleted(o.status)).length), icon: CheckCircle2, color: 'var(--success)' },
+          ];
+        })().map(s => {
           const Icon = s.icon;
           return (
             <div key={s.label} className="stat-card">
