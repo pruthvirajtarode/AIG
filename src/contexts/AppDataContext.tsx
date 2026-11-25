@@ -695,7 +695,7 @@ function syncRelated(input: AppData, o: AppOrder, actor: Actor): AppData {
   }
 
   // ── Certificate (1 per Qurban animal/holder under the Order Reference) ──
-  if (!isCancelled && r >= R('qurban_complete')) {
+  if (!isCancelled) {
     const orderAnimals = d.animals
       .filter(a => a.order_ref === o.order_ref)
       .sort((a, b) => (a.animal_code ?? a.animal_ref).localeCompare(b.animal_code ?? b.animal_ref));

@@ -357,7 +357,7 @@ export function CertificatesPage() {
                     <div className="empty-state" style={{ padding: '3rem 2rem' }}>
                       <div className="empty-icon"><Award size={22} color="var(--text-muted)" /></div>
                       <h3>{certs.length ? 'No certificates match your filter' : 'No certificates yet'}</h3>
-                      <p>{certs.length ? 'Try adjusting your search or status filter.' : 'Certificates appear automatically when orders reach Qurban Complete.'}</p>
+                      <p>{certs.length ? 'Try adjusting your search or status filter.' : 'Certificates appear automatically for active orders.'}</p>
                     </div>
                   </td>
                 </tr>
