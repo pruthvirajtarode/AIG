@@ -358,7 +358,7 @@ Deno.serve(async (req: Request) => {
           type: 'template',
           template: {
             name: tplSpec.metaName,
-            language: { code: 'en' },
+            language: { code: 'en_US' },
             components: [
               {
                 type: 'body',
@@ -389,28 +389,34 @@ Deno.serve(async (req: Request) => {
 
   let waJson = await waResponse.json().catch(() => ({}));
 
-  // If custom template is not yet verified in Meta catalog, fallback to approved integration template
-  if (!waResponse.ok && tplSpec && !isDiagnosticTest) {
-    const fallbackPayload = {
+  // If custom template is pending approval or not found in Meta catalog, fallback to sending real notification text
+  if (!waResponse.ok && !isDiagnosticTest) {
+    const textBody =
+      body.body ||
+      (variables.participant_name
+        ? `Assalamu Alaikum ${variables.participant_name}, update for Order ${orderRef || ''} (${variables.programme || ''}). Track status at: https://www.aigsuite.com/portal`
+        : 'Assalamu Alaikum! Your Qurban notification from Al Ihsan Group is ready.');
+
+    const textPayload = {
       messaging_product: 'whatsapp',
+      recipient_type: 'individual',
       to: phoneCheck.digits,
-      type: 'template',
-      template: {
-        name: '3p_direct_integration_test_template',
-        language: { code: 'en_US' },
-      },
+      type: 'text',
+      text: { preview_url: true, body: textBody },
     };
-    const retryRes = await fetch(graphUrl, {
+
+    const textRes = await fetch(graphUrl, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(fallbackPayload),
+      body: JSON.stringify(textPayload),
     });
-    if (retryRes.ok) {
-      waResponse = retryRes;
-      waJson = await retryRes.json().catch(() => ({}));
+
+    if (textRes.ok) {
+      waResponse = textRes;
+      waJson = await textRes.json().catch(() => ({}));
     }
   }
   if (waResponse.ok) {
