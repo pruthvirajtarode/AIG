@@ -72,6 +72,9 @@ export function normalisePhone(value?: string | null): string {
   if (digits.length === 8 && /^[689]/.test(digits)) {
     return `65${digits}`;
   }
+  if (digits.length === 10 && /^[6-9]/.test(digits) && !(value ?? '').trim().startsWith('+')) {
+    return `91${digits}`;
+  }
   return digits;
 }
 

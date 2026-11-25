@@ -18,7 +18,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-application-name, *',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
@@ -89,6 +89,8 @@ function normaliseE164(raw?: string | null): { valid: true; e164: string; digits
   let digits = cleaned.replace(/\D+/g, '');
   if (digits.length === 8 && /^[689]/.test(digits)) {
     digits = `65${digits}`;
+  } else if (digits.length === 10 && /^[6-9]/.test(digits) && !cleaned.startsWith('+')) {
+    digits = `91${digits}`;
   }
   if (!/^[1-9]\d{7,14}$/.test(digits)) {
     return { valid: false, error: `Phone "${cleaned}" is not a valid E.164 phone number.` };
@@ -139,7 +141,14 @@ async function sendEmailViaProvider(params: {
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS_HEADERS });
+    const reqHeaders = req.headers.get('Access-Control-Request-Headers') || 'authorization, x-client-info, apikey, content-type, x-application-name, *';
+    return new Response('ok', {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': reqHeaders,
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      },
+    });
   }
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ success: false, error: 'Method not allowed' }), {
