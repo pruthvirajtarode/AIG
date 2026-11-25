@@ -359,6 +359,8 @@ export function CertificateVerifyPage() {
   );
 }
 
+import { ToastContainer } from '@/components/ui/ToastContainer';
+
 // ── App ───────────────────────────────────────────────────────
 export default function App() {
   // Prefetch all page chunks during idle time so nav feels instant
@@ -367,6 +369,7 @@ export default function App() {
   return (
     <AppDataProvider>
       <ToastProvider>
+        <ToastContainer />
         <Suspense fallback={<PageLoader />}>
         <Routes>
           {/* Public */}

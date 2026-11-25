@@ -2,7 +2,6 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
-import { ToastContainer } from '@/components/ui/ToastContainer';
 
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -60,8 +59,6 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
-
-      <ToastContainer />
     </div>
   );
 }
