@@ -175,7 +175,7 @@ export function DashboardPage() {
   // ── Export Report: real CSV download ───────────────────────
   const handleExport = useCallback(() => {
     const rows: (string | number)[][] = [
-      ['Al Ihsan Group — Qurban Season 2025/2026 Dashboard Report'],
+      ['Al Ihsan Group — Qurban & Aqiqah Season 2026 (1447H) Dashboard Report'],
       ['Generated', new Date().toLocaleString()],
       [],
       ['SUMMARY'],
@@ -257,7 +257,7 @@ export function DashboardPage() {
       <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">Al Ihsan Group · Qurban Season 2025</p>
+          <p className="page-subtitle">Al Ihsan Group · Qurban &amp; Aqiqah Season 2026 (1447H)</p>
         </div>
         <div className="page-header-actions" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           {/* Live indicator */}

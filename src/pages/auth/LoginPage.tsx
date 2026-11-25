@@ -43,7 +43,7 @@ export function LoginPage() {
       toast('error', 'Sign in failed', error);
     } else {
       toast('success', isParticipantMode ? 'Welcome to your Participant Portal!' : 'Welcome back!');
-      const targetPath = (location.state as { from?: { pathname?: string } })?.from?.pathname || (isParticipantMode || !staffUser ? '/portal/certificates' : '/admin');
+      const targetPath = (location.state as { from?: { pathname?: string } })?.from?.pathname || (isParticipantMode || !staffUser ? '/portal' : '/admin');
       navigate(targetPath, { replace: true });
     }
   };
