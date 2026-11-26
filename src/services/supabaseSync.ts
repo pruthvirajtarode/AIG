@@ -130,7 +130,16 @@ function normaliseBatchRows(rows: unknown[]): Record<string, unknown>[] {
 async function upsert(tableName: string, rows: unknown[]): Promise<void> {
   if (!isSupabaseConfigured || rows.length === 0) return;
   try {
-    const payload = normaliseBatchRows(rows);
+    let sanitizedRows = rows;
+    if (tableName === T.certificates) {
+      // Omit app-level programme_id to match Supabase aigms_certificates table schema
+      sanitizedRows = rows.map(r => {
+        if (!r || typeof r !== 'object') return r;
+        const { programme_id: _pid, ...rest } = r as Record<string, unknown>;
+        return rest;
+      });
+    }
+    const payload = normaliseBatchRows(sanitizedRows);
     const { error } = await supabase.from(tableName).upsert(payload as never[], { onConflict: 'id' });
     if (error) console.warn(`[supabaseSync] upsert ${tableName} error:`, error.message);
   } catch (e) {
