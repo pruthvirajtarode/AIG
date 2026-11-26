@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bell, Search, Menu } from 'lucide-react';
+import { Bell, Search, Menu, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppData } from '@/contexts/AppDataContext';
 import { formatRelativeTime } from '@/lib/utils';
@@ -28,7 +28,7 @@ interface LiveNotifItem {
 
 export function Topbar({ title, onMenuClick }: TopbarProps) {
   const { profile, isStaff } = useAuth();
-  const { orders, animals, payments, exceptions, certificates, participants } = useAppData();
+  const { orders, animals, payments, exceptions, certificates, participants, refreshFromCloud, isCloudSyncing, lastCloudSync } = useAppData();
   const navigate = useNavigate();
   const location = useLocation();
   const inPortal = location.pathname.startsWith('/portal');
@@ -337,6 +337,42 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
           </div>
         )}
       </div>
+
+      {/* Cloud Sync Status Button */}
+      <button
+        type="button"
+        className="btn btn-ghost"
+        title={lastCloudSync ? `Cloud Synced at ${lastCloudSync}. Click to force refresh.` : 'Sync with live database. Click to refresh.'}
+        aria-label="Sync with cloud database"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.375rem',
+          padding: '0.35rem 0.65rem',
+          fontSize: '0.75rem',
+          borderRadius: 8,
+          background: 'rgba(212,168,50,0.08)',
+          border: '1px solid rgba(212,168,50,0.22)',
+          color: isCloudSyncing ? 'var(--gold-400)' : 'var(--text-secondary)',
+          cursor: isCloudSyncing ? 'wait' : 'pointer',
+        }}
+        onClick={async () => {
+          if (!isCloudSyncing && refreshFromCloud) {
+            await refreshFromCloud();
+          }
+        }}
+      >
+        <RefreshCw
+          size={13}
+          style={{
+            color: isCloudSyncing ? 'var(--gold-400)' : 'var(--success)',
+            animation: isCloudSyncing ? 'spin 1s linear infinite' : undefined,
+          }}
+        />
+        <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+          {isCloudSyncing ? 'Syncing…' : 'Live Sync'}
+        </span>
+      </button>
 
       {/* User Avatar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

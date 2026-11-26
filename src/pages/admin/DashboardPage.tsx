@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   ShoppingCart, CreditCard, Dog, Truck, Award,
   TrendingUp, TrendingDown, AlertTriangle,
-  ArrowUpRight, Activity, Radio,
+  ArrowUpRight, Activity, Radio, RefreshCw,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -141,7 +141,7 @@ const PieTooltip = ({ active, payload }: any) => {
 export function DashboardPage() {
   usePageTitle('Dashboard');
   const { toast } = useToast();
-  const { orders, animals, payments, deliveries, certificates, exceptions } = useAppData();
+  const { orders, animals, payments, deliveries, certificates, exceptions, refreshFromCloud, isCloudSyncing, lastCloudSync } = useAppData();
   const [liveMode, setLiveMode] = useState(false);
 
   // Compute live stats from real data
@@ -310,6 +310,21 @@ export function DashboardPage() {
           >
             {liveMode ? <Radio size={14} /> : <Activity size={14} />}
             {liveMode ? 'Stop Live' : 'Live View'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={async () => {
+              if (refreshFromCloud) {
+                const ok = await refreshFromCloud();
+                toast(ok ? 'success' : 'info', ok ? 'Cloud Synced' : 'Up to Date', ok ? 'Latest orders & stats loaded from cloud database' : 'All records are in sync');
+              }
+            }}
+            disabled={isCloudSyncing}
+            title={lastCloudSync ? `Last synced: ${lastCloudSync}` : 'Refresh data from Supabase'}
+          >
+            <RefreshCw size={14} style={{ animation: isCloudSyncing ? 'spin 1s linear infinite' : undefined }} />
+            {isCloudSyncing ? 'Syncing...' : 'Sync Cloud'}
           </button>
           <button
             className="btn btn-primary btn-sm"

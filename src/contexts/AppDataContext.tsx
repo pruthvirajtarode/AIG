@@ -995,6 +995,11 @@ type AppDataContextType = AppData & {
   // Exception actions
   resolveException: (id: string, resolution?: string) => void;
   assignException: (id: string, person: string) => void;
+
+  // Realtime Cloud Sync
+  refreshFromCloud: () => Promise<boolean>;
+  isCloudSyncing: boolean;
+  lastCloudSync: string | null;
 };
 
 const AppDataContext = createContext<AppDataContextType | null>(null);
@@ -1025,41 +1030,55 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   };
   const isStaffActor = Boolean(user && (!profile || STAFF_SYNC_ROLES.includes(profile.role)));
 
-  // ── On authenticated mount/sign-in: load from Supabase (never query anon tables on /login or /verify) ──
-  useEffect(() => {
-    if (!isAuthenticated || !user?.id) {
-      supabaseSnapshotRef.current = null;
-      return;
-    }
-    let cancelled = false;
-    loadFromSupabase().then(remote => {
-      if (cancelled || !remote) return;
-      // Merge: remote takes priority if it has any rows, else keep local
+  // Guard: prevents local seed data from being pushed to Supabase before remote state is hydrated
+  const initialRemoteHydrated = useRef(false);
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+  const [lastCloudSync, setLastCloudSync] = useState<string | null>(null);
+
+  // ── Canonical Cloud Hydration & Realtime Sync ────────────────
+  const refreshFromCloud = useCallback(async (): Promise<boolean> => {
+    if (!isSupabaseConfigured) return false;
+    setIsCloudSyncing(true);
+    try {
+      const remote = await loadFromSupabase();
+      if (!remote) return false;
       const hasRemoteData = Object.values(remote).some((arr) => (arr as unknown[]).length > 0);
-      if (!hasRemoteData) {
-        if (!isStaffActor) return;
-        // No remote data yet — push local data up to Supabase (staff only)
-        const local = dataRef.current;
-        supabaseSnapshotRef.current = local;
-        syncToSupabase(
-          { orders: [], animals: [], payments: [], deliveries: [], certificates: [], participants: [], suppliers: [], programmes: [], exceptions: [], auditLogs: [] },
-          local,
-        ).catch(console.error);
-        return;
+      if (hasRemoteData) {
+        const merged: AppData = sanitizeOrphanRecords(ensureLiveProgrammes({
+          ...EMPTY,
+          ...remote,
+          programmes: remote.programmes.length > 0 ? remote.programmes : EMPTY.programmes,
+        }));
+        initialRemoteHydrated.current = true;
+        supabaseSnapshotRef.current = merged;
+        dataRef.current = merged;
+        setData(merged);
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* noop */ }
+        setLastCloudSync(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        return true;
+      } else {
+        initialRemoteHydrated.current = true;
+        return false;
       }
-      const merged: AppData = sanitizeOrphanRecords(ensureLiveProgrammes({
-        ...EMPTY,
-        ...remote,
-        programmes: remote.programmes.length > 0 ? remote.programmes : EMPTY.programmes,
-      }));
-      supabaseSnapshotRef.current = merged;
-      dataRef.current = merged;
-      setData(merged);
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* noop */ }
-    }).catch(console.error);
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, user?.id]);
+    } catch (err) {
+      console.warn('[AppDataContext] refreshFromCloud error:', err);
+      return false;
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  }, []);
+
+  // Sync on initial mount
+  useEffect(() => {
+    void refreshFromCloud();
+  }, [refreshFromCloud]);
+
+  // Sync when user signs in or user identity changes
+  useEffect(() => {
+    if (isAuthenticated && user?.id) {
+      void refreshFromCloud();
+    }
+  }, [isAuthenticated, user?.id, refreshFromCloud]);
 
   /** Apply a pure transformation to the latest state. */
   const commit = useCallback((fn: (d: AppData, actor: Actor) => AppData) => {
@@ -1085,9 +1104,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     } catch { /* storage full / unavailable */ }
   }, [data]);
 
-  // Sync to Supabase on every data change without dropping concurrent mutations (staff only)
+  // Sync to Supabase on mutations (staff only) - NEVER push before initial remote hydration
   const flushSupabaseSync = useCallback(() => {
     if (!isStaffActor) return;
+    if (!initialRemoteHydrated.current) return;
     if (supabaseSyncing.current) {
       supabaseSyncPending.current = true;
       return;
@@ -1149,92 +1169,15 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true;
 
-    const pullFromCloud = async () => {
-      try {
-        // Priority 1: Supabase central cloud database (realtime sync across devices)
-        if (isSupabaseConfigured) {
-          const remote = await loadFromSupabase();
-          if (remote && active) {
-            const hasRemoteData = remote.orders.length > 0 || remote.participants.length > 0;
-            if (hasRemoteData) {
-              const current = dataRef.current;
-              const merged: AppData = sanitizeOrphanRecords(ensureLiveProgrammes({
-                ...current,
-                orders: remote.orders.length > 0 ? remote.orders : current.orders,
-                animals: remote.animals.length > 0 ? remote.animals : current.animals,
-                payments: remote.payments.length > 0 ? remote.payments : current.payments,
-                deliveries: remote.deliveries.length > 0 ? remote.deliveries : current.deliveries,
-                certificates: remote.certificates.length > 0 ? remote.certificates : current.certificates,
-                participants: remote.participants.length > 0 ? remote.participants : current.participants,
-                auditLogs: remote.auditLogs.length > 0 ? remote.auditLogs : current.auditLogs,
-              }));
-
-              if (
-                current.orders.length === 0 ||
-                JSON.stringify(merged.orders) !== JSON.stringify(current.orders) ||
-                JSON.stringify(merged.payments) !== JSON.stringify(current.payments) ||
-                JSON.stringify(merged.animals) !== JSON.stringify(current.animals) ||
-                JSON.stringify(merged.certificates) !== JSON.stringify(current.certificates) ||
-                JSON.stringify(merged.deliveries) !== JSON.stringify(current.deliveries) ||
-                JSON.stringify(merged.participants) !== JSON.stringify(current.participants) ||
-                JSON.stringify(merged.auditLogs) !== JSON.stringify(current.auditLogs)
-              ) {
-                supabaseSnapshotRef.current = merged;
-                dataRef.current = merged;
-                setData(merged);
-                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
-                return;
-              }
-            }
-          }
-        }
-
-        // Priority 2: KVDB fallback if configured
-        const cloud = await fetchCloudState();
-        if (!active || !cloud) return;
-        const current = dataRef.current;
-
-        const localOrdersCount = current.orders.length;
-        const cloudOrdersCount = cloud.orders.length;
-
-        // If local has 0 orders but cloud has orders -> definitely update!
-        if (cloudOrdersCount > 0 && localOrdersCount === 0) {
-          const merged = mergeCloudWithLocal(current, cloud);
-          dataRef.current = merged;
-          setData(merged);
-          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
-          return;
-        }
-
-        // If cloud has changes that differ from local state
-        if (cloudOrdersCount > 0 || cloud.participants.length > 0) {
-          const merged = mergeCloudWithLocal(current, cloud);
-          if (
-            JSON.stringify(merged.orders) !== JSON.stringify(current.orders) ||
-            JSON.stringify(merged.participants) !== JSON.stringify(current.participants) ||
-            JSON.stringify(merged.payments) !== JSON.stringify(current.payments) ||
-            JSON.stringify(merged.animals) !== JSON.stringify(current.animals)
-          ) {
-            dataRef.current = merged;
-            setData(merged);
-            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
-          }
-        }
-      } catch (err) {
-        // Silently continue
-      }
-    };
-
-    // Immediate pull on device load
-    pullFromCloud();
-
     // Periodic pull every 8s
-    const timer = setInterval(pullFromCloud, 8000);
+    const timer = setInterval(() => {
+      if (active) void refreshFromCloud();
+    }, 8000);
 
     // Pull when user opens app / focuses tab / unlocks phone
-    const handleFocus = () => { pullFromCloud(); };
+    const handleFocus = () => { if (active) void refreshFromCloud(); };
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') pullFromCloud();
+      if (active && document.visibilityState === 'visible') void refreshFromCloud();
     };
 
     window.addEventListener('focus', handleFocus);
@@ -1246,7 +1189,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, []);
+  }, [refreshFromCloud]);
 
   // ── Orders ────────────────────────────────────────────────
   const addOrder = useCallback((input: NewOrderInput): AppOrder => {
@@ -2877,6 +2820,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     addSupplier, updateSupplier,
     addProgramme, updateProgramme,
     resolveException, assignException,
+    refreshFromCloud, isCloudSyncing, lastCloudSync,
   }), [
     data, participants, programmes, suppliers,
     addOrder, updateOrder, updateOrderStatus, cancelOrder, deleteOrder, markOrderInvoiceSent,
@@ -2888,6 +2832,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     addSupplier, updateSupplier,
     addProgramme, updateProgramme,
     resolveException, assignException,
+    refreshFromCloud, isCloudSyncing, lastCloudSync,
   ]);
 
   return (
