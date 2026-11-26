@@ -354,9 +354,33 @@ export function isAustraliaToPalestineProgramme(
 }
 
 /**
+ * True for any programme originating from Australia (meat slaughtered in Australia),
+ * including Australia to Singapore, Australia to Palestine, and any other AU to elsewhere region.
+ */
+export function isAustraliaOriginProgramme(
+  programmeName?: string | null,
+  country?: string | null,
+): boolean {
+  const n = (programmeName ?? '').trim();
+  const lower = n.toLowerCase();
+  const c = (country ?? '').trim().toLowerCase();
+  if (c === 'australia') return true;
+  if (
+    /^australia\b/i.test(n) ||
+    /australia\s*(to|→|->|-|—)/i.test(n) ||
+    lower.includes('australia')
+  ) {
+    return true;
+  }
+  return isAustraliaToSingaporeProgramme(n, c) || isAustraliaToPalestineProgramme(n, c);
+}
+
+/**
  * True for programmes that support delivery portion selection in Singapore:
  * - Australia -> Singapore (Full, 1/3, 2/3, NIL)
  * - Australia -> Palestine (1/3 or 2/3 delivered to SG; Full or NIL)
+ * - Any other Australia origin programme (AU orders factor in portions)
+ * Non-AU programmes (Indonesia, Yemen, Uganda) do not support or require portions.
  */
 export function isPortionSupportedProgramme(
   programmeName: string,
@@ -364,7 +388,8 @@ export function isPortionSupportedProgramme(
 ): boolean {
   return (
     isAustraliaToSingaporeProgramme(programmeName, country) ||
-    isAustraliaToPalestineProgramme(programmeName, country)
+    isAustraliaToPalestineProgramme(programmeName, country) ||
+    isAustraliaOriginProgramme(programmeName, country)
   );
 }
 
@@ -634,21 +659,29 @@ export function validateOrderCandidate(
   const isPortionSupported = isPortionSupportedProgramme(progName, resolvedCountry);
   if (isPortionSupported) {
     const isAuPal = isAustraliaToPalestineProgramme(progName, resolvedCountry);
+    const isOtherAuNonSg =
+      isAustraliaOriginProgramme(progName, resolvedCountry) &&
+      !isAustraliaToSingaporeProgramme(progName, resolvedCountry);
     const normalizedPortions: OrderDeliveryPortion[] = [];
     for (let i = 0; i < input.qurban_entries.length; i++) {
       let rawPortion = input.qurban_entries[i]?.delivery_portion ?? input.delivery_portion ?? '';
-      // If Australia to Palestine and no portion selected, default to 'nil' (100% distributed in Palestine)
-      if (!rawPortion && isAuPal) {
+      // If Australia to Palestine or any AU-to-elsewhere destination and no portion selected, default to 'nil' (100% distributed at destination)
+      if (!rawPortion && (isAuPal || isOtherAuNonSg)) {
         rawPortion = 'nil';
       }
       const dp = rawPortion.trim().toLowerCase();
       if (!dp || !['full', 'one_third', 'two_thirds', 'nil'].includes(dp)) {
+        const routeLabel = isAuPal
+          ? 'Australia → Palestine'
+          : isOtherAuNonSg
+            ? `Australia → ${resolvedCountry || 'Destination'}`
+            : 'Australia → Singapore';
         return {
           valid: false,
           error:
             input.quantity > 1
-              ? `Portion to be Delivered (Full, 1/3, 2/3, or NIL) is required for Qurban ${i + 1} (${isAuPal ? 'Australia → Palestine' : 'Australia → Singapore'}).`
-              : `Portion to be Delivered (Full, 1/3, 2/3, or NIL) is required for ${isAuPal ? 'Australia → Palestine' : 'Australia → Singapore'} orders.`,
+              ? `Portion to be Delivered (Full, 1/3, 2/3, or NIL) is required for Qurban ${i + 1} (${routeLabel}).`
+              : `Portion to be Delivered (Full, 1/3, 2/3, or NIL) is required for ${routeLabel} orders.`,
         };
       }
       normalizedPortions.push(dp as OrderDeliveryPortion);

@@ -20,6 +20,9 @@ import {
   formatServiceType,
   getProgrammeShareMetadata,
   isAustraliaToSingaporeProgramme,
+  isAustraliaToPalestineProgramme,
+  isAustraliaOriginProgramme,
+  isPortionSupportedProgramme,
   isBreedingProgramme,
   isIndonesiaProgramme,
   normaliseEmail,
@@ -1972,5 +1975,85 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
     expect(deliveriesHtml).toContain('Active / Scheduled');
     expect(deliveriesHtml).toContain('AU → SG');
     expect(deliveriesHtml).toContain('2/3');
+  });
+
+  it('TEST 24: Deliveries AU - Palestine & Other AU Regions segmentation, AU portion factoring, and Non-AU local distribution distinction', () => {
+    // 1. Australia origin programme detection
+    expect(isAustraliaOriginProgramme('Australia to Singapore - Lamb', 'Australia')).toBe(true);
+    expect(isAustraliaOriginProgramme('Australia to Palestine - Lamb', 'Palestine')).toBe(true);
+    expect(isAustraliaOriginProgramme('Australia to Jordan - Sheep', 'Jordan')).toBe(true);
+    expect(isAustraliaOriginProgramme('Australia Origin Regional Cattle', 'Australia')).toBe(true);
+    expect(isAustraliaOriginProgramme('Indonesia - Goat (XL)', 'Indonesia')).toBe(false);
+    expect(isAustraliaOriginProgramme('Uganda - Goat', 'Uganda')).toBe(false);
+    expect(isAustraliaOriginProgramme('Yemen/Tarim - Goat (M)', 'Yemen')).toBe(false);
+
+    // 2. Portion supported programme detection (AU origin programmes factor portions; non-AU do not)
+    expect(isPortionSupportedProgramme('Australia to Singapore - Sheep', 'Australia')).toBe(true);
+    expect(isPortionSupportedProgramme('Australia to Palestine - Lamb', 'Palestine')).toBe(true);
+    expect(isPortionSupportedProgramme('Indonesia - Breeding Programme', 'Indonesia')).toBe(false);
+    expect(isPortionSupportedProgramme('Uganda - Sheep', 'Uganda')).toBe(false);
+
+    // 3. Mount store and schedule deliveries for AU-Palestine and Non-AU Uganda orders
+    const store = mountAppDataStore();
+    const ctx = store.getState();
+
+    // Create AU-Palestine order with 1/3 portion delivered to SG
+    const auPalProg = ctx.programmes.find(p => isAustraliaToPalestineProgramme(p.name, p.country))!;
+    ctx.addOrder({
+      order_ref: 'ORD-10077',
+      full_name: 'Tariq Al-Mansoor',
+      email: 'tariq@example.com',
+      contact_number: '+65 9876 5432',
+      programme: auPalProg.name,
+      programme_id: auPalProg.id,
+      programme_country: auPalProg.country,
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      delivery_portion: 'one_third',
+      quantity: 1,
+      total_amount: 355,
+      currency: 'SGD',
+      status: 'delivery_scheduled',
+      qurban_entries: [{ qurban_name_holder: 'Tariq Al-Mansoor', delivery_portion: 'one_third' }],
+    });
+
+    // Create Non-AU Uganda order (no portion required)
+    const ugandaProg = ctx.programmes.find(p => p.country === 'Uganda')!;
+    ctx.addOrder({
+      order_ref: 'ORD-10066',
+      full_name: 'Bilal Ahmad',
+      email: 'bilal@example.com',
+      contact_number: '+65 9111 2222',
+      programme: ugandaProg.name,
+      programme_id: ugandaProg.id,
+      programme_country: ugandaProg.country,
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      delivery_portion: null,
+      quantity: 1,
+      total_amount: 165,
+      currency: 'SGD',
+      status: 'delivery_scheduled',
+      qurban_entries: [{ qurban_name_holder: 'Bilal Ahmad', delivery_portion: null }],
+    });
+
+    // 4. Verify DeliveriesPage render
+    const deliveriesHtml = store.renderScreen(<DeliveriesPage />);
+
+    // Segmentation tabs & cards present
+    expect(deliveriesHtml).toContain('AU – Palestine Deliveries');
+    expect(deliveriesHtml).toContain('Other AU Regions');
+    expect(deliveriesHtml).toContain('All Other Regions');
+    expect(deliveriesHtml).toContain('AU – SG Deliveries');
+
+    // AU - Palestine delivery rendering
+    expect(deliveriesHtml).toContain('ORD-10077');
+    expect(deliveriesHtml).toContain('AU → Palestine');
+    expect(deliveriesHtml).toContain('Portion: 1/3');
+
+    // Non-AU Uganda delivery rendering: displays "Non-AU (Local Distribution · No portion required)"
+    expect(deliveriesHtml).toContain('ORD-10066');
+    expect(deliveriesHtml).toContain('Uganda');
+    expect(deliveriesHtml).toContain('Non-AU (Local Distribution · No portion required)');
   });
 });

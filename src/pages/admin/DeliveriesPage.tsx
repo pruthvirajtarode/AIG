@@ -4,8 +4,13 @@ import { Search, MapPin, Truck, CheckCircle2, X, XCircle, Calendar } from 'lucid
 import { formatDate } from '@/lib/utils';
 import type { DeliveryStatus } from '@/lib/database.types';
 import { useToast } from '@/contexts/ToastContext';
-import { useAppData, type AppDelivery as Delivery } from '@/contexts/AppDataContext';
-import { formatDeliveryPortion, isAustraliaToSingaporeProgramme } from '@/lib/orderRules';
+import { useAppData, type AppDelivery as Delivery, type AppOrder, type AppAnimal } from '@/contexts/AppDataContext';
+import {
+  formatDeliveryPortion,
+  isAustraliaToSingaporeProgramme,
+  isAustraliaToPalestineProgramme,
+  isAustraliaOriginProgramme,
+} from '@/lib/orderRules';
 
 const DELIVERY_STATUS_BADGE: Record<DeliveryStatus, string> = {
   pending:         'badge-gray',
@@ -28,11 +33,13 @@ const DELIVERY_STATUS_LABEL: Record<DeliveryStatus, string> = {
 };
 
 
-function DeliveryModal({ delivery, onClose, onUpdateStatus, onUpdate }: {
+function DeliveryModal({ delivery, onClose, onUpdateStatus, onUpdate, orders, animals }: {
   delivery: Delivery;
   onClose: () => void;
   onUpdateStatus: (id: string, status: DeliveryStatus) => void;
   onUpdate: (id: string, patch: Partial<Delivery>) => void;
+  orders: AppOrder[];
+  animals: AppAnimal[];
 }) {
   const { toast } = useToast();
   const editable = !['delivered', 'cancelled'].includes(delivery.status);
@@ -41,6 +48,36 @@ function DeliveryModal({ delivery, onClose, onUpdateStatus, onUpdate }: {
   const [driver, setDriver] = useState(delivery.driver ?? '');
   const [phone, setPhone] = useState(delivery.contact_phone ?? '');
   const [address, setAddress] = useState(delivery.address.startsWith('Address not provided') ? '' : delivery.address);
+
+  const linkedOrder = orders.find(o => o.order_ref === delivery.order_ref);
+  const isAuSg = linkedOrder ? isAustraliaToSingaporeProgramme(linkedOrder.programme, linkedOrder.programme_country) : false;
+  const isAuPs = linkedOrder ? isAustraliaToPalestineProgramme(linkedOrder.programme, linkedOrder.programme_country) : false;
+  const isOtherAu = linkedOrder
+    ? isAustraliaOriginProgramme(linkedOrder.programme, linkedOrder.programme_country) && !isAuSg && !isAuPs
+    : false;
+  const isAuOrigin = isAuSg || isAuPs || isOtherAu;
+  const isNonAu = linkedOrder ? !isAuOrigin : false;
+
+  const orderAnimals = animals.filter(a => a.order_ref === delivery.order_ref && a.delivery_portion);
+  const portionLabel = (() => {
+    if (orderAnimals.length > 0) {
+      return orderAnimals
+        .map((a, idx) => {
+          const formatted = formatDeliveryPortion(a.delivery_portion);
+          const pLabel = (formatted === 'NIL' && isAuPs) ? 'NIL (Palestine)' : formatted;
+          return `${orderAnimals.length > 1 ? `Q${idx + 1}: ` : ''}${pLabel}`;
+        })
+        .join(' · ');
+    }
+    if (linkedOrder?.delivery_portion) {
+      const formatted = formatDeliveryPortion(linkedOrder.delivery_portion);
+      return (formatted === 'NIL' && isAuPs) ? 'NIL (Palestine)' : formatted;
+    }
+    if (isAuPs) {
+      return 'NIL (Palestine)';
+    }
+    return isAuOrigin ? 'Full' : '—';
+  })();
 
   const saveDetails = (thenSchedule: boolean) => {
     if (thenSchedule && (!scheduledDate || !address.trim())) {
@@ -69,7 +106,29 @@ function DeliveryModal({ delivery, onClose, onUpdateStatus, onUpdate }: {
         <div className="modal-header">
           <div>
             <div className="heading-md">Delivery Details</div>
-            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.125rem' }}>{delivery.delivery_ref} · Order {delivery.order_ref}</div>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.125rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <span>{delivery.delivery_ref} · Order {delivery.order_ref}</span>
+              {isAuSg && (
+                <span className="badge badge-green" style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem' }}>
+                  AU → SG
+                </span>
+              )}
+              {isAuPs && (
+                <span className="badge" style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem', background: 'rgba(167, 139, 250, 0.15)', color: '#c4b5fd', border: '1px solid rgba(167, 139, 250, 0.3)' }}>
+                  AU → Palestine
+                </span>
+              )}
+              {isOtherAu && (
+                <span className="badge" style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem', background: 'rgba(56, 189, 248, 0.15)', color: '#7dd3fc', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
+                  AU → {linkedOrder?.programme_country || 'Regional'}
+                </span>
+              )}
+              {isNonAu && (
+                <span className="badge badge-blue" style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem' }}>
+                  {linkedOrder?.programme_country || 'Non-AU'}
+                </span>
+              )}
+            </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span className={`badge ${DELIVERY_STATUS_BADGE[delivery.status]}`}>{DELIVERY_STATUS_LABEL[delivery.status]}</span>
@@ -78,26 +137,40 @@ function DeliveryModal({ delivery, onClose, onUpdateStatus, onUpdate }: {
         </div>
         <div className="modal-body">
           {editable ? (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="settings-grid-2">
-              <div className="form-group">
-                <label className="form-label" htmlFor="delivery-date">Scheduled Date *</label>
-                <input id="delivery-date" className="form-input" type="date" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} />
+            <div>
+              <div style={{ padding: '0.625rem 0.875rem', background: 'var(--surface-700)', borderRadius: 8, marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.8125rem' }}>
+                <div>
+                  <span style={{ color: 'var(--text-muted)' }}>Programme: </span>
+                  <span style={{ fontWeight: 500 }}>{linkedOrder?.programme || '—'}</span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)' }}>{isAuOrigin ? 'AU Factored Portion: ' : 'Distribution: '}</span>
+                  <span style={{ fontWeight: 600, color: isAuOrigin ? (isAuPs ? '#c4b5fd' : 'var(--gold-400)') : 'var(--text-secondary)' }}>
+                    {isAuOrigin ? portionLabel : 'Non-AU (Local Distribution · No portion required)'}
+                  </span>
+                </div>
               </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="delivery-slot">Time Slot</label>
-                <input id="delivery-slot" className="form-input" placeholder="e.g. 9am – 12pm" value={slot} onChange={e => setSlot(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="delivery-driver">Driver</label>
-                <input id="delivery-driver" className="form-input" placeholder="Driver name" value={driver} onChange={e => setDriver(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="delivery-phone">Recipient Phone</label>
-                <input id="delivery-phone" className="form-input" placeholder="+65 …" value={phone} onChange={e => setPhone(e.target.value)} />
-              </div>
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label className="form-label" htmlFor="delivery-address">Delivery Address *</label>
-                <textarea id="delivery-address" className="form-input" rows={2} style={{ resize: 'vertical' }} placeholder="Full delivery address" value={address} onChange={e => setAddress(e.target.value)} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="settings-grid-2">
+                <div className="form-group">
+                  <label className="form-label" htmlFor="delivery-date">Scheduled Date *</label>
+                  <input id="delivery-date" className="form-input" type="date" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="delivery-slot">Time Slot</label>
+                  <input id="delivery-slot" className="form-input" placeholder="e.g. 9am – 12pm" value={slot} onChange={e => setSlot(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="delivery-driver">Driver</label>
+                  <input id="delivery-driver" className="form-input" placeholder="Driver name" value={driver} onChange={e => setDriver(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="delivery-phone">Recipient Phone</label>
+                  <input id="delivery-phone" className="form-input" placeholder="+65 …" value={phone} onChange={e => setPhone(e.target.value)} />
+                </div>
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label" htmlFor="delivery-address">Delivery Address *</label>
+                  <textarea id="delivery-address" className="form-input" rows={2} style={{ resize: 'vertical' }} placeholder="Full delivery address" value={address} onChange={e => setAddress(e.target.value)} />
+                </div>
               </div>
             </div>
           ) : (
@@ -106,6 +179,24 @@ function DeliveryModal({ delivery, onClose, onUpdateStatus, onUpdate }: {
                 {([
                   ['Recipient', delivery.participant],
                   ['Phone', delivery.contact_phone || '—'],
+                  ['Order Ref', delivery.order_ref],
+                  ['Programme', linkedOrder?.programme || '—'],
+                  [
+                    'Route & Region',
+                    isAuSg
+                      ? 'AU → SG (Australia to Singapore)'
+                      : isAuPs
+                        ? 'AU → Palestine (Australia origin)'
+                        : isOtherAu
+                          ? `AU → ${linkedOrder?.programme_country || 'Regional'} (Australia origin)`
+                          : `${linkedOrder?.programme_country || 'International'} (Non-AU)`,
+                  ],
+                  [
+                    'Portion to Deliver',
+                    isAuOrigin
+                      ? portionLabel
+                      : 'Non-AU (Local Distribution · No portion required)',
+                  ],
                   ['Driver', delivery.driver || '—'],
                   ['Slot', delivery.delivery_slot || '—'],
                   ['Scheduled', delivery.scheduled_date ? formatDate(delivery.scheduled_date) : '—'],
@@ -160,6 +251,8 @@ function DeliveryModal({ delivery, onClose, onUpdateStatus, onUpdate }: {
   );
 }
 
+export type DeliveryRegionFilter = 'all' | 'au_sg' | 'au_ps' | 'other_au' | 'other';
+
 export function DeliveriesPage() {
   usePageTitle('Deliveries');
   const { toast } = useToast();
@@ -168,15 +261,57 @@ export function DeliveriesPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<Delivery | null>(null);
 
+  const getDeliveryOrder = useCallback((d: Delivery) => {
+    return orders.find(ord => ord.order_ref === d.order_ref);
+  }, [orders]);
+
+  const isAuSgDelivery = useCallback((d: Delivery) => {
+    const o = getDeliveryOrder(d);
+    return o ? isAustraliaToSingaporeProgramme(o.programme, o.programme_country) : false;
+  }, [getDeliveryOrder]);
+
+  const isAuPsDelivery = useCallback((d: Delivery) => {
+    const o = getDeliveryOrder(d);
+    return o ? isAustraliaToPalestineProgramme(o.programme, o.programme_country) : false;
+  }, [getDeliveryOrder]);
+
+  const isOtherAuDelivery = useCallback((d: Delivery) => {
+    const o = getDeliveryOrder(d);
+    if (!o) return false;
+    return (
+      isAustraliaOriginProgramme(o.programme, o.programme_country) &&
+      !isAustraliaToSingaporeProgramme(o.programme, o.programme_country) &&
+      !isAustraliaToPalestineProgramme(o.programme, o.programme_country)
+    );
+  }, [getDeliveryOrder]);
+
+  const isNonAuDelivery = useCallback((d: Delivery) => {
+    const o = getDeliveryOrder(d);
+    if (!o) return false;
+    return !isAustraliaOriginProgramme(o.programme, o.programme_country);
+  }, [getDeliveryOrder]);
+
   const portionsForOrder = (orderRef: string): string => {
+    const order = orders.find(o => o.order_ref === orderRef);
+    const isPal = order ? isAustraliaToPalestineProgramme(order.programme, order.programme_country) : false;
     const orderAnimals = animals.filter(a => a.order_ref === orderRef && a.delivery_portion);
     if (orderAnimals.length > 0) {
       return orderAnimals
-        .map((a, idx) => `${orderAnimals.length > 1 ? `Q${idx + 1}: ` : ''}${formatDeliveryPortion(a.delivery_portion)}`)
+        .map((a, idx) => {
+          const formatted = formatDeliveryPortion(a.delivery_portion);
+          const pLabel = (formatted === 'NIL' && isPal) ? 'NIL (Palestine)' : formatted;
+          return `${orderAnimals.length > 1 ? `Q${idx + 1}: ` : ''}${pLabel}`;
+        })
         .join(' · ');
     }
-    const order = orders.find(o => o.order_ref === orderRef);
-    return order?.delivery_portion ? formatDeliveryPortion(order.delivery_portion) : '—';
+    if (order?.delivery_portion) {
+      const formatted = formatDeliveryPortion(order.delivery_portion);
+      return (formatted === 'NIL' && isPal) ? 'NIL (Palestine)' : formatted;
+    }
+    if (isPal) {
+      return 'NIL (Palestine)';
+    }
+    return '—';
   };
 
   const updateStatus = (id: string, status: DeliveryStatus) => {
@@ -184,7 +319,7 @@ export function DeliveriesPage() {
   };
 
   const [showCancelled, setShowCancelled] = useState(false);
-  const [regionFilter, setRegionFilter] = useState<'all' | 'au_sg' | 'other'>('all');
+  const [regionFilter, setRegionFilter] = useState<DeliveryRegionFilter>('all');
 
   const isDeliveryCancelled = useCallback((d: Delivery) => {
     if (d.status === 'cancelled') return true;
@@ -193,15 +328,12 @@ export function DeliveriesPage() {
     return false;
   }, [orders]);
 
-  const isAuSgDelivery = useCallback((d: Delivery) => {
-    const o = orders.find(ord => ord.order_ref === d.order_ref);
-    return o ? isAustraliaToSingaporeProgramme(o.programme, o.programme_country) : false;
-  }, [orders]);
-
   const cancelledCount = deliveries.filter(isDeliveryCancelled).length;
   const liveDeliveries = deliveries.filter(d => !isDeliveryCancelled(d));
   const auSgDeliveries = liveDeliveries.filter(isAuSgDelivery);
-  const otherRegionDeliveries = liveDeliveries.filter(d => !isAuSgDelivery(d));
+  const auPsDeliveries = liveDeliveries.filter(isAuPsDelivery);
+  const otherAuDeliveries = liveDeliveries.filter(isOtherAuDelivery);
+  const otherRegionDeliveries = liveDeliveries.filter(isNonAuDelivery);
 
   const filtered = deliveries.filter(d => {
     const isCancelled = isDeliveryCancelled(d);
@@ -212,7 +344,9 @@ export function DeliveriesPage() {
       if (statusFilter && d.status !== statusFilter) return false;
     }
     if (regionFilter === 'au_sg' && !isAuSgDelivery(d)) return false;
-    if (regionFilter === 'other' && isAuSgDelivery(d)) return false;
+    if (regionFilter === 'au_ps' && !isAuPsDelivery(d)) return false;
+    if (regionFilter === 'other_au' && !isOtherAuDelivery(d)) return false;
+    if (regionFilter === 'other' && !isNonAuDelivery(d)) return false;
 
     const matchSearch = d.delivery_ref.toLowerCase().includes(search.toLowerCase())
       || d.participant.toLowerCase().includes(search.toLowerCase())
@@ -228,13 +362,15 @@ export function DeliveriesPage() {
           onClose={() => setSelected(null)}
           onUpdateStatus={updateStatus}
           onUpdate={updateDelivery}
+          orders={orders}
+          animals={animals}
         />
       )}
 
       <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Deliveries</h1>
-          <p className="page-subtitle">Track Australia to Singapore meat deliveries and international distributions</p>
+          <p className="page-subtitle">Track Australia origin meat deliveries (Singapore, Palestine &amp; regional) and international distributions</p>
         </div>
         <div className="page-header-actions" style={{ display: 'flex', gap: '0.75rem' }}>
           <button className="btn btn-secondary btn-sm"
@@ -261,12 +397,28 @@ export function DeliveriesPage() {
             isActive: regionFilter === 'au_sg',
           },
           {
-            label: 'Total Deliveries',
-            value: String(liveDeliveries.length),
-            sub: cancelledCount > 0 ? `+ ${cancelledCount} cancelled` : 'All programmes & regions',
-            color: 'var(--gold-400)',
-            onClick: () => { setRegionFilter('all'); setStatusFilter(''); },
-            isActive: regionFilter === 'all' && !statusFilter,
+            label: 'AU – Palestine Deliveries',
+            value: String(auPsDeliveries.length),
+            sub: 'Australia origin · Palestine & SG portion',
+            color: '#c4b5fd',
+            onClick: () => setRegionFilter(prev => prev === 'au_ps' ? 'all' : 'au_ps'),
+            isActive: regionFilter === 'au_ps',
+          },
+          ...(otherAuDeliveries.length > 0 ? [{
+            label: 'Other AU Regions',
+            value: String(otherAuDeliveries.length),
+            sub: 'Australia origin elsewhere · portion factored',
+            color: '#7dd3fc',
+            onClick: () => setRegionFilter(prev => prev === 'other_au' ? 'all' : 'other_au'),
+            isActive: regionFilter === 'other_au',
+          }] : []),
+          {
+            label: 'All Other Regions',
+            value: String(otherRegionDeliveries.length),
+            sub: 'Non-AU local distributions (No portion required)',
+            color: '#60a5fa',
+            onClick: () => setRegionFilter(prev => prev === 'other' ? 'all' : 'other'),
+            isActive: regionFilter === 'other',
           },
           {
             label: 'Active / Scheduled',
@@ -277,12 +429,12 @@ export function DeliveriesPage() {
             isActive: statusFilter === 'out_for_delivery',
           },
           {
-            label: 'All Other Regions',
-            value: String(otherRegionDeliveries.length),
-            sub: 'Indonesia & international local distribution',
-            color: '#60a5fa',
-            onClick: () => setRegionFilter(prev => prev === 'other' ? 'all' : 'other'),
-            isActive: regionFilter === 'other',
+            label: 'Total Deliveries',
+            value: String(liveDeliveries.length),
+            sub: cancelledCount > 0 ? `+ ${cancelledCount} cancelled` : 'All programmes & regions',
+            color: 'var(--gold-400)',
+            onClick: () => { setRegionFilter('all'); setStatusFilter(''); },
+            isActive: regionFilter === 'all' && !statusFilter,
           },
         ].map(s => (
           <div
@@ -324,6 +476,20 @@ export function DeliveriesPage() {
           onClick={() => setRegionFilter('au_sg')}
         >
           AU – SG Deliveries ({auSgDeliveries.length})
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm ${regionFilter === 'au_ps' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setRegionFilter('au_ps')}
+        >
+          AU – Palestine Deliveries ({auPsDeliveries.length})
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm ${regionFilter === 'other_au' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setRegionFilter('other_au')}
+        >
+          Other AU Regions ({otherAuDeliveries.length})
         </button>
         <button
           type="button"
@@ -394,6 +560,11 @@ export function DeliveriesPage() {
               ) : filtered.map(d => {
                 const linkedOrder = orders.find(o => o.order_ref === d.order_ref);
                 const isAuSg = isAuSgDelivery(d);
+                const isAuPs = isAuPsDelivery(d);
+                const isOtherAu = isOtherAuDelivery(d);
+                const isNonAu = isNonAuDelivery(d);
+                const isAuOrigin = isAuSg || isAuPs || isOtherAu;
+                const portionStr = portionsForOrder(d.order_ref);
                 return (
                   <tr key={d.id}>
                     <td><span style={{ fontFamily: 'monospace', fontSize: '0.8125rem', color: 'var(--aig-green-300)' }}>{d.delivery_ref}</span></td>
@@ -404,25 +575,36 @@ export function DeliveriesPage() {
                     <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', flexWrap: 'wrap' }}>
                         <span style={{ fontFamily: 'monospace', color: 'var(--aig-green-300)', fontWeight: 600 }}>{d.order_ref}</span>
-                        {isAuSg ? (
+                        {isAuSg && (
                           <span className="badge badge-green" style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem' }}>
                             AU → SG
                           </span>
-                        ) : (
+                        )}
+                        {isAuPs && (
+                          <span className="badge" style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem', background: 'rgba(167, 139, 250, 0.15)', color: '#c4b5fd', border: '1px solid rgba(167, 139, 250, 0.3)' }}>
+                            AU → Palestine
+                          </span>
+                        )}
+                        {isOtherAu && (
+                          <span className="badge" style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem', background: 'rgba(56, 189, 248, 0.15)', color: '#7dd3fc', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
+                            AU → {linkedOrder?.programme_country || 'Regional'}
+                          </span>
+                        )}
+                        {isNonAu && (
                           <span className="badge badge-blue" style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem' }}>
                             {linkedOrder?.programme_country || 'Other Region'}
                           </span>
                         )}
                       </div>
-                      {isAuSg ? (
-                        portionsForOrder(d.order_ref) !== '—' && (
-                          <div style={{ fontSize: '0.72rem', color: 'var(--gold-400)', marginTop: 2 }}>
-                            Portion: {portionsForOrder(d.order_ref)}
+                      {isAuOrigin ? (
+                        portionStr !== '—' && (
+                          <div style={{ fontSize: '0.72rem', color: isAuPs ? '#c4b5fd' : 'var(--gold-400)', marginTop: 2, fontWeight: 500 }}>
+                            Portion: {portionStr}
                           </div>
                         )
                       ) : (
                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                          Local Beneficiary Distribution
+                          Non-AU (Local Distribution · No portion required)
                         </div>
                       )}
                     </td>
