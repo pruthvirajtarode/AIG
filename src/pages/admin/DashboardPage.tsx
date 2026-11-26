@@ -94,18 +94,44 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
       <div style={{
-        background: 'var(--surface-800)',
-        border: '1px solid var(--border-default)',
+        background: '#0d1810',
+        border: '1px solid rgba(212, 168, 50, 0.35)',
+        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.65)',
         borderRadius: 8,
         padding: '0.5rem 0.875rem',
         fontSize: '0.8125rem',
       }}>
-        <div style={{ color: 'var(--text-muted)', marginBottom: 2 }}>{label}</div>
+        {label && <div style={{ color: 'var(--text-muted)', marginBottom: 4, fontWeight: 500 }}>{label}</div>}
         {payload.map((p: any, i: number) => (
-          <div key={i} style={{ color: p.color || 'var(--aig-green-300)', fontWeight: 600 }}>
-            {p.name === 'revenue' ? `SGD ${p.value.toLocaleString()}` : p.value}
+          <div key={i} style={{ color: p.color || 'var(--aig-green-300)', fontWeight: 700, fontSize: '0.875rem' }}>
+            {p.name === 'revenue' ? `SGD ${p.value.toLocaleString()}` : `${p.name && p.name !== 'orders' ? `${p.name}: ` : ''}${p.value} orders`}
           </div>
         ))}
+      </div>
+    );
+  }
+  return null;
+};
+
+const PieTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0];
+    const color = data.payload?.color || data.color || data.fill || 'var(--gold-400)';
+    return (
+      <div style={{
+        background: '#0d1810',
+        border: '1px solid rgba(212, 168, 50, 0.4)',
+        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.65)',
+        borderRadius: 8,
+        padding: '0.5rem 0.875rem',
+        fontSize: '0.8125rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+      }}>
+        <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0 }} />
+        <span style={{ color: '#ffffff', fontWeight: 600 }}>{data.name}:</span>
+        <span style={{ color: 'var(--gold-400)', fontWeight: 700 }}>{data.value}</span>
       </div>
     );
   }
@@ -358,7 +384,16 @@ export function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} tickFormatter={v => `${v/1000}k`} />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip
+                content={<CustomTooltip />}
+                contentStyle={{
+                  background: '#0d1810',
+                  border: '1px solid rgba(212, 168, 50, 0.35)',
+                  borderRadius: 8,
+                  color: '#ffffff',
+                }}
+                itemStyle={{ color: '#ffffff' }}
+              />
               <Area type="monotone" dataKey="revenue" stroke="var(--aig-green-400)" strokeWidth={2} fill="url(#revGrad)" />
             </AreaChart>
           </ResponsiveContainer>
@@ -384,9 +419,17 @@ export function DashboardPage() {
                 ))}
               </Pie>
               <Tooltip
-                formatter={(v: any, name: string) => [v, name]}
-                contentStyle={{ background: 'var(--surface-800)', border: '1px solid var(--border-default)', borderRadius: 8, fontSize: '0.8125rem' }}
-                labelStyle={{ color: 'var(--text-muted)' }}
+                content={<PieTooltip />}
+                contentStyle={{
+                  background: '#0d1810',
+                  border: '1px solid rgba(212, 168, 50, 0.4)',
+                  borderRadius: 8,
+                  color: '#ffffff',
+                  fontSize: '0.8125rem',
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.65)',
+                }}
+                itemStyle={{ color: '#ffffff', fontWeight: 600 }}
+                labelStyle={{ color: 'var(--gold-400)', fontWeight: 700 }}
               />
             </PieChart>
           </ResponsiveContainer>
@@ -413,7 +456,16 @@ export function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
               <XAxis dataKey="day" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip
+                content={<CustomTooltip />}
+                contentStyle={{
+                  background: '#0d1810',
+                  border: '1px solid rgba(212, 168, 50, 0.35)',
+                  borderRadius: 8,
+                  color: '#ffffff',
+                }}
+                itemStyle={{ color: '#ffffff' }}
+              />
               <Bar dataKey="orders" fill="var(--aig-green-600)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

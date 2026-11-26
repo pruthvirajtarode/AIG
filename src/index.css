@@ -1766,3 +1766,31 @@ h1, h2, h3, h4, h5, h6 {
     display: none;
   }
 }
+
+/* ── Recharts Tooltip Theme (high-contrast dark mode) ─────── */
+.recharts-default-tooltip {
+  background-color: #0d1810 !important;
+  border: 1px solid rgba(212, 168, 50, 0.45) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65) !important;
+  padding: 0.5rem 0.875rem !important;
+}
+
+.recharts-tooltip-label {
+  color: #f5f0e8 !important;
+  font-weight: 600 !important;
+  margin-bottom: 0.25rem !important;
+}
+
+.recharts-tooltip-item {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+.recharts-tooltip-item-name,
+.recharts-tooltip-item-separator,
+.recharts-tooltip-item-value {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
