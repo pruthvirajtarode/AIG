@@ -394,7 +394,7 @@ Deno.serve(async (req: Request) => {
     const textBody =
       body.body ||
       (variables.participant_name
-        ? `Assalamu Alaikum ${variables.participant_name}, update for Order ${orderRef || ''} (${variables.programme || ''}). Track status at: https://www.aigsuite.com/portal`
+        ? `Assalamu Alaikum ${variables.participant_name}, update for Order ${orderRef || ''} (${variables.programme || ''}). Track status at: ${variables.portal_url || `https://www.aigsuite.com/portal${orderRef ? `?order=${orderRef}` : ''}`}`
         : 'Assalamu Alaikum! Your Qurban notification from Al Ihsan Group is ready.');
 
     const textPayload = {

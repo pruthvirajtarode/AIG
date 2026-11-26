@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, ShoppingCart, CreditCard, Dog,
   Truck, Award, AlertTriangle, FileText, Settings,
   ChevronLeft, ChevronRight, BookOpen, Package, UserCheck,
-  Bell, LogOut, X,
+  Bell, LogOut, LogIn, X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppData } from '@/contexts/AppDataContext';
@@ -102,6 +102,8 @@ export function Sidebar({
   // Menu follows the section being viewed. Staff browsing /portal get the participant menu
   // plus a shortcut back to the admin panel.
   const inPortal = location.pathname.startsWith('/portal');
+  const searchParams = new URLSearchParams(location.search);
+  const portalOrderParam = inPortal ? (searchParams.get('order') || searchParams.get('ref') || '') : '';
   const showPortalNav = inPortal || (!!profile && !isStaff());
   const navGroups: NavGroup[] = showPortalNav
     ? [
@@ -113,7 +115,7 @@ export function Sidebar({
     : staffNav;
   const rootPath = showPortalNav ? '/portal' : '/admin';
   const fullName = `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim();
-  const displayName = fullName || (inPortal ? (profile?.email ?? '') : '');
+  const displayName = fullName || (inPortal ? (profile?.email || 'Participant') : '');
   const initials = (() => {
     if (fullName) {
       const parts = fullName.split(/\s+/).filter(Boolean);
@@ -122,7 +124,7 @@ export function Sidebar({
       }
       return parts[0].slice(0, 2).toUpperCase();
     }
-    return profile?.email?.charAt(0).toUpperCase() ?? 'U';
+    return profile?.email?.charAt(0).toUpperCase() ?? (inPortal ? 'P' : 'U');
   })();
 
   const handleNavClick = () => { if (onClose) onClose(); };
@@ -224,11 +226,14 @@ export function Sidebar({
               const isActive = item.path === '/portal' || item.path === '/admin'
                 ? location.pathname === item.path
                 : location.pathname.startsWith(item.path);
+              const targetPath = inPortal && portalOrderParam && item.path.startsWith('/portal')
+                ? `${item.path}?order=${encodeURIComponent(portalOrderParam)}`
+                : item.path;
 
               return (
                 <NavLink
                   key={item.path}
-                  to={item.path}
+                  to={targetPath}
                   className={`nav-item${isActive ? ' active' : ''}`}
                   title={collapsed ? item.label : undefined}
                   aria-current={isActive ? 'page' : undefined}
@@ -276,41 +281,68 @@ export function Sidebar({
           )}
         </div>
 
-        {/* Logout button — prominent red */}
-        <button
-          id="logout-btn"
-          type="button"
-          onClick={handleSignOut}
-          title={collapsed ? 'Sign Out' : undefined}
-          aria-label="Sign out"
-          style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.625rem',
-            padding: '0.625rem 0.75rem',
-            borderRadius: 8,
-            background: 'rgba(239,68,68,0.08)',
-            border: '1px solid rgba(239,68,68,0.2)',
-            color: '#f87171',
-            cursor: 'pointer',
-            fontSize: '0.875rem',
-            fontWeight: 600,
-            transition: 'all 0.18s ease',
-            justifyContent: collapsed ? 'center' : 'flex-start',
-          }}
-          onMouseEnter={e => {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.15)';
-            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(239,68,68,0.35)';
-          }}
-          onMouseLeave={e => {
-            (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.08)';
-            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(239,68,68,0.2)';
-          }}
-        >
-          <LogOut size={16} style={{ flexShrink: 0 }} />
-          {!collapsed && <span>Sign Out</span>}
-        </button>
+        {/* Logout or Staff Sign In button */}
+        {profile ? (
+          <button
+            id="logout-btn"
+            type="button"
+            onClick={handleSignOut}
+            title={collapsed ? 'Sign Out' : undefined}
+            aria-label="Sign out"
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.625rem',
+              padding: '0.625rem 0.75rem',
+              borderRadius: 8,
+              background: 'rgba(239,68,68,0.08)',
+              border: '1px solid rgba(239,68,68,0.2)',
+              color: '#f87171',
+              cursor: 'pointer',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              transition: 'all 0.18s ease',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.15)';
+              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(239,68,68,0.35)';
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.08)';
+              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(239,68,68,0.2)';
+            }}
+          >
+            <LogOut size={16} style={{ flexShrink: 0 }} />
+            {!collapsed && <span>Sign Out</span>}
+          </button>
+        ) : (
+          <Link
+            to="/login"
+            title={collapsed ? 'Staff Sign In' : undefined}
+            aria-label="Staff Sign In"
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.625rem',
+              padding: '0.625rem 0.75rem',
+              borderRadius: 8,
+              background: 'rgba(212,168,50,0.08)',
+              border: '1px solid rgba(212,168,50,0.25)',
+              color: 'var(--gold-400)',
+              textDecoration: 'none',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              transition: 'all 0.18s ease',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+            }}
+          >
+            <LogIn size={16} style={{ flexShrink: 0 }} />
+            {!collapsed && <span>Staff Sign In</span>}
+          </Link>
+        )}
       </div>
     </aside>
   );

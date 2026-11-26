@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { Bell, CheckCircle2, CreditCard, Truck, Award, AlertTriangle, Check, Download } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/utils';
@@ -57,8 +57,11 @@ export function PortalNotificationsPage() {
   usePageTitle('Notifications');
   const { user, profile, isStaff } = useAuth();
   const { orders, payments, animals, programmes, certificates, participants } = useAppData();
+  const [searchParams] = useSearchParams();
+  const orderParam = (searchParams.get('order') || searchParams.get('ref') || '').trim().toUpperCase();
   const [readIds, setReadIds] = useState<Set<string>>(() => new Set());
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const isStaffUser = Boolean(isStaff() || (profile?.role && profile.role !== 'participant'));
 
   const items = useMemo<PortalNotificationItem[]>(() => {
     const authEmail = normaliseEmail(profile?.email ?? user?.email);
@@ -67,13 +70,12 @@ export function PortalNotificationsPage() {
       ? participants.find(p => normaliseEmail(p.email) === authEmail)
       : undefined;
 
-    const isStaffUser = Boolean(isStaff() || (profile?.role && profile.role !== 'participant'));
-
     let myOrders = orders.filter(o => {
+      if (orderParam && o.order_ref.trim().toUpperCase() === orderParam) return true;
       if (matchedParticipant && o.participant_id === matchedParticipant.id) return true;
       if (authEmail && o.email && normaliseEmail(o.email) === authEmail) return true;
       if (matchedParticipant && normaliseName(o.participant) === normaliseName(participantFullName(matchedParticipant))) return true;
-      if (authName && authName !== 'demo admin' && normaliseName(o.participant) === authName) return true;
+      if (!isStaffUser && authName && authName !== 'demo admin' && normaliseName(o.participant) === authName) return true;
       return false;
     });
 
@@ -160,7 +162,7 @@ export function PortalNotificationsPage() {
     }
 
     return built.sort((a, b) => b.time.localeCompare(a.time));
-  }, [user, profile, orders, payments, animals, programmes, certificates, participants]);
+  }, [user, profile, orders, payments, animals, programmes, certificates, participants, orderParam, isStaffUser]);
 
   const unread = items.filter(n => !readIds.has(n.id)).length;
   const filtered = items.filter(n => filter === 'all' || !readIds.has(n.id));

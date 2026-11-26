@@ -49,7 +49,7 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
       }
       return parts[0].slice(0, 2).toUpperCase();
     }
-    return profile?.email?.charAt(0).toUpperCase() ?? 'U';
+    return profile?.email?.charAt(0).toUpperCase() ?? (inPortalMode ? 'P' : 'U');
   })();
 
   // Close popovers on outside click or Escape
@@ -378,7 +378,7 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <div className="avatar avatar-sm">{initials}</div>
         <span className="topbar-username" style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-          {profile?.first_name}
+          {profile?.first_name || (inPortalMode ? 'Participant' : '')}
         </span>
       </div>
     </header>

@@ -26,6 +26,7 @@ export function LoginPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [orderLookupRef, setOrderLookupRef] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -220,11 +221,57 @@ export function LoginPage() {
         <h2 style={{ fontSize: '1.625rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.375rem' }}>
           {isParticipantMode ? 'Participant Sign In' : 'Sign in'}
         </h2>
-        <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '2rem' }}>
+        <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: isParticipantMode ? '1.25rem' : '2rem' }}>
           {isParticipantMode
             ? 'Access your orders, certificates and notifications'
             : 'Enter your credentials to access the system'}
         </p>
+
+        {isParticipantMode && (
+          <div style={{
+            background: 'rgba(212,168,50,0.06)',
+            border: '1px solid rgba(212,168,50,0.22)',
+            borderRadius: 12,
+            padding: '1rem',
+            marginBottom: '1.5rem',
+          }}>
+            <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--gold-300)', marginBottom: '0.25rem' }}>
+              Have an Order Reference from WhatsApp?
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+              Track your order and download certificates immediately without signing in:
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                className="form-input"
+                style={{ flex: 1, fontSize: '0.875rem', fontFamily: 'monospace' }}
+                placeholder="e.g. ORD-10009"
+                value={orderLookupRef}
+                onChange={e => setOrderLookupRef(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (orderLookupRef.trim()) {
+                      navigate(`/portal?order=${encodeURIComponent(orderLookupRef.trim().toUpperCase())}`);
+                    }
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '0 0.875rem' }}
+                onClick={() => {
+                  if (orderLookupRef.trim()) {
+                    navigate(`/portal?order=${encodeURIComponent(orderLookupRef.trim().toUpperCase())}`);
+                  }
+                }}
+              >
+                Track
+              </button>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.125rem' }}>
           <div className="form-group">

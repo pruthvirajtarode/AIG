@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import {
   ShoppingCart, Award, Bell, CheckCircle2, Clock,
   ArrowRight, Calendar, MapPin, Download, Star, Heart, Eye,
+  Search, ShieldCheck, ChevronRight
 } from 'lucide-react';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -57,6 +58,7 @@ export function PortalDashboardPage() {
   usePageTitle('My Portal');
   const { user, profile, isStaff } = useAuth();
   const { orders, animals, programmes, participants, payments } = useAppData();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [greeting] = useState(() => {
     const h = new Date().getHours();
@@ -65,37 +67,81 @@ export function PortalDashboardPage() {
     return 'Good evening';
   });
 
-  const { displayParticipantName, portalOrders, isAdminPreview, unreadCount } = useMemo(() => {
-    const authEmail = normaliseEmail(profile?.email ?? user?.email);
-    const profileName = profile ? `${profile.first_name} ${profile.last_name}`.trim() : '';
-    const authName = normaliseName(profileName);
-    const matchedParticipant = authEmail
-      ? participants.find(p => normaliseEmail(p.email) === authEmail)
-      : undefined;
+  const orderQueryParam = (searchParams.get('order') || searchParams.get('ref') || '').trim().toUpperCase();
+  const [guestLookup, setGuestLookup] = useState('');
+  const [lookupError, setLookupError] = useState<string | null>(null);
 
-    let matchedOrders = orders.filter(o => {
-      if (matchedParticipant && o.participant_id === matchedParticipant.id) return true;
-      if (authEmail && o.email && normaliseEmail(o.email) === authEmail) return true;
-      if (matchedParticipant && normaliseName(o.participant) === normaliseName(participantFullName(matchedParticipant))) return true;
-      if (authName && authName !== 'demo admin' && normaliseName(o.participant) === authName) return true;
-      return false;
-    });
+  // Stored order in browser session (if participant previously opened or tracked an order)
+  const sessionOrderRef = typeof window !== 'undefined'
+    ? (sessionStorage.getItem('aigms_latest_created_order') || localStorage.getItem('aigms_tracked_order') || '').trim().toUpperCase()
+    : '';
 
-    const isStaffUser = Boolean(isStaff() || (profile?.role && profile.role !== 'participant'));
-    let isAdminPreview = false;
+  const isStaffUser = Boolean(isStaff() || (profile?.role && profile.role !== 'participant'));
+  const effectiveOrderRef = orderQueryParam || (!isStaffUser && !user ? sessionOrderRef : '');
 
-    // If an Admin/Staff member is previewing the portal and has no personal participant orders,
-    // show active 2026 Season orders for portal review instead of obsolete legacy mock data
-    if (matchedOrders.length === 0 && isStaffUser && orders.length > 0) {
-      matchedOrders = orders.filter(o => o.status !== 'cancelled');
-      isAdminPreview = true;
+  // Look up directly requested order
+  const directOrder = useMemo(() => {
+    if (!effectiveOrderRef) return undefined;
+    return orders.find(o => o.order_ref.trim().toUpperCase() === effectiveOrderRef);
+  }, [orders, effectiveOrderRef]);
+
+  const {
+    displayParticipantName,
+    portalOrders,
+    isAdminPreview,
+    isStaffViewingQueried,
+    unreadCount,
+  } = useMemo(() => {
+    let matchedOrders: typeof orders = [];
+    let resolvedName = 'Participant';
+    let adminPreview = false;
+    let staffViewingQueried = false;
+
+    // 1. Direct Order Query (from WhatsApp link ?order=ORD-XXXXX or guest order lookup)
+    if (directOrder) {
+      // Find orders matching this participant or email
+      matchedOrders = orders.filter(o => {
+        if (o.id === directOrder.id) return true;
+        if (directOrder.participant_id && o.participant_id === directOrder.participant_id) return true;
+        if (directOrder.email && o.email && normaliseEmail(o.email) === normaliseEmail(directOrder.email)) return true;
+        return false;
+      });
+      resolvedName = directOrder.participant || 'Participant';
+      if (isStaffUser) {
+        staffViewingQueried = true;
+      }
+    } else {
+      // 2. Profile matching for logged-in participants
+      const authEmail = normaliseEmail(profile?.email ?? user?.email);
+      const profileName = profile ? `${profile.first_name} ${profile.last_name}`.trim() : '';
+      const authName = normaliseName(profileName);
+      const matchedParticipant = authEmail
+        ? participants.find(p => normaliseEmail(p.email) === authEmail)
+        : undefined;
+
+      matchedOrders = orders.filter(o => {
+        if (matchedParticipant && o.participant_id === matchedParticipant.id) return true;
+        if (authEmail && o.email && normaliseEmail(o.email) === authEmail) return true;
+        if (matchedParticipant && normaliseName(o.participant) === normaliseName(participantFullName(matchedParticipant))) return true;
+        if (!isStaffUser && authName && authName !== 'demo admin' && normaliseName(o.participant) === authName) return true;
+        return false;
+      });
+
+      // 3. Staff previewing the portal without a specific queried order
+      if (matchedOrders.length === 0 && isStaffUser && orders.length > 0) {
+        // Sort active orders newest first so recently created orders appear first!
+        matchedOrders = orders
+          .filter(o => o.status !== 'cancelled')
+          .slice()
+          .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        adminPreview = true;
+        resolvedName = 'Participant Portal Preview';
+      } else if (matchedParticipant) {
+        resolvedName = participantFullName(matchedParticipant);
+      } else if (profileName && authName !== 'demo admin' && !isStaffUser) {
+        resolvedName = profileName;
+      }
     }
-
-    const resolvedName = matchedParticipant
-      ? participantFullName(matchedParticipant)
-      : profileName && authName !== 'demo admin'
-        ? profileName
-        : 'Participant';
 
     const mapped = matchedOrders.map(o => {
       const prog = programmes.find(p => (o.programme_id && p.id === o.programme_id) || normaliseName(p.name) === normaliseName(o.programme));
@@ -114,23 +160,50 @@ export function PortalDashboardPage() {
       };
     });
 
-    // Compute unread notification count matching active order milestones
     const unread = mapped.reduce((acc, o) => {
       let count = 0;
-      if (o.status !== 'draft') count += 1; // Order Confirmation & Invoice
-      if (o.status === 'completed' || o.status === 'certificate_generated') count += 3; // Payment, Status Update, Certificate Ready
+      if (o.status !== 'draft') count += 1;
+      if (o.status === 'completed' || o.status === 'certificate_generated') count += 3;
       else if (o.status !== 'pending_payment') count += 1;
       return acc + count;
     }, 0);
 
-    return { displayParticipantName: resolvedName, portalOrders: mapped, isAdminPreview, unreadCount: unread };
-  }, [user, profile, isStaff, orders, animals, programmes, participants, payments]);
+    return {
+      displayParticipantName: resolvedName,
+      portalOrders: mapped,
+      isAdminPreview: adminPreview,
+      isStaffViewingQueried: staffViewingQueried,
+      unreadCount: unread,
+    };
+  }, [directOrder, user, profile, isStaffUser, orders, animals, programmes, participants]);
 
   const totalOrders = portalOrders.length;
   const isOrderCompleted = (status: OrderStatus) => status === 'completed' || status === 'certificate_generated';
   const completedOrders = portalOrders.filter(o => isOrderCompleted(o.status)).length;
   const inProgressOrders = portalOrders.filter(o => !isOrderCompleted(o.status) && o.status !== 'cancelled').length;
   const totalSpent = portalOrders.reduce((a, o) => a + o.total_amount, 0);
+
+  const activeQueryOrder = directOrder ? directOrder.order_ref : orderQueryParam;
+  const navParamSuffix = activeQueryOrder ? `?order=${encodeURIComponent(activeQueryOrder)}` : '';
+
+  const handleLookupSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = guestLookup.trim().toUpperCase();
+    if (!clean) return;
+    const matched = orders.find(
+      o =>
+        o.order_ref.trim().toUpperCase() === clean ||
+        (o.contact_number && o.contact_number.replace(/\D/g, '').endsWith(clean.replace(/\D/g, ''))) ||
+        (o.email && o.email.trim().toLowerCase() === clean.toLowerCase()),
+    );
+    if (matched) {
+      setLookupError(null);
+      localStorage.setItem('aigms_tracked_order', matched.order_ref);
+      setSearchParams({ order: matched.order_ref });
+    } else {
+      setLookupError(`No active order found matching "${clean}". Please verify your order number (e.g. ORD-10009).`);
+    }
+  };
 
   return (
     <div className="page-content animate-fadeInUp">
@@ -167,13 +240,13 @@ export function PortalDashboardPage() {
 
           {/* Quick action buttons */}
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <Link to="/portal/orders" className="btn btn-primary" style={{ gap: '0.5rem' }}>
+            <Link to={`/portal/orders${navParamSuffix}`} className="btn btn-primary" style={{ gap: '0.5rem' }}>
               <ShoppingCart size={15} /> My Orders
             </Link>
-            <Link to="/portal/certificates" className="btn btn-secondary" style={{ gap: '0.5rem' }}>
+            <Link to={`/portal/certificates${navParamSuffix}`} className="btn btn-secondary" style={{ gap: '0.5rem' }}>
               <Award size={15} /> Certificates
             </Link>
-            <Link to="/portal/notifications" className="btn btn-ghost" style={{ gap: '0.5rem', position: 'relative' }}>
+            <Link to={`/portal/notifications${navParamSuffix}`} className="btn btn-ghost" style={{ gap: '0.5rem', position: 'relative' }}>
               <Bell size={15} />
               Notifications
               {unreadCount > 0 && (
@@ -192,23 +265,91 @@ export function PortalDashboardPage() {
         </div>
       </div>
 
-      {isAdminPreview && (
+      {/* ── Staff Preview Notice (when staff member clicked an order-specific tracking link) ── */}
+      {isStaffViewingQueried && directOrder && (
         <div style={{
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'space-between',
           gap: '0.65rem',
-          background: 'rgba(212,168,50,0.1)',
-          border: '1px solid rgba(212,168,50,0.3)',
+          background: 'rgba(34,197,94,0.1)',
+          border: '1px solid rgba(34,197,94,0.3)',
           padding: '0.75rem 1rem',
           borderRadius: 10,
           marginBottom: '1.5rem',
           fontSize: '0.8125rem',
-          color: 'var(--gold-300)',
+          color: 'var(--success)',
+          flexWrap: 'wrap',
         }}>
-          <Eye size={17} style={{ flexShrink: 0 }} />
-          <span>
-            <strong>Admin Portal Review Mode:</strong> Signed in as management. Displaying active <strong>2026 Season orders</strong> (ORD-10001 to ORD-10006) for participant experience verification.
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <ShieldCheck size={17} style={{ flexShrink: 0 }} />
+            <span>
+              <strong>Staff Preview:</strong> Showing live tracking portal for participant <strong>{directOrder.participant}</strong> (Order <code>{directOrder.order_ref}</code>).
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button
+              type="button"
+              className="btn btn-xs btn-ghost"
+              onClick={() => setSearchParams({})}
+            >
+              All Orders
+            </button>
+            <Link to="/admin/orders" className="btn btn-xs btn-outline-green" style={{ textDecoration: 'none' }}>
+              Back to Admin Orders
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* ── Admin Portal Review Mode Banner (with dynamic order switcher) ── */}
+      {isAdminPreview && (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.75rem',
+          background: 'rgba(212,168,50,0.08)',
+          border: '1px solid rgba(212,168,50,0.25)',
+          padding: '0.875rem 1.125rem',
+          borderRadius: 12,
+          marginBottom: '1.5rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem', color: 'var(--gold-300)' }}>
+              <Eye size={17} style={{ flexShrink: 0 }} />
+              <span>
+                <strong>Admin Portal Review Mode:</strong> Signed in as management. Showing active <strong>2026 Season orders</strong> ({orders.length} total) for participant experience verification.
+              </span>
+            </div>
+            <Link to="/admin/orders" className="btn btn-xs btn-outline-green" style={{ textDecoration: 'none' }}>
+              Go to Admin Orders
+            </Link>
+          </div>
+
+          {orders.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap', fontSize: '0.8125rem' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Preview specific order:</span>
+              <select
+                className="form-input form-input-sm"
+                style={{ maxWidth: 380, background: '#0a0a0a', borderColor: 'rgba(212,168,50,0.3)', color: '#f5f0e8' }}
+                value={orderQueryParam}
+                onChange={e => {
+                  if (e.target.value) {
+                    setSearchParams({ order: e.target.value });
+                  } else {
+                    setSearchParams({});
+                  }
+                }}
+              >
+                <option value="">All Active Orders (Overview)</option>
+                {orders.map(o => (
+                  <option key={o.id} value={o.order_ref}>
+                    {o.order_ref} — {o.participant} ({o.programme})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
@@ -239,43 +380,52 @@ export function PortalDashboardPage() {
         {/* Left: Recent Orders */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-            <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>My Orders</div>
-            {portalOrders.length > 0 && (
-              <Link to="/portal/orders" className="btn btn-ghost btn-sm" style={{ gap: '0.375rem' }}>
-                View All <ArrowRight size={13} />
-              </Link>
-            )}
+            <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
+              Active Qurban Registrations
+            </div>
+            <Link to={`/portal/orders${navParamSuffix}`} style={{ fontSize: '0.8125rem', color: 'var(--aig-green-400)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              View all <ArrowRight size={14} />
+            </Link>
           </div>
 
           {portalOrders.length === 0 ? (
-            <div className="card" style={{ textAlign: 'center', padding: '2.5rem 1.5rem' }}>
-              <div style={{
-                width: 48, height: 48, borderRadius: '50%', background: 'var(--surface-700)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem',
-              }}>
-                <ShoppingCart size={22} color="var(--text-muted)" />
+            <div className="card" style={{ padding: '2rem 1.5rem', textAlign: 'center' }}>
+              <ShoppingCart size={36} color="var(--text-muted)" style={{ margin: '0 auto 0.75rem' }} />
+              <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-primary)', marginBottom: '0.35rem' }}>
+                Track Your Qurban &amp; Aqiqah Order
               </div>
-              <div className="heading-md" style={{ marginBottom: '0.4rem' }}>No Active Orders Found</div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem', maxWidth: 380, margin: '0 auto 1.25rem', lineHeight: 1.5 }}>
-                You have no active Qurban or Aqiqah registrations for the 2026 Season yet. Once your order is created, livestock tracking and digital certificates will appear here.
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', maxWidth: 420, margin: '0 auto 1.25rem' }}>
+                Enter your Order Reference (e.g. ORD-10009) or Registered Phone Number to view your booking, status, and download certificates.
               </p>
-              <a
-                href={`https://wa.me/6585456783?text=${encodeURIComponent('Assalamu Alaikum, I would like to inquire about Qurban 2026 registrations.')}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn btn-secondary btn-sm"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
-              >
-                Inquire on WhatsApp ({OFFICIAL_WHATSAPP_DISPLAY})
-              </a>
+              <form onSubmit={handleLookupSubmit} style={{ maxWidth: 420, margin: '0 auto', display: 'flex', gap: '0.5rem' }}>
+                <input
+                  id="portal-lookup-input"
+                  className="form-input"
+                  style={{ flex: 1, fontFamily: 'monospace' }}
+                  placeholder="e.g. ORD-10009"
+                  value={guestLookup}
+                  onChange={e => {
+                    setGuestLookup(e.target.value);
+                    if (lookupError) setLookupError(null);
+                  }}
+                />
+                <button type="submit" className="btn btn-primary" style={{ padding: '0 1rem' }}>
+                  Track
+                </button>
+              </form>
+              {lookupError && (
+                <div style={{ color: 'var(--danger)', fontSize: '0.8125rem', marginTop: '0.75rem' }}>
+                  {lookupError}
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
               {portalOrders.map(order => (
                 <Link
                   key={order.id}
-                  to="/portal/orders"
-                  style={{ textDecoration: 'none', display: 'block' }}
+                  to={`/portal/orders?order=${encodeURIComponent(order.order_ref)}`}
+                  style={{ textDecoration: 'none', color: 'inherit' }}
                 >
                   <div className="card card-hover" style={{ cursor: 'pointer' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -316,7 +466,7 @@ export function PortalDashboardPage() {
                     {/* Certificate download for completed orders */}
                     {isOrderCompleted(order.status) && (
                       <div style={{ marginTop: '1rem', paddingTop: '0.875rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <Link to={`/portal/certificates?order=${order.order_ref}`} className="btn btn-outline-green btn-sm" style={{ gap: '0.375rem' }} onClick={e => e.stopPropagation()}>
+                        <Link to={`/portal/certificates?order=${encodeURIComponent(order.order_ref)}`} className="btn btn-outline-green btn-sm" style={{ gap: '0.375rem' }} onClick={e => e.stopPropagation()}>
                           <Download size={13} /> Download Certificate
                         </Link>
                         <div style={{ fontSize: '0.8125rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>

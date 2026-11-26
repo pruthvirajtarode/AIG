@@ -1247,7 +1247,7 @@ class NotificationService {
     emailProviderRef?: string;
     idempotencyKey: string;
   }> {
-    const portalOrdersUrl = `${this.portalBaseUrl}/portal/orders`;
+    const portalOrdersUrl = `${this.portalBaseUrl}/portal?order=${encodeURIComponent(params.orderRef)}`;
     const invoiceIdempotencyKey = `invoice:${params.orderRef}`;
     let emailSent = false;
     let emailTrulySubmitted = false;
@@ -1339,7 +1339,7 @@ class NotificationService {
     amountFormatted: string;
     reason?: string;
   }): Promise<NotificationResult> {
-    const portalOrdersUrl = `${this.portalBaseUrl}/portal/orders`;
+    const portalOrdersUrl = `${this.portalBaseUrl}/portal?order=${encodeURIComponent(params.orderRef)}`;
     const eventType: NotificationEventType =
       params.status === 'verified'
         ? 'payment.verified'
@@ -1386,7 +1386,7 @@ class NotificationService {
     animalCode?: string;
     scheduledDate?: string;
   }): Promise<NotificationResult> {
-    const portalOrdersUrl = `${this.portalBaseUrl}/portal/orders`;
+    const portalOrdersUrl = `${this.portalBaseUrl}/portal?order=${encodeURIComponent(params.orderRef)}`;
     const lower = params.statusLabel.toLowerCase();
 
     let eventType: NotificationEventType = 'qurban.completed';
@@ -1427,7 +1427,7 @@ class NotificationService {
     qurbanHolder: string;
     weightKg: number;
   }): Promise<NotificationResult> {
-    const portalOrdersUrl = `${this.portalBaseUrl}/portal/orders`;
+    const portalOrdersUrl = `${this.portalBaseUrl}/portal/orders?order=${encodeURIComponent(params.orderRef)}`;
     return this.sendWhatsAppWithEmailFallback({
       recipient: params.recipient,
       eventType: 'breeding.weight_update',
@@ -1461,7 +1461,7 @@ class NotificationService {
     certificateRef: string;
     programme: string;
   }): Promise<NotificationResult> {
-    const portalCertUrl = `${this.portalBaseUrl}/portal/certificates`;
+    const portalCertUrl = `${this.portalBaseUrl}/portal/certificates?order=${encodeURIComponent(params.orderRef)}`;
     return this.sendWhatsAppWithEmailFallback({
       recipient: params.recipient,
       eventType: 'certificate.ready',
@@ -1529,7 +1529,7 @@ class NotificationService {
     dueDate: string;
   }): Promise<NotificationResult> {
     const remaining = Math.max(0, params.totalCount - params.paidCount);
-    const portalOrdersUrl = `${this.portalBaseUrl}/portal/orders`;
+    const portalOrdersUrl = `${this.portalBaseUrl}/portal?order=${encodeURIComponent(params.orderRef)}`;
     const progressLabel = `${params.nextInstallmentNumber} of ${params.totalCount} (${remaining} remaining)`;
     const dueLabel = params.dueDate.slice(0, 10);
 

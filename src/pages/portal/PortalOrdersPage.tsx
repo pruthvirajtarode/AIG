@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { ShoppingCart, Clock, CheckCircle2, ChevronDown, ChevronUp, Download, Eye, Weight } from 'lucide-react';
+import { ShoppingCart, Clock, CheckCircle2, ChevronDown, ChevronUp, Download, Eye, Weight, ShieldCheck } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { OrderStatus } from '@/lib/database.types';
@@ -74,8 +74,10 @@ export function PortalOrdersPage() {
   usePageTitle('My Orders');
   const { user, profile, isStaff } = useAuth();
   const { orders, animals, programmes, participants, certificates } = useAppData();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const isStaffUser = Boolean(isStaff() || (profile?.role && profile.role !== 'participant'));
+  const orderParam = (searchParams.get('order') || searchParams.get('ref') || '').trim().toUpperCase();
 
   const participantOrders = useMemo<PortalOrderView[]>(() => {
     const authEmail = normaliseEmail(profile?.email ?? user?.email);
@@ -84,16 +86,29 @@ export function PortalOrdersPage() {
       ? participants.find(p => normaliseEmail(p.email) === authEmail)
       : undefined;
 
+    const queriedOrder = orderParam
+      ? orders.find(o => o.order_ref.trim().toUpperCase() === orderParam)
+      : undefined;
+
     let realOrders = orders.filter(o => {
+      if (queriedOrder && o.id === queriedOrder.id) return true;
+      if (queriedOrder && queriedOrder.participant_id && o.participant_id === queriedOrder.participant_id) return true;
       if (matchedParticipant && o.participant_id === matchedParticipant.id) return true;
       if (authEmail && o.email && normaliseEmail(o.email) === authEmail) return true;
       if (matchedParticipant && normaliseName(o.participant) === normaliseName(participantFullName(matchedParticipant))) return true;
-      if (authName && authName !== 'demo admin' && normaliseName(o.participant) === authName) return true;
+      if (!isStaffUser && authName && authName !== 'demo admin' && normaliseName(o.participant) === authName) return true;
       return false;
     });
 
-    if (realOrders.length === 0 && isStaffUser && orders.length > 0) {
+    if (realOrders.length === 0 && queriedOrder) {
+      realOrders = [queriedOrder];
+    } else if (realOrders.length === 0 && isStaffUser && orders.length > 0) {
       realOrders = orders.filter(o => o.status !== 'cancelled');
+    }
+
+    // If an order was specifically queried, ensure it is first in the list
+    if (queriedOrder && realOrders.length > 1) {
+      realOrders = [queriedOrder, ...realOrders.filter(o => o.id !== queriedOrder.id)];
     }
 
     return realOrders.map(o => {
@@ -143,9 +158,22 @@ export function PortalOrdersPage() {
         ],
       };
     });
-  }, [user, profile, orders, animals, programmes, participants, certificates]);
+  }, [user, profile, orders, animals, programmes, participants, certificates, orderParam, isStaffUser]);
 
-  const [expandedId, setExpandedId] = useState<string | null>(() => participantOrders[0]?.id ?? null);
+  const [expandedId, setExpandedId] = useState<string | null>(() => {
+    if (orderParam) {
+      const match = participantOrders.find(o => o.order_ref.trim().toUpperCase() === orderParam);
+      if (match) return match.id;
+    }
+    return participantOrders[0]?.id ?? null;
+  });
+
+  useEffect(() => {
+    if (orderParam && participantOrders.length > 0) {
+      const match = participantOrders.find(o => o.order_ref.trim().toUpperCase() === orderParam);
+      if (match) setExpandedId(match.id);
+    }
+  }, [orderParam, participantOrders]);
 
   return (
     <div className="page-content animate-fadeInUp">
@@ -153,6 +181,43 @@ export function PortalOrdersPage() {
         <h1 className="page-title">My Orders</h1>
         <p className="page-subtitle">Track your Qurban orders and progress</p>
       </div>
+
+      {/* Staff Preview notice */}
+      {isStaffUser && orderParam && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.65rem',
+          background: 'rgba(34,197,94,0.1)',
+          border: '1px solid rgba(34,197,94,0.3)',
+          padding: '0.75rem 1rem',
+          borderRadius: 10,
+          marginBottom: '1.5rem',
+          fontSize: '0.8125rem',
+          color: 'var(--success)',
+          flexWrap: 'wrap',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <ShieldCheck size={17} style={{ flexShrink: 0 }} />
+            <span>
+              <strong>Staff Preview:</strong> Showing order details for Order <code>{orderParam}</code>.
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button
+              type="button"
+              className="btn btn-xs btn-ghost"
+              onClick={() => setSearchParams({})}
+            >
+              All Orders
+            </button>
+            <Link to="/admin/orders" className="btn btn-xs btn-outline-green" style={{ textDecoration: 'none' }}>
+              Back to Admin Orders
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>

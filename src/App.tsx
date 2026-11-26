@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
-import { Routes, Route, Navigate, useParams, useNavigate, Link } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { AppDataProvider, useAppData } from '@/contexts/AppDataContext';
@@ -151,16 +151,41 @@ function RequireStaff({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function RequireParticipant({ children }: { children: React.ReactNode }) {
+function RequirePortalAccess({ children }: { children: React.ReactNode }) {
   const { isParticipant, isStaff, isLoading, isAuthenticated, profileFetchAttempted } = useAuth();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const orderParam = searchParams.get('order') || searchParams.get('ref');
 
+  // Still initialising
   if (isLoading) return <AuthLoader message="Loading…" />;
   if (isAuthenticated && !profileFetchAttempted) return <AuthLoader message="Loading profile…" />;
 
-  // No usable role (profile missing) — go back to login instead of bouncing between /admin and /portal
-  if (!isParticipant() && !isStaff()) return <Navigate to="/login" replace />;
+  // 1. Direct order tracking via query param (e.g. ?order=ORD-10009 from WhatsApp / Email):
+  // Allow seamless access to portal without requiring password / email sign in
+  if (orderParam) {
+    return <>{children}</>;
+  }
 
-  return <>{children}</>;
+  // 2. Direct order tracking from recently active order in browser session
+  const storedOrder = typeof window !== 'undefined'
+    ? (sessionStorage.getItem('aigms_latest_created_order') || localStorage.getItem('aigms_tracked_order'))
+    : null;
+  if (storedOrder && location.pathname.startsWith('/portal')) {
+    return <>{children}</>;
+  }
+
+  // 3. Authenticated participant or staff user previewing portal:
+  if (isAuthenticated && (isParticipant() || isStaff())) {
+    return <>{children}</>;
+  }
+
+  // 4. Not authenticated: allow portal to render tracking lookup directly
+  if (!isAuthenticated) {
+    return <>{children}</>;
+  }
+
+  return <Navigate to="/login?mode=participant" replace />;
 }
 
 // ── Page-level Lazy Load Fallback ─────────────────────────────
@@ -406,11 +431,9 @@ export default function App() {
           <Route
             path="/portal"
             element={
-              <RequireAuth>
-                <RequireParticipant>
-                  <AppLayout />
-                </RequireParticipant>
-              </RequireAuth>
+              <RequirePortalAccess>
+                <AppLayout />
+              </RequirePortalAccess>
             }
           >
             <Route index element={<PortalDashboardPage />} />

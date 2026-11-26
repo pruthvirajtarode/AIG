@@ -775,6 +775,12 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
         status: initialStatus,
         qurban_entries: preparedEntries,
       });
+      if (typeof window !== 'undefined') {
+        try {
+          sessionStorage.setItem('aigms_latest_created_order', created.order_ref);
+          localStorage.setItem('aigms_tracked_order', created.order_ref);
+        } catch {}
+      }
       toast(
         'success',
         'Order created!',

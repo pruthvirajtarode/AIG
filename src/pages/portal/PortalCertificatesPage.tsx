@@ -53,6 +53,7 @@ export function PortalCertificatesPage() {
   usePageTitle('My Certificates');
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
+  const orderParam = (searchParams.get('order') || searchParams.get('ref') || '').trim().toUpperCase();
   const { user, profile, isStaff } = useAuth();
   const { orders, participants, certificates } = useAppData();
   const [selected, setSelected] = useState<Certificate | null>(null);
@@ -67,14 +68,19 @@ export function PortalCertificatesPage() {
     const myOrderRefs = new Set(
       orders
         .filter(o => {
+          if (orderParam && o.order_ref.trim().toUpperCase() === orderParam) return true;
           if (matchedParticipant && o.participant_id === matchedParticipant.id) return true;
           if (authEmail && o.email && normaliseEmail(o.email) === authEmail) return true;
           if (matchedParticipant && normaliseName(o.participant) === normaliseName(participantFullName(matchedParticipant))) return true;
           if (authName && authName !== 'demo admin' && normaliseName(o.participant) === authName) return true;
           return false;
         })
-        .map(o => o.order_ref),
+        .map(o => o.order_ref.toUpperCase()),
     );
+
+    if (orderParam) {
+      myOrderRefs.add(orderParam);
+    }
 
     const isStaffUser = Boolean(isStaff() || (profile?.role && profile.role !== 'participant'));
 
@@ -85,14 +91,13 @@ export function PortalCertificatesPage() {
     if (myOrderRefs.size === 0) return [];
 
     return certificates.filter(
-      c => myOrderRefs.has(c.order_ref) && ['generated', 'sent', 'regenerated'].includes(c.status),
+      c => myOrderRefs.has(c.order_ref.toUpperCase()) && ['generated', 'sent', 'regenerated'].includes(c.status),
     );
-  }, [user, profile, isStaff, orders, participants, certificates]);
+  }, [user, profile, isStaff, orders, participants, certificates, orderParam]);
 
-  const orderParam = searchParams.get('order');
   useEffect(() => {
     if (orderParam && participantCerts.length > 0) {
-      const match = participantCerts.find(c => c.order_ref === orderParam);
+      const match = participantCerts.find(c => c.order_ref.trim().toUpperCase() === orderParam);
       if (match) setSelected(match);
     }
   }, [orderParam, participantCerts]);
