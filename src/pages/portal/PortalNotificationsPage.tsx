@@ -1,17 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { Bell, CheckCircle2, CreditCard, Truck, Award, AlertTriangle, Check, Download } from 'lucide-react';
+import { Bell, CheckCircle2, CreditCard, Truck, Award, AlertTriangle, Check, Download, LogOut } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/utils';
-import { useAuth } from '@/contexts/AuthContext';
 import { useAppData } from '@/contexts/AppDataContext';
+import { usePortalSession } from '@/hooks/usePortalSession';
+import { ParticipantSignInCard } from '@/components/portal/ParticipantSignInCard';
 import { getStatusLabel } from '@/lib/statusEngine';
 import {
   OFFICIAL_WHATSAPP_DISPLAY,
   isBreedingProgramme,
-  normaliseEmail,
-  normaliseName,
-  participantFullName,
 } from '@/lib/orderRules';
 
 type NotifType = 'info' | 'success' | 'warning' | 'payment' | 'delivery' | 'certificate';
@@ -55,38 +53,27 @@ const NOTIF_BG: Record<NotifType, string> = {
 
 export function PortalNotificationsPage() {
   usePageTitle('Notifications');
-  const { user, profile, isStaff } = useAuth();
-  const { orders, payments, animals, programmes, certificates, participants } = useAppData();
-  const [searchParams] = useSearchParams();
-  const orderParam = (searchParams.get('order') || searchParams.get('ref') || '').trim().toUpperCase();
+  const { payments, animals, programmes, certificates } = useAppData();
   const [readIds, setReadIds] = useState<Set<string>>(() => new Set());
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
-  const isStaffUser = Boolean(isStaff() || (profile?.role && profile.role !== 'participant'));
+
+  const {
+    sessionEmail,
+    sessionOrderRef,
+    participantName,
+    matchedOrders,
+    isSignedIn,
+    isStaffUser,
+    isStaffPreview,
+    signIn,
+    signOut,
+  } = usePortalSession();
 
   const items = useMemo<PortalNotificationItem[]>(() => {
-    const authEmail = normaliseEmail(profile?.email ?? user?.email);
-    const authName = normaliseName(profile ? `${profile.first_name} ${profile.last_name}` : '');
-    const matchedParticipant = authEmail
-      ? participants.find(p => normaliseEmail(p.email) === authEmail)
-      : undefined;
-
-    let myOrders = orders.filter(o => {
-      if (orderParam && o.order_ref.trim().toUpperCase() === orderParam) return true;
-      if (matchedParticipant && o.participant_id === matchedParticipant.id) return true;
-      if (authEmail && o.email && normaliseEmail(o.email) === authEmail) return true;
-      if (matchedParticipant && normaliseName(o.participant) === normaliseName(participantFullName(matchedParticipant))) return true;
-      if (!isStaffUser && authName && authName !== 'demo admin' && normaliseName(o.participant) === authName) return true;
-      return false;
-    });
-
-    if (myOrders.length === 0 && isStaffUser && orders.length > 0) {
-      myOrders = orders.filter(o => o.status !== 'cancelled');
-    }
-
-    if (myOrders.length === 0) return [];
+    if (matchedOrders.length === 0) return [];
 
     const built: PortalNotificationItem[] = [];
-    for (const o of myOrders) {
+    for (const o of matchedOrders) {
       if (o.confirmation_email_sent_at || o.status !== 'draft') {
         built.push({
           id: `ord-inv-${o.id}`,
@@ -130,81 +117,162 @@ export function PortalNotificationsPage() {
         });
       }
 
-      const prog = programmes.find(p => (o.programme_id && p.id === o.programme_id) || normaliseName(p.name) === normaliseName(o.programme));
-      if (isBreedingProgramme(o.programme, prog?.supports_weight_timeline)) {
-        const orderAnimals = animals.filter(a => a.order_ref === o.order_ref);
-        for (const a of orderAnimals) {
-          for (const [wi, w] of (a.weight_history ?? []).entries()) {
-            built.push({
-              id: `wt-${a.id}-${wi}`,
-              type: 'info',
-              title: `Breeding Weight Update — ${a.animal_code || a.animal_ref}`,
-              body: `${a.qurban_name_holder || o.participant}'s animal (${a.animal_code || a.animal_ref}) recorded ${w.weight_kg} kg${w.notes ? ` (${w.notes})` : ''}.`,
-              time: w.recorded_at,
-              channelLabel: `WhatsApp (${OFFICIAL_WHATSAPP_DISPLAY}) · Email fallback`,
-            });
-          }
+      const linkedAnimal = animals.find(a => a.order_ref === o.order_ref);
+      if (linkedAnimal) {
+        built.push({
+          id: `anm-alloc-${linkedAnimal.id}`,
+          type: 'info',
+          title: `Animal Allocated (${linkedAnimal.animal_code || linkedAnimal.animal_ref})`,
+          body: `Livestock ${linkedAnimal.animal_code || linkedAnimal.animal_ref} has been allocated to your order ${o.order_ref} for ${o.programme}.`,
+          time: o.created_at,
+          channelLabel: `WhatsApp (${OFFICIAL_WHATSAPP_DISPLAY}) · Email fallback`,
+        });
+
+        const prog = programmes.find(p => (o.programme_id && p.id === o.programme_id) || p.name === o.programme);
+        const supportsWeight = isBreedingProgramme(o.programme, prog?.supports_weight_timeline);
+        if (supportsWeight && linkedAnimal.weight_history && linkedAnimal.weight_history.length > 0) {
+          const latestWeight = linkedAnimal.weight_history[linkedAnimal.weight_history.length - 1];
+          const weightTime = latestWeight.recorded_at;
+          built.push({
+            id: `anm-weight-${linkedAnimal.id}-${weightTime}`,
+            type: 'info',
+            title: `Breeding Weight Update — ${latestWeight.weight_kg} kg`,
+            body: `Indonesia Breeding animal ${linkedAnimal.animal_code || linkedAnimal.animal_ref} (${linkedAnimal.qurban_name_holder || o.participant}): monthly weight verified at ${latestWeight.weight_kg} kg on ${formatRelativeTime(weightTime)}.`,
+            time: weightTime,
+            channelLabel: `WhatsApp (${OFFICIAL_WHATSAPP_DISPLAY}) · Portal Timeline`,
+          });
         }
       }
 
-      const cert = certificates.find(c => c.order_ref === o.order_ref && ['generated', 'sent', 'regenerated'].includes(c.status));
+      if (['qurban_complete', 'processing', 'completed'].includes(o.status)) {
+        built.push({
+          id: `qurb-done-${o.id}`,
+          type: 'success',
+          title: `Qurban Performed Alhamdulillah (${o.order_ref})`,
+          body: `The Qurban sacrifice ritual for order ${o.order_ref} (${o.programme}) has been fulfilled.`,
+          time: o.created_at,
+          channelLabel: `WhatsApp (${OFFICIAL_WHATSAPP_DISPLAY}) · Email fallback`,
+        });
+      }
+
+      const cert = certificates.find(
+        c => c.order_ref === o.order_ref && ['generated', 'sent', 'regenerated'].includes(c.status),
+      );
       if (cert) {
         built.push({
-          id: `cert-${cert.id}`,
+          id: `cert-ready-${cert.id}`,
           type: 'certificate',
-          title: `Certificate Ready 🎉 (${cert.certificate_ref})`,
-          body: `Your Qurban Certificate for ${o.order_ref} (${o.programme}) is ready! Download your PDF certificate directly in the portal.`,
-          time: cert.sent_at || cert.generated_at || o.created_at,
-          channelLabel: `WhatsApp (${OFFICIAL_WHATSAPP_DISPLAY}) · Email fallback`,
+          title: `Official Certificate Ready (${cert.certificate_ref})`,
+          body: `Your official digital Qurban/Aqiqah certificate is available for download in the Participant Portal.`,
+          time: cert.generated_at || o.created_at,
+          channelLabel: `WhatsApp (${OFFICIAL_WHATSAPP_DISPLAY}) · Portal PDF`,
           certificateLink: true,
         });
       }
     }
 
-    return built.sort((a, b) => b.time.localeCompare(a.time));
-  }, [user, profile, orders, payments, animals, programmes, certificates, participants, orderParam, isStaffUser]);
+    return built.sort((a, b) => new Date(b.time || 0).getTime() - new Date(a.time || 0).getTime());
+  }, [matchedOrders, payments, animals, programmes, certificates]);
 
-  const unread = items.filter(n => !readIds.has(n.id)).length;
-  const filtered = items.filter(n => filter === 'all' || !readIds.has(n.id));
+  const markAllRead = () => {
+    setReadIds(new Set(items.map(i => i.id)));
+  };
 
   const markRead = (id: string) => {
     setReadIds(prev => new Set([...prev, id]));
   };
 
-  const markAllRead = () => {
-    setReadIds(new Set(items.map(n => n.id)));
-  };
+  const unread = items.filter(i => !readIds.has(i.id)).length;
+  const filtered = filter === 'unread' ? items.filter(i => !readIds.has(i.id)) : items;
+
+  if (!isSignedIn) {
+    return (
+      <div className="page-content animate-fadeInUp">
+        <div className="page-header">
+          <h1 className="page-title">Notifications</h1>
+          <p className="page-subtitle">WhatsApp &amp; Email updates regarding your Qurban registrations</p>
+        </div>
+        <ParticipantSignInCard
+          title="View Your Notifications"
+          subtitle="Enter your registered email address or Order Reference to view your WhatsApp & Email order notifications and certificate download links."
+          actionLabel="View Notifications"
+          signIn={signIn}
+          isStaffUser={isStaffUser}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="page-content animate-fadeInUp">
-      <div className="page-header page-header-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <div>
-          <h1 className="page-title">Notifications</h1>
-          <p className="page-subtitle">
-            {unread > 0 ? `${unread} unread notification${unread > 1 ? 's' : ''}` : 'All caught up!'}
-          </p>
+      <div className="page-header" style={{ marginBottom: '1.25rem' }}>
+        <h1 className="page-title">Notifications</h1>
+        <p className="page-subtitle">WhatsApp &amp; Email updates regarding your Qurban registrations</p>
+      </div>
+
+      {/* Participant Banner */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+          padding: '0.75rem 1rem',
+          background: 'rgba(212,168,50,0.08)',
+          border: '1px solid rgba(212,168,50,0.22)',
+          borderRadius: 10,
+          marginBottom: '1.75rem',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+          <CheckCircle2 size={16} color="#d4a832" />
+          <div style={{ fontSize: '0.8125rem', color: '#f5f0e8' }}>
+            {isStaffPreview && (
+              <span className="badge badge-warning" style={{ marginRight: '0.5rem', fontSize: '0.7rem' }}>
+                Staff Preview
+              </span>
+            )}
+            Participant: <strong>{participantName || sessionEmail || sessionOrderRef}</strong>
+            {sessionEmail && (
+              <span style={{ color: 'var(--text-muted)', marginLeft: '0.375rem' }}>({sessionEmail})</span>
+            )}
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={signOut}
+          className="btn btn-ghost btn-sm"
+          style={{ fontSize: '0.75rem', gap: '0.35rem', color: 'var(--text-secondary)' }}
+        >
+          <LogOut size={13} />
+          Switch Participant / Sign Out
+        </button>
+      </div>
+
+      {/* Controls */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div className="tab-group" style={{ margin: 0 }}>
+          {(['all', 'unread'] as const).map(val => (
+            <button
+              key={val}
+              type="button"
+              className={`tab-btn${filter === val ? ' active' : ''}`}
+              onClick={() => setFilter(val)}
+            >
+              {val === 'all' ? 'All Updates' : 'Unread'}
+              {val === 'unread' && unread > 0 && (
+                <span className="nav-badge" style={{ marginLeft: '0.375rem', display: 'inline-flex' }}>{unread}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
         {unread > 0 && (
-          <button className="btn btn-ghost btn-sm" onClick={markAllRead} style={{ gap: '0.5rem' }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={markAllRead} style={{ fontSize: '0.8125rem', gap: '0.375rem' }}>
             <Check size={14} /> Mark all read
           </button>
         )}
-      </div>
-
-      {/* Filter Tabs */}
-      <div className="tabs" style={{ marginBottom: '1.25rem' }}>
-        {([['all', 'All'], ['unread', 'Unread']] as const).map(([val, label]) => (
-          <button
-            key={val}
-            className={`tab-item ${filter === val ? 'active' : ''}`}
-            onClick={() => setFilter(val)}
-          >
-            {label}
-            {val === 'unread' && unread > 0 && (
-              <span className="nav-badge" style={{ marginLeft: '0.375rem', display: 'inline-flex' }}>{unread}</span>
-            )}
-          </button>
-        ))}
       </div>
 
       {/* Notification List */}
@@ -235,7 +303,6 @@ export function PortalNotificationsPage() {
                 onClick={() => !isRead && markRead(notif.id)}
               >
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                  {/* Icon */}
                   <div style={{
                     width: 40, height: 40, borderRadius: 10,
                     background: NOTIF_BG[notif.type],
@@ -246,7 +313,6 @@ export function PortalNotificationsPage() {
                     <Icon size={18} color={NOTIF_COLOR[notif.type]} />
                   </div>
 
-                  {/* Content */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.375rem' }}>
                       <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
@@ -281,7 +347,6 @@ export function PortalNotificationsPage() {
                     </div>
                   </div>
 
-                  {/* Unread indicator */}
                   {!isRead && (
                     <button
                       className="btn btn-ghost btn-sm"

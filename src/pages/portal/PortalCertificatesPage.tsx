@@ -1,14 +1,13 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { Award, Eye, X, Printer } from 'lucide-react';
+import { Award, Eye, X, Printer, LogOut, CheckCircle2 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { AnimalPhoto } from '@/components/ui/AnimalPhoto';
 import { CertificateDesign, printCertificate, type Certificate } from '@/components/ui/CertificateDesign';
 import { useToast } from '@/contexts/ToastContext';
-import { useAuth } from '@/contexts/AuthContext';
-import { useAppData } from '@/contexts/AppDataContext';
-import { normaliseEmail, normaliseName, participantFullName } from '@/lib/orderRules';
+import { usePortalSession } from '@/hooks/usePortalSession';
+import { ParticipantSignInCard } from '@/components/portal/ParticipantSignInCard';
 
 // ── Certificate viewer (same design as the admin preview) ─────
 function CertViewModal({ cert, onClose }: { cert: Certificate; onClose: () => void }) {
@@ -54,53 +53,27 @@ export function PortalCertificatesPage() {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
   const orderParam = (searchParams.get('order') || searchParams.get('ref') || '').trim().toUpperCase();
-  const { user, profile, isStaff } = useAuth();
-  const { orders, participants, certificates } = useAppData();
+
+  const {
+    sessionEmail,
+    sessionOrderRef,
+    participantName,
+    matchedCertificates,
+    isSignedIn,
+    isStaffUser,
+    isStaffPreview,
+    signIn,
+    signOut,
+  } = usePortalSession();
+
   const [selected, setSelected] = useState<Certificate | null>(null);
 
-  const participantCerts = useMemo<Certificate[]>(() => {
-    const authEmail = normaliseEmail(profile?.email ?? user?.email);
-    const authName = normaliseName(profile ? `${profile.first_name} ${profile.last_name}` : '');
-    const matchedParticipant = authEmail
-      ? participants.find(p => normaliseEmail(p.email) === authEmail)
-      : undefined;
-
-    const myOrderRefs = new Set(
-      orders
-        .filter(o => {
-          if (orderParam && o.order_ref.trim().toUpperCase() === orderParam) return true;
-          if (matchedParticipant && o.participant_id === matchedParticipant.id) return true;
-          if (authEmail && o.email && normaliseEmail(o.email) === authEmail) return true;
-          if (matchedParticipant && normaliseName(o.participant) === normaliseName(participantFullName(matchedParticipant))) return true;
-          if (authName && authName !== 'demo admin' && normaliseName(o.participant) === authName) return true;
-          return false;
-        })
-        .map(o => o.order_ref.toUpperCase()),
-    );
-
-    if (orderParam) {
-      myOrderRefs.add(orderParam);
-    }
-
-    const isStaffUser = Boolean(isStaff() || (profile?.role && profile.role !== 'participant'));
-
-    if (myOrderRefs.size === 0 && isStaffUser) {
-      return certificates.filter(c => ['generated', 'sent', 'regenerated'].includes(c.status));
-    }
-
-    if (myOrderRefs.size === 0) return [];
-
-    return certificates.filter(
-      c => myOrderRefs.has(c.order_ref.toUpperCase()) && ['generated', 'sent', 'regenerated'].includes(c.status),
-    );
-  }, [user, profile, isStaff, orders, participants, certificates, orderParam]);
-
   useEffect(() => {
-    if (orderParam && participantCerts.length > 0) {
-      const match = participantCerts.find(c => c.order_ref.trim().toUpperCase() === orderParam);
-      if (match) setSelected(match);
+    if (orderParam && matchedCertificates.length > 0) {
+      const match = matchedCertificates.find(c => c.order_ref.trim().toUpperCase() === orderParam);
+      if (match) setSelected(match as Certificate);
     }
-  }, [orderParam, participantCerts]);
+  }, [orderParam, matchedCertificates]);
 
   // Download = open the viewer first (so the certificate is rendered), then print/save as PDF
   const handleDownload = (cert: Certificate) => {
@@ -110,28 +83,92 @@ export function PortalCertificatesPage() {
     }, 300);
   };
 
+  // If not signed in to a participant session, show Participant Sign In Card
+  if (!isSignedIn) {
+    return (
+      <div className="page-content animate-fadeInUp">
+        <div className="page-header">
+          <h1 className="page-title">My Certificates</h1>
+          <p className="page-subtitle">View and download your official Qurban digital certificates</p>
+        </div>
+        <ParticipantSignInCard
+          title="Download Your Certificate"
+          subtitle="Enter your registered email address or Order Reference to access your official Al Ihsan Group Qurban/Aqiqah certificate."
+          actionLabel="Access My Certificates"
+          signIn={signIn}
+          isStaffUser={isStaffUser}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="page-content animate-fadeInUp">
       {selected && <CertViewModal cert={selected} onClose={() => setSelected(null)} />}
 
-      <div className="page-header">
+      <div className="page-header" style={{ marginBottom: '1.25rem' }}>
         <h1 className="page-title">My Certificates</h1>
-        <p className="page-subtitle">View and download your Qurban certificates</p>
+        <p className="page-subtitle">View and download your official Qurban digital certificates</p>
       </div>
 
-      {participantCerts.length === 0 ? (
+      {/* Active participant banner */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+          padding: '0.75rem 1rem',
+          background: 'rgba(212,168,50,0.08)',
+          border: '1px solid rgba(212,168,50,0.22)',
+          borderRadius: 10,
+          marginBottom: '1.75rem',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+          <CheckCircle2 size={16} color="#d4a832" />
+          <div style={{ fontSize: '0.8125rem', color: '#f5f0e8' }}>
+            {isStaffPreview && (
+              <span className="badge badge-warning" style={{ marginRight: '0.5rem', fontSize: '0.7rem' }}>
+                Staff Preview
+              </span>
+            )}
+            Participant: <strong>{participantName || sessionEmail || sessionOrderRef}</strong>
+            {sessionEmail && (
+              <span style={{ color: 'var(--text-muted)', marginLeft: '0.375rem' }}>({sessionEmail})</span>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={signOut}
+          className="btn btn-ghost btn-sm"
+          style={{ fontSize: '0.75rem', gap: '0.35rem', color: 'var(--text-secondary)' }}
+        >
+          <LogOut size={13} />
+          Switch Participant / Sign Out
+        </button>
+      </div>
+
+      {matchedCertificates.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <div className="empty-icon"><Award size={24} color="var(--text-muted)" /></div>
-            <h3>No certificates yet</h3>
-            <p>Your Qurban certificates will appear here once your orders are completed.</p>
+            <h3>No certificates issued yet</h3>
+            <p>Your official Qurban digital certificate will appear here as soon as your ritual is performed and verified.</p>
           </div>
         </div>
       ) : (
         <div className="card-grid-responsive">
-          {participantCerts.map(cert => (
-            <div key={cert.id} className="card card-hover" style={{ cursor: 'pointer', textAlign: 'center' }} onClick={() => setSelected(cert)}>
-              {/* Certificate preview — matches the admin certificate colours (black + gold) */}
+          {matchedCertificates.map(cert => (
+            <div
+              key={cert.id}
+              className="card card-hover"
+              style={{ cursor: 'pointer', textAlign: 'center' }}
+              onClick={() => setSelected(cert as Certificate)}
+            >
+              {/* Certificate preview */}
               <div style={{
                 padding: '1.75rem 1rem',
                 background: 'linear-gradient(160deg, #0a0a0a, #17130a)',
@@ -159,10 +196,16 @@ export function PortalCertificatesPage() {
                 {cert.certificate_ref}
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-                <button className="btn btn-outline-green btn-sm" onClick={e => { e.stopPropagation(); setSelected(cert); }}>
+                <button
+                  className="btn btn-outline-green btn-sm"
+                  onClick={e => { e.stopPropagation(); setSelected(cert as Certificate); }}
+                >
                   <Eye size={13} /> View
                 </button>
-                <button className="btn btn-ghost btn-sm" onClick={e => { e.stopPropagation(); handleDownload(cert); }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={e => { e.stopPropagation(); handleDownload(cert as Certificate); }}
+                >
                   <Printer size={13} /> PDF
                 </button>
               </div>

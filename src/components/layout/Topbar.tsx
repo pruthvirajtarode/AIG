@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Bell, Search, Menu, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppData } from '@/contexts/AppDataContext';
+import { usePortalSession } from '@/hooks/usePortalSession';
 import { formatRelativeTime } from '@/lib/utils';
 
 interface TopbarProps {
@@ -32,6 +33,7 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const inPortal = location.pathname.startsWith('/portal');
+  const portalSession = usePortalSession();
   const inPortalMode = inPortal || (!!profile && !isStaff());
 
   const [showNotifs, setShowNotifs] = useState(false);
@@ -42,6 +44,17 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
 
   const fullName = `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim();
   const initials = (() => {
+    if (inPortal) {
+      const name = portalSession.participantName;
+      if (name) {
+        const parts = name.split(/\s+/).filter(Boolean);
+        if (parts.length >= 2) {
+          return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
+        }
+        return parts[0].slice(0, 2).toUpperCase();
+      }
+      return 'P';
+    }
     if (fullName) {
       const parts = fullName.split(/\s+/).filter(Boolean);
       if (parts.length >= 2) {
@@ -49,8 +62,12 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
       }
       return parts[0].slice(0, 2).toUpperCase();
     }
-    return profile?.email?.charAt(0).toUpperCase() ?? (inPortalMode ? 'P' : 'U');
+    return profile?.email?.charAt(0).toUpperCase() ?? 'U';
   })();
+
+  const topbarDisplayName = inPortal
+    ? (portalSession.participantName || portalSession.sessionEmail || 'Participant')
+    : (profile?.first_name || 'Staff');
 
   // Close popovers on outside click or Escape
   useEffect(() => {
@@ -378,7 +395,7 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <div className="avatar avatar-sm">{initials}</div>
         <span className="topbar-username" style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-          {profile?.first_name || (inPortalMode ? 'Participant' : '')}
+          {topbarDisplayName}
         </span>
       </div>
     </header>

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppData } from '@/contexts/AppDataContext';
+import { usePortalSession } from '@/hooks/usePortalSession';
 
 interface NavGroup {
   label?: string;
@@ -113,10 +114,24 @@ export function Sidebar({
           : []),
       ]
     : staffNav;
+  const portalSession = usePortalSession();
   const rootPath = showPortalNav ? '/portal' : '/admin';
   const fullName = `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim();
-  const displayName = fullName || (inPortal ? (profile?.email || 'Participant') : '');
+  const displayName = inPortal
+    ? (portalSession.participantName || portalSession.sessionEmail || 'Participant Portal')
+    : (fullName || profile?.email || 'User');
   const initials = (() => {
+    if (inPortal) {
+      const name = portalSession.participantName;
+      if (name) {
+        const parts = name.split(/\s+/).filter(Boolean);
+        if (parts.length >= 2) {
+          return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
+        }
+        return parts[0].slice(0, 2).toUpperCase();
+      }
+      return 'P';
+    }
     if (fullName) {
       const parts = fullName.split(/\s+/).filter(Boolean);
       if (parts.length >= 2) {
@@ -124,13 +139,18 @@ export function Sidebar({
       }
       return parts[0].slice(0, 2).toUpperCase();
     }
-    return profile?.email?.charAt(0).toUpperCase() ?? (inPortal ? 'P' : 'U');
+    return profile?.email?.charAt(0).toUpperCase() ?? 'U';
   })();
 
   const handleNavClick = () => { if (onClose) onClose(); };
 
   const handleSignOut = async () => {
-    await signOut();
+    if (inPortal && portalSession.isSignedIn) {
+      portalSession.signOut();
+    }
+    if (!inPortal || !isStaff()) {
+      await signOut();
+    }
     if (onClose) onClose();
   };
 
@@ -271,8 +291,12 @@ export function Sidebar({
                   {displayName}
                 </div>
               )}
-              {/* Role label is for the admin panel only — never shown to participants / in the portal */}
-              {!inPortal && (
+              {/* Role label is for the admin panel only — portal shows participant status */}
+              {inPortal ? (
+                <div style={{ fontSize: '0.6875rem', color: portalSession.isStaffPreview ? 'var(--gold-400)' : 'var(--text-muted)', marginTop: '0.0625rem' }}>
+                  {portalSession.isStaffPreview ? 'Staff Preview' : portalSession.isSignedIn ? 'Registered Participant' : 'Guest Portal'}
+                </div>
+              ) : (
                 <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textTransform: 'capitalize', marginTop: '0.0625rem' }}>
                   {profile?.role?.replace(/_/g, ' ')}
                 </div>
@@ -282,12 +306,12 @@ export function Sidebar({
         </div>
 
         {/* Logout or Staff Sign In button */}
-        {profile ? (
+        {(profile || (inPortal && portalSession.isSignedIn)) ? (
           <button
             id="logout-btn"
             type="button"
             onClick={handleSignOut}
-            title={collapsed ? 'Sign Out' : undefined}
+            title={collapsed ? (inPortal ? 'Sign Out / Switch' : 'Sign Out') : undefined}
             aria-label="Sign out"
             style={{
               width: '100%',
@@ -315,7 +339,7 @@ export function Sidebar({
             }}
           >
             <LogOut size={16} style={{ flexShrink: 0 }} />
-            {!collapsed && <span>Sign Out</span>}
+            {!collapsed && <span>{inPortal ? 'Sign Out / Switch' : 'Sign Out'}</span>}
           </button>
         ) : (
           <Link

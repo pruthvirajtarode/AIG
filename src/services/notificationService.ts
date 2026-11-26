@@ -173,7 +173,7 @@ export const WHATSAPP_TEMPLATE_REGISTRY: Record<string, WhatsAppTemplateSpec> = 
     eventType: 'certificate.ready',
     category: 'UTILITY',
     language: 'en',
-    requiredVariables: ['participant_name', 'order_ref', 'certificate_ref', 'programme'],
+    requiredVariables: ['participant_name', 'certificate_ref', 'order_ref', 'programme'],
     description: 'Certificate ready for PDF download in Participant Portal',
   },
   'certificate.ready_portal_download': {
@@ -182,7 +182,7 @@ export const WHATSAPP_TEMPLATE_REGISTRY: Record<string, WhatsAppTemplateSpec> = 
     eventType: 'certificate.ready',
     category: 'UTILITY',
     language: 'en',
-    requiredVariables: ['participant_name', 'order_ref', 'certificate_ref', 'programme'],
+    requiredVariables: ['participant_name', 'certificate_ref', 'order_ref', 'programme'],
     description: 'Certificate ready for PDF download in Participant Portal',
   },
   'payment.installment_reminder': {
@@ -1470,8 +1470,8 @@ class NotificationService {
       templateId: 'certificate.ready_portal_download',
       variables: {
         participant_name: params.recipient.name,
-        order_ref: params.orderRef,
         certificate_ref: params.certificateRef,
+        order_ref: params.orderRef,
         programme: params.programme,
         portal_url: portalCertUrl,
       },

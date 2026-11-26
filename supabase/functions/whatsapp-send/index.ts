@@ -73,11 +73,11 @@ const APPROVED_TEMPLATES: Record<string, { metaName: string; requiredVars: strin
   },
   'certificate.ready': {
     metaName: 'aigms_certificate_ready_v1',
-    requiredVars: ['participant_name', 'order_ref', 'certificate_ref', 'programme'],
+    requiredVars: ['participant_name', 'certificate_ref', 'order_ref', 'programme'],
   },
   'certificate.ready_portal_download': {
     metaName: 'aigms_certificate_ready_v1',
-    requiredVars: ['participant_name', 'order_ref', 'certificate_ref', 'programme'],
+    requiredVars: ['participant_name', 'certificate_ref', 'order_ref', 'programme'],
   },
 };
 

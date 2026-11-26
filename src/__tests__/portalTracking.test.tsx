@@ -137,4 +137,27 @@ describe('Participant Portal Direct Tracking & Order Deep-Linking', () => {
     expect(html).toContain('My Certificates');
     expect(html).toContain('CERT-2026-0001');
   });
+
+  it('renders participant sign in card when accessing portal/certificates without active session or order param', () => {
+    const html = renderPortalAt('/portal/certificates', <PortalCertificatesPage />);
+    expect(html).toContain('Download Your Certificate');
+    expect(html).toContain('Registered Email Address or Order Reference');
+    // Crucial isolation: must NOT leak company certificates to unauthenticated / unselected session
+    expect(html).not.toContain('CERT-2026-0001');
+  });
+
+  it('resolves orders and certificates when participant email is stored in portal session', () => {
+    localStorage.setItem('aigms_portal_participant_email', 'ahmad@example.com');
+    const html = renderPortalAt('/portal/certificates', <PortalCertificatesPage />);
+    expect(html).toContain('My Certificates');
+    expect(html).toContain('CERT-2026-0001');
+    expect(html).toContain('Haji Ahmad bin Ibrahim');
+  });
+
+  it('verifies Meta WhatsApp certificate.ready template variable order aligns certificate_ref before order_ref', async () => {
+    const { WHATSAPP_TEMPLATE_REGISTRY } = await import('@/services/notificationService');
+    const certSpec = WHATSAPP_TEMPLATE_REGISTRY['certificate.ready'];
+    expect(certSpec).toBeDefined();
+    expect(certSpec.requiredVariables).toEqual(['participant_name', 'certificate_ref', 'order_ref', 'programme']);
+  });
 });
