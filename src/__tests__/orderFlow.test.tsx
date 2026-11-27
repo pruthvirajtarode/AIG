@@ -2056,4 +2056,73 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
     expect(deliveriesHtml).toContain('Uganda');
     expect(deliveriesHtml).toContain('Non-AU (Local Distribution · No portion required)');
   });
+
+  it('TEST 25: Indonesia Payment Plan selector supports Full Payment, Instalment 2 Cycle, and Instalment 3 Cycle', () => {
+    const store = mountAppDataStore();
+    let ctx = store.getState();
+
+    // 1. Create an Indonesia order with 2 cycles installment
+    const indoProg = ctx.programmes.find(p => isIndonesiaProgramme(p.name, p.country))!;
+    const order2Cycle = ctx.addOrder({
+      order_ref: 'ORD-INDO-2C',
+      full_name: 'Budi Santoso',
+      email: 'budi@example.com',
+      contact_number: '+65 9123 4567',
+      programme: indoProg.name,
+      programme_id: indoProg.id,
+      programme_country: indoProg.country,
+      service_type: 'qurban',
+      payment_method: 'installment',
+      installment_count: 2,
+      installments_paid: 1,
+      delivery_portion: null,
+      quantity: 1,
+      total_amount: 360,
+      currency: 'SGD',
+      status: 'pending_payment',
+      notes: 'include the instalment period here. full payment / inatsalment 2 cycle / instalment 3cycle',
+      qurban_entries: [{ qurban_name_holder: 'Budi Santoso' }],
+    });
+
+    // 2. Create an Indonesia order with 3 cycles installment
+    const order3Cycle = ctx.addOrder({
+      order_ref: 'ORD-INDO-3C',
+      full_name: 'Dewi Lestari',
+      email: 'dewi@example.com',
+      contact_number: '+65 9234 5678',
+      programme: indoProg.name,
+      programme_id: indoProg.id,
+      programme_country: indoProg.country,
+      service_type: 'qurban',
+      payment_method: 'installment',
+      installment_count: 3,
+      installments_paid: 3,
+      delivery_portion: null,
+      quantity: 1,
+      total_amount: 360,
+      currency: 'SGD',
+      status: 'payment_verified',
+      qurban_entries: [{ qurban_name_holder: 'Dewi Lestari' }],
+    });
+
+    const next = store.getState();
+    const retrieved2 = next.orders.find(o => o.order_ref === 'ORD-INDO-2C')!;
+    const retrieved3 = next.orders.find(o => o.order_ref === 'ORD-INDO-3C')!;
+
+    expect(retrieved2.payment_method).toBe('installment');
+    expect(retrieved2.installment_count).toBe(2);
+    expect(retrieved2.installments_paid).toBe(1);
+    expect(retrieved2.notes).toContain('full payment / inatsalment 2 cycle / instalment 3cycle');
+
+    expect(retrieved3.payment_method).toBe('installment');
+    expect(retrieved3.installment_count).toBe(3);
+    expect(retrieved3.installments_paid).toBe(3);
+
+    // 3. Render OrdersPage and verify both orders are present with their installment status
+    const ordersHtml = store.renderScreen(<OrdersPage />);
+    expect(ordersHtml).toContain('ORD-INDO-2C');
+    expect(ordersHtml).toContain('ORD-INDO-3C');
+    expect(ordersHtml).toContain('Installment (1/2)');
+    expect(ordersHtml).toContain('Installment (3/3)');
+  });
 });

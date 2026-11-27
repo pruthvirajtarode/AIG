@@ -957,6 +957,104 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void; onCreate
                   )}
                 </div>
 
+                {/* Payment Plan / Instalment Period (For Indonesia programmes) */}
+                {isIndonesia && (
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }} data-testid="order-payment-plan-group">
+                    <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Payment Plan / Instalment Period *</span>
+                      {paymentMethod === 'installment' && (
+                        <span style={{ fontSize: '0.72rem', color: 'var(--aig-green-300)', fontWeight: 600 }}>
+                          {installmentCount} Monthly Cycles · {formatCurrency(((parseFloat(price) || 0) * numQurbans) / installmentCount, selectedProg?.currency ?? 'SGD')}/cycle
+                        </span>
+                      )}
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentMethod('paynow');
+                          setInstallmentsPaid(0);
+                        }}
+                        style={{
+                          padding: '0.625rem 0.75rem',
+                          borderRadius: 8,
+                          cursor: 'pointer',
+                          fontSize: '0.8125rem',
+                          textAlign: 'left',
+                          border: paymentMethod !== 'installment' ? '1.5px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+                          background: paymentMethod !== 'installment' ? 'rgba(47,168,118,0.18)' : 'var(--surface-900)',
+                          color: paymentMethod !== 'installment' ? 'var(--aig-green-200)' : 'var(--text-muted)',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <div style={{ fontWeight: 600, color: paymentMethod !== 'installment' ? '#fff' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <span>Full Payment</span>
+                          {paymentMethod !== 'installment' && <span style={{ fontSize: '0.65rem', background: 'var(--aig-green-500)', color: '#fff', padding: '0.1rem 0.35rem', borderRadius: 4 }}>Active</span>}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                          100% Upfront ({formatCurrency((parseFloat(price) || 0) * numQurbans, selectedProg?.currency ?? 'SGD')})
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentMethod('installment');
+                          setInstallmentCount(2);
+                          if (installmentsPaid > 2) setInstallmentsPaid(2);
+                        }}
+                        style={{
+                          padding: '0.625rem 0.75rem',
+                          borderRadius: 8,
+                          cursor: 'pointer',
+                          fontSize: '0.8125rem',
+                          textAlign: 'left',
+                          border: (paymentMethod === 'installment' && installmentCount === 2) ? '1.5px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+                          background: (paymentMethod === 'installment' && installmentCount === 2) ? 'rgba(47,168,118,0.18)' : 'var(--surface-900)',
+                          color: (paymentMethod === 'installment' && installmentCount === 2) ? 'var(--aig-green-200)' : 'var(--text-muted)',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <div style={{ fontWeight: 600, color: (paymentMethod === 'installment' && installmentCount === 2) ? '#fff' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <span>Instalment 2 Cycle</span>
+                          {paymentMethod === 'installment' && installmentCount === 2 && <span style={{ fontSize: '0.65rem', background: 'var(--aig-green-500)', color: '#fff', padding: '0.1rem 0.35rem', borderRadius: 4 }}>Active</span>}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                          2 × {formatCurrency(((parseFloat(price) || 0) * numQurbans) / 2, selectedProg?.currency ?? 'SGD')}/cycle
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentMethod('installment');
+                          setInstallmentCount(3);
+                          if (installmentsPaid > 3) setInstallmentsPaid(3);
+                        }}
+                        style={{
+                          padding: '0.625rem 0.75rem',
+                          borderRadius: 8,
+                          cursor: 'pointer',
+                          fontSize: '0.8125rem',
+                          textAlign: 'left',
+                          border: (paymentMethod === 'installment' && installmentCount === 3) ? '1.5px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+                          background: (paymentMethod === 'installment' && installmentCount === 3) ? 'rgba(47,168,118,0.18)' : 'var(--surface-900)',
+                          color: (paymentMethod === 'installment' && installmentCount === 3) ? 'var(--aig-green-200)' : 'var(--text-muted)',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <div style={{ fontWeight: 600, color: (paymentMethod === 'installment' && installmentCount === 3) ? '#fff' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <span>Instalment 3 Cycle</span>
+                          {paymentMethod === 'installment' && installmentCount === 3 && <span style={{ fontSize: '0.65rem', background: 'var(--aig-green-500)', color: '#fff', padding: '0.1rem 0.35rem', borderRadius: 4 }}>Active</span>}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                          3 × {formatCurrency(((parseFloat(price) || 0) * numQurbans) / 3, selectedProg?.currency ?? 'SGD')}/cycle
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Installment Options (only when Payment Method = Installment) */}
                 {paymentMethod === 'installment' && (
                   <>
@@ -1443,6 +1541,104 @@ function EditOrderModal({ order, onClose, onSave }: {
                   ))}
                 </select>
               </div>
+
+              {/* Payment Plan / Instalment Period (For Indonesia programmes) */}
+              {isIndonesia && (
+                <div className="form-group" style={{ gridColumn: '1 / -1' }} data-testid="edit-order-payment-plan-group">
+                  <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Payment Plan / Instalment Period *</span>
+                    {paymentMethod === 'installment' && (
+                      <span style={{ fontSize: '0.72rem', color: 'var(--aig-green-300)', fontWeight: 600 }}>
+                        {installmentCount} Monthly Cycles · {formatCurrency(((parseFloat(unitPrice) || 0) * numQurbans) / installmentCount, selectedProg?.currency ?? order.currency)}/cycle
+                      </span>
+                    )}
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentMethod('paynow');
+                        setInstallmentsPaid(0);
+                      }}
+                      style={{
+                        padding: '0.625rem 0.75rem',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        fontSize: '0.8125rem',
+                        textAlign: 'left',
+                        border: paymentMethod !== 'installment' ? '1.5px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+                        background: paymentMethod !== 'installment' ? 'rgba(47,168,118,0.18)' : 'var(--surface-900)',
+                        color: paymentMethod !== 'installment' ? 'var(--aig-green-200)' : 'var(--text-muted)',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, color: paymentMethod !== 'installment' ? '#fff' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <span>Full Payment</span>
+                        {paymentMethod !== 'installment' && <span style={{ fontSize: '0.65rem', background: 'var(--aig-green-500)', color: '#fff', padding: '0.1rem 0.35rem', borderRadius: 4 }}>Active</span>}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                        100% Upfront ({formatCurrency((parseFloat(unitPrice) || 0) * numQurbans, selectedProg?.currency ?? order.currency)})
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentMethod('installment');
+                        setInstallmentCount(2);
+                        if (installmentsPaid > 2) setInstallmentsPaid(2);
+                      }}
+                      style={{
+                        padding: '0.625rem 0.75rem',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        fontSize: '0.8125rem',
+                        textAlign: 'left',
+                        border: (paymentMethod === 'installment' && installmentCount === 2) ? '1.5px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+                        background: (paymentMethod === 'installment' && installmentCount === 2) ? 'rgba(47,168,118,0.18)' : 'var(--surface-900)',
+                        color: (paymentMethod === 'installment' && installmentCount === 2) ? 'var(--aig-green-200)' : 'var(--text-muted)',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, color: (paymentMethod === 'installment' && installmentCount === 2) ? '#fff' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <span>Instalment 2 Cycle</span>
+                        {paymentMethod === 'installment' && installmentCount === 2 && <span style={{ fontSize: '0.65rem', background: 'var(--aig-green-500)', color: '#fff', padding: '0.1rem 0.35rem', borderRadius: 4 }}>Active</span>}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                        2 × {formatCurrency(((parseFloat(unitPrice) || 0) * numQurbans) / 2, selectedProg?.currency ?? order.currency)}/cycle
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentMethod('installment');
+                        setInstallmentCount(3);
+                        if (installmentsPaid > 3) setInstallmentsPaid(3);
+                      }}
+                      style={{
+                        padding: '0.625rem 0.75rem',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        fontSize: '0.8125rem',
+                        textAlign: 'left',
+                        border: (paymentMethod === 'installment' && installmentCount === 3) ? '1.5px solid var(--aig-green-400)' : '1px solid var(--border-subtle)',
+                        background: (paymentMethod === 'installment' && installmentCount === 3) ? 'rgba(47,168,118,0.18)' : 'var(--surface-900)',
+                        color: (paymentMethod === 'installment' && installmentCount === 3) ? 'var(--aig-green-200)' : 'var(--text-muted)',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, color: (paymentMethod === 'installment' && installmentCount === 3) ? '#fff' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <span>Instalment 3 Cycle</span>
+                        {paymentMethod === 'installment' && installmentCount === 3 && <span style={{ fontSize: '0.65rem', background: 'var(--aig-green-500)', color: '#fff', padding: '0.1rem 0.35rem', borderRadius: 4 }}>Active</span>}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                        3 × {formatCurrency(((parseFloat(unitPrice) || 0) * numQurbans) / 3, selectedProg?.currency ?? order.currency)}/cycle
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {paymentMethod === 'installment' && (
                 <>
