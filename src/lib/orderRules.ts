@@ -394,6 +394,20 @@ export function isPortionSupportedProgramme(
 }
 
 /**
+ * Normalises a programme name for fuzzy robust matching across dashes, casing, and spacing.
+ * Converts Unicode en-dash, em-dash, and hyphens to ASCII '-' so 'Australia to Singapore – Lamb'
+ * matches 'Australia to Singapore - Lamb'.
+ */
+export function normaliseProgrammeMatch(name?: string | null): string {
+  if (!name) return '';
+  return name
+    .toLowerCase()
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * True ONLY for breeding programmes (e.g. Indonesia - Breeding Programme) where
  * ongoing weight updates / weight timeline are tracked and shown to the participant.
  * All standard Qurban programmes display approximate weight only (no weight timeline).

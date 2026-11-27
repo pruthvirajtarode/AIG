@@ -322,7 +322,11 @@ export function PaymentsPage() {
           <button
             type="button"
             className="btn btn-sm"
-            onClick={() => setStatusFilter(prev => prev === 'pending_review' ? '' : 'pending_review')}
+            onClick={() => {
+              setStatusFilter('pending_review');
+              const first = livePayments.find(p => p.status === 'submitted' || p.status === 'under_review');
+              if (first) setSelectedId(first.id);
+            }}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -333,10 +337,10 @@ export function PaymentsPage() {
               borderRadius: 8,
               cursor: 'pointer',
             }}
-            title="Click to filter by payments awaiting review"
+            title="Click to view and review payment needing attention"
           >
             <Clock size={16} color="var(--warning)" />
-            <span style={{ fontSize: '0.875rem', color: 'var(--warning)', fontWeight: 600 }}>{pendingReview} awaiting review</span>
+            <span style={{ fontSize: '0.875rem', color: 'var(--warning)', fontWeight: 600 }}>{pendingReview} awaiting review — click to review</span>
           </button>
         )}
       </div>
@@ -397,22 +401,22 @@ export function PaymentsPage() {
           />
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {(['', 'pending_review', 'pending', 'submitted', 'under_review', 'verified', 'rejected', 'cancelled'] as const).map(s => {
-            if (s === 'cancelled' && cancelledCount === 0) return null;
-            const isTabActive = statusFilter === s;
+          {[
+            { id: '',               label: !showCancelled ? `Live Payments (${livePayments.length})` : `All Payments (${payments.length})` },
+            { id: 'pending_review', label: `Pending Review (${pendingReview})` },
+            { id: 'verified',       label: `Verified (${verifiedCount})` },
+            { id: 'pending',        label: `Pending Payment (${livePayments.filter(p => p.status === 'pending').length})` },
+            { id: 'rejected',       label: `Rejected (${rejectedCount})` },
+            ...(cancelledCount > 0 ? [{ id: 'cancelled', label: `Cancelled (${cancelledCount})` }] : []),
+          ].map(tab => {
+            const isTabActive = statusFilter === tab.id;
             return (
               <button
-                key={s}
+                key={tab.id}
                 className={`btn btn-sm ${isTabActive ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setStatusFilter(s)}
+                onClick={() => setStatusFilter(tab.id)}
               >
-                {s === ''
-                  ? (!showCancelled ? 'Live Payments' : 'All Payments')
-                  : s === 'pending_review'
-                    ? `Pending Review (${pendingReview})`
-                    : s === 'cancelled'
-                      ? `Cancelled (${cancelledCount})`
-                      : STATUS_LABEL[s as PaymentStatus]}
+                {tab.label}
               </button>
             );
           })}

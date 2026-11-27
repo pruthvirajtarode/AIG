@@ -2125,4 +2125,51 @@ describe('AIGMS Order Creation, Participant Matching, Dynamic Qurbans & Animal S
     expect(ordersHtml).toContain('Installment (1/2)');
     expect(ordersHtml).toContain('Installment (3/3)');
   });
+
+  it('TEST 26: Programme weight update propagates across animals/orders with normaliseProgrammeMatch & PaymentsPage has discrete review tabs', () => {
+    const store = mountAppDataStore();
+    let ctx = store.getState();
+
+    // 1. Create Australia to Singapore - Lamb order
+    const lambProg = ctx.programmes.find(p => p.name.includes('Lamb'))!;
+    ctx.addOrder({
+      order_ref: 'ORD-WEIGHT-TEST',
+      full_name: 'Zubair Khan',
+      email: 'zubair@example.com',
+      contact_number: '+65 9111 3333',
+      programme: lambProg.name,
+      programme_id: lambProg.id,
+      programme_country: lambProg.country,
+      service_type: 'qurban',
+      payment_method: 'paynow',
+      delivery_portion: 'full',
+      quantity: 1,
+      total_amount: 345,
+      currency: 'SGD',
+      status: 'pending_payment',
+      qurban_entries: [{ qurban_name_holder: 'Zubair Khan', delivery_portion: 'full' }],
+    });
+
+    // Verify animal is automatically allocated (non-breeding rule)
+    const animalBefore = store.getState().animals.find(a => a.order_ref === 'ORD-WEIGHT-TEST')!;
+    expect(animalBefore.status).toBe('allocated');
+
+    // 2. Client edits weight in Management (Programmes)
+    ctx = store.getState();
+    ctx.updateProgramme({
+      ...lambProg,
+      approx_weight_label: 'Approx. 20–24 kg (Updated in Management)',
+    });
+
+    // Verify weight is updated on the linked animal
+    const animalAfter = store.getState().animals.find(a => a.order_ref === 'ORD-WEIGHT-TEST')!;
+    expect(animalAfter.approx_weight).toBe('Approx. 20–24 kg (Updated in Management)');
+
+    // 3. Verify PaymentsPage renders discrete review and status filter tabs
+    const paymentsHtml = store.renderScreen(<PaymentsPage />);
+    expect(paymentsHtml).toContain('Pending Review');
+    expect(paymentsHtml).toContain('Verified');
+    expect(paymentsHtml).toContain('Pending Payment');
+    expect(paymentsHtml).toContain('Live Payments');
+  });
 });

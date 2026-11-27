@@ -10,6 +10,7 @@ import {
   formatServiceType,
   getProgrammeShareMetadata,
   isBreedingProgramme,
+  normaliseProgrammeMatch,
 } from '@/lib/orderRules';
 import { useToast } from '@/contexts/ToastContext';
 import { ANIMAL_IMAGES } from '@/lib/animalImages';
@@ -229,7 +230,9 @@ function EditAnimalModal({ animal, onClose, onSave }: {
       toast('error', 'Missing fields', 'Qurban Name Holder is required for order animals');
       return;
     }
-    const matchedProg = programmes.find(p => p.name === programmeName);
+    const matchedProg = programmes.find(
+      p => (animal.programme_id && p.id === animal.programme_id) || normaliseProgrammeMatch(p.name) === normaliseProgrammeMatch(programmeName),
+    );
     onSave(animal.id, {
       programme: programmeName || undefined,
       programme_id: matchedProg?.id ?? animal.programme_id,
@@ -528,7 +531,7 @@ function AnimalDetailModal({ animal, onClose, onWeightLog, onInspection, onStatu
 }) {
   const { programmes } = useAppData();
   const matchedProg = programmes.find(
-    p => (animal.programme_id && p.id === animal.programme_id) || p.name === animal.programme,
+    p => (animal.programme_id && p.id === animal.programme_id) || normaliseProgrammeMatch(p.name) === normaliseProgrammeMatch(animal.programme),
   );
   const supportsWeightTimeline = !animal.programme || isBreedingProgramme(animal.programme, matchedProg?.supports_weight_timeline);
   const approxLabel = matchedProg?.approx_weight_label || animal.approx_weight || defaultApproxWeight(animal.programme, animal.animal_type);
@@ -962,7 +965,7 @@ export function AnimalsPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: '1rem' }}>
         {filtered.map(a => {
           const matchedProg = programmes.find(
-            p => (a.programme_id && p.id === a.programme_id) || p.name === a.programme,
+            p => (a.programme_id && p.id === a.programme_id) || normaliseProgrammeMatch(p.name) === normaliseProgrammeMatch(a.programme),
           );
           const supportsWeightTimeline = !a.programme || isBreedingProgramme(a.programme, matchedProg?.supports_weight_timeline);
           const shareMeta = getProgrammeShareMetadata(a.programme, a.animals_per_share ?? matchedProg?.animals_per_share);

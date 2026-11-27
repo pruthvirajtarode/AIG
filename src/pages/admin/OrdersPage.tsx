@@ -24,6 +24,7 @@ import {
   isPortionSupportedProgramme,
   nextOrderRef,
   normaliseOrderRef,
+  normaliseProgrammeMatch,
   participantsMatch,
   summarizeOrderPortions,
   validateOrderCandidate,
@@ -158,7 +159,9 @@ function OrderDetailModal({ order, onClose, onEdit, onStatusChange, onCancel, on
   const isAuSg = isAustraliaToSingaporeProgramme(order.programme, order.programme_country);
   const isAuPal = isAustraliaToPalestineProgramme(order.programme, order.programme_country);
   const supportsPortion = isPortionSupportedProgramme(order.programme, order.programme_country);
-  const matchedProg = programmes.find(p => (order.programme_id && p.id === order.programme_id) || p.name === order.programme);
+  const matchedProg = programmes.find(
+    p => (order.programme_id && p.id === order.programme_id) || normaliseProgrammeMatch(p.name) === normaliseProgrammeMatch(order.programme),
+  );
   const isBreeding = isBreedingProgramme(order.programme, matchedProg?.supports_weight_timeline);
   const portionSummary = summarizeOrderPortions(orderAnimals.map(a => a.delivery_portion), order.delivery_portion);
 
@@ -1338,7 +1341,7 @@ function EditOrderModal({ order, onClose, onSave }: {
   );
 
   const initialProg = selectableProgrammes.find(
-    p => (order.programme_id && p.id === order.programme_id) || p.name === order.programme,
+    p => (order.programme_id && p.id === order.programme_id) || normaliseProgrammeMatch(p.name) === normaliseProgrammeMatch(order.programme),
   );
 
   const [fullName, setFullName] = useState(order.participant);

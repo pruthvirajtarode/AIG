@@ -30,6 +30,7 @@ import {
   nextOrderRef,
   normaliseName,
   normaliseOrderRef,
+  normaliseProgrammeMatch,
   participantFullName,
   participantsMatch,
   selectCertificateTemplate,
@@ -2733,28 +2734,33 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const old = d.programmes.find(x => x.id === p.id);
       let next: AppData = { ...d, programmes: d.programmes.map(x => x.id === p.id ? p : x) };
       // Propagate programme updates (name, country, approx_weight_label) to linked orders, animals, and certs
+      const normP = normaliseProgrammeMatch(p.name);
+      const normOld = old ? normaliseProgrammeMatch(old.name) : '';
       next = {
         ...next,
-        orders: next.orders.map(o =>
-          o.programme_id === p.id || (old && o.programme === old.name) || o.programme === p.name
+        orders: next.orders.map(o => {
+          const normO = normaliseProgrammeMatch(o.programme);
+          return (o.programme_id === p.id || (normOld && normO === normOld) || normO === normP)
             ? { ...o, programme: p.name, programme_country: p.country, programme_id: p.id }
-            : o,
-        ),
-        animals: next.animals.map(a =>
-          a.programme_id === p.id || (old && a.programme === old.name) || a.programme === p.name
+            : o;
+        }),
+        animals: next.animals.map(a => {
+          const normA = normaliseProgrammeMatch(a.programme);
+          return (a.programme_id === p.id || (normOld && normA === normOld) || normA === normP)
             ? {
                 ...a,
                 programme: p.name,
                 programme_id: p.id,
                 approx_weight: p.approx_weight_label || a.approx_weight,
               }
-            : a,
-        ),
-        certificates: next.certificates.map(c =>
-          (old && c.programme_name === old.name) || c.programme_name === p.name
+            : a;
+        }),
+        certificates: next.certificates.map(c => {
+          const normC = normaliseProgrammeMatch(c.programme_name);
+          return ((normOld && normC === normOld) || normC === normP)
             ? { ...c, programme_name: p.name, country: p.country }
-            : c,
-        ),
+            : c;
+        }),
       };
       return withLog(next, actor, 'programme.updated', 'programme', p.id, `Programme "${p.name}" updated (weight: ${p.approx_weight_label || 'standard'})`);
     });
