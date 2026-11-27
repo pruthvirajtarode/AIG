@@ -165,20 +165,38 @@ export function Sidebar({
 
       {/* ── Header: Logo + Collapse Arrow ─────────────────────── */}
       <div className="sidebar-logo" style={{ position: 'relative' }}>
-        <div className="logo-mark" style={{ background: 'transparent', padding: 0, overflow: 'hidden' }}>
-          <img
-            src="/logo.jpg"
-            alt="Al Ihsan Group"
-            style={{ width: '38px', height: '38px', objectFit: 'cover', borderRadius: '8px', display: 'block' }}
-          />
-        </div>
-
-        {!collapsed && (
-          <div className="logo-text">
-            <div className="logo-name">Al Ihsan Group</div>
-            <div className="logo-sub">AIG Management</div>
+        <Link
+          to={rootPath}
+          onClick={handleNavClick}
+          className="sidebar-brand-link"
+          title={inPortal ? 'Go to Participant Portal Home' : 'Go to Admin Dashboard'}
+          aria-label={inPortal ? 'Go to Participant Portal Home' : 'Go to Admin Dashboard'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            textDecoration: 'none',
+            color: 'inherit',
+            flex: 1,
+            minWidth: 0,
+            cursor: 'pointer',
+          }}
+        >
+          <div className="logo-mark" style={{ background: 'transparent', padding: 0, overflow: 'hidden', flexShrink: 0 }}>
+            <img
+              src="/logo.jpg"
+              alt="Al Ihsan Group"
+              style={{ width: '38px', height: '38px', objectFit: 'cover', borderRadius: '8px', display: 'block' }}
+            />
           </div>
-        )}
+
+          {!collapsed && (
+            <div className="logo-text">
+              <div className="logo-name">Al Ihsan Group</div>
+              <div className="logo-sub">{inPortal ? 'Participant Portal' : 'AIG Management'}</div>
+            </div>
+          )}
+        </Link>
 
         {/* Collapse / Expand arrow — desktop only */}
         <button

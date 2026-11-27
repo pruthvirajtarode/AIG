@@ -1,9 +1,13 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bell, Search, Menu, RefreshCw } from 'lucide-react';
+import {
+  Bell, Search, Menu, RefreshCw, ChevronDown, LogOut,
+  LayoutDashboard, Settings, ExternalLink, ShoppingCart, Award,
+} from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppData } from '@/contexts/AppDataContext';
 import { usePortalSession } from '@/hooks/usePortalSession';
+import { useToast } from '@/contexts/ToastContext';
 import { formatRelativeTime } from '@/lib/utils';
 
 interface TopbarProps {
@@ -28,7 +32,8 @@ interface LiveNotifItem {
 }
 
 export function Topbar({ title, onMenuClick }: TopbarProps) {
-  const { profile, isStaff } = useAuth();
+  const { profile, isStaff, signOut } = useAuth();
+  const { toast } = useToast();
   const { orders, animals, payments, exceptions, certificates, participants, refreshFromCloud, isCloudSyncing, lastCloudSync } = useAppData();
   const navigate = useNavigate();
   const location = useLocation();
@@ -37,10 +42,12 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
   const inPortalMode = inPortal || (!!profile && !isStaff());
 
   const [showNotifs, setShowNotifs] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLDivElement | null>(null);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
   const fullName = `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim();
   const initials = (() => {
@@ -69,17 +76,26 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
     ? (portalSession.participantName || portalSession.sessionEmail || 'Participant')
     : (profile?.first_name || 'Staff');
 
+  // Close menus on route change
+  useEffect(() => {
+    setProfileMenuOpen(false);
+    setShowNotifs(false);
+    setSearchOpen(false);
+  }, [location.pathname]);
+
   // Close popovers on outside click or Escape
   useEffect(() => {
-    if ((!showNotifs && !searchOpen) || typeof document === 'undefined') return;
+    if ((!showNotifs && !searchOpen && !profileMenuOpen) || typeof document === 'undefined') return;
     const onDocClick = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotifs(false);
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearchOpen(false);
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) setProfileMenuOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setShowNotifs(false);
         setSearchOpen(false);
+        setProfileMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', onDocClick);
@@ -88,7 +104,19 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
       document.removeEventListener('mousedown', onDocClick);
       document.removeEventListener('keydown', onKey);
     };
-  }, [showNotifs, searchOpen]);
+  }, [showNotifs, searchOpen, profileMenuOpen]);
+
+  const handleSignOut = async () => {
+    setProfileMenuOpen(false);
+    if (inPortal && portalSession.isSignedIn) {
+      portalSession.signOut();
+    }
+    if (!inPortal || !isStaff()) {
+      await signOut();
+    }
+    toast('info', 'Signed Out', 'You have been signed out successfully.');
+    navigate(inPortal ? '/portal' : '/login');
+  };
 
   // Quick search across workspace (scoped strictly to portal vs staff admin)
   const searchHits = useMemo<QuickSearchHit[]>(() => {
@@ -391,12 +419,366 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
         </span>
       </button>
 
-      {/* User Avatar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <div className="avatar avatar-sm">{initials}</div>
-        <span className="topbar-username" style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-          {topbarDisplayName}
-        </span>
+      {/* User Profile & Menu (with Log Out option) */}
+      <div ref={profileMenuRef} style={{ position: 'relative' }}>
+        <button
+          type="button"
+          onClick={() => setProfileMenuOpen(prev => !prev)}
+          id="topbar-profile-btn"
+          title="User profile & options"
+          aria-label="User profile & options"
+          aria-expanded={profileMenuOpen}
+          aria-haspopup="true"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            background: profileMenuOpen ? 'rgba(212,168,50,0.12)' : 'transparent',
+            border: profileMenuOpen ? '1px solid rgba(212,168,50,0.35)' : '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 8,
+            padding: '0.25rem 0.5rem',
+            cursor: 'pointer',
+            transition: 'all 0.18s ease',
+            color: 'inherit',
+          }}
+          onMouseEnter={e => {
+            if (!profileMenuOpen) {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+              e.currentTarget.style.borderColor = 'rgba(212,168,50,0.2)';
+            }
+          }}
+          onMouseLeave={e => {
+            if (!profileMenuOpen) {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+            }
+          }}
+        >
+          <div className="avatar avatar-sm" style={{ background: 'var(--aig-green-700)' }}>
+            {initials}
+          </div>
+          <span className="topbar-username" style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+            {topbarDisplayName}
+          </span>
+          <ChevronDown
+            size={13}
+            style={{
+              color: 'var(--text-muted)',
+              transition: 'transform 0.2s ease',
+              transform: profileMenuOpen ? 'rotate(180deg)' : 'none',
+            }}
+          />
+        </button>
+
+        {profileMenuOpen && (
+          <div
+            className="popover"
+            style={{
+              position: 'absolute',
+              top: 'calc(100% + 8px)',
+              right: 0,
+              width: 250,
+              background: 'var(--surface-800)',
+              border: '1px solid rgba(212,168,50,0.25)',
+              borderRadius: 12,
+              boxShadow: '0 12px 36px rgba(0,0,0,0.6), 0 0 20px rgba(212,168,50,0.08)',
+              padding: '0.5rem',
+              zIndex: 1000,
+              animation: 'fadeIn 0.15s ease',
+            }}
+          >
+            {/* User Info Header */}
+            <div
+              style={{
+                padding: '0.75rem',
+                borderBottom: '1px solid rgba(255,255,255,0.08)',
+                marginBottom: '0.375rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                <div className="avatar avatar-sm" style={{ background: 'var(--aig-green-700)' }}>
+                  {initials}
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div
+                    style={{
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {inPortal
+                      ? (portalSession.participantName || 'Participant')
+                      : (fullName || profile?.email || 'Staff Member')}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '0.72rem',
+                      color: 'var(--text-muted)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {inPortal
+                      ? (portalSession.sessionEmail || '')
+                      : (profile?.email || '')}
+                  </div>
+                </div>
+              </div>
+
+              {/* Role badge */}
+              <div style={{ marginTop: '0.5rem' }}>
+                {inPortal ? (
+                  <span
+                    className={portalSession.isStaffPreview ? 'badge badge-warning' : 'badge badge-teal'}
+                    style={{ fontSize: '0.68rem', textTransform: 'capitalize' }}
+                  >
+                    {portalSession.isStaffPreview
+                      ? 'Staff Preview'
+                      : portalSession.isSignedIn
+                      ? 'Registered Participant'
+                      : 'Guest Access'}
+                  </span>
+                ) : (
+                  <span className="badge badge-gold" style={{ fontSize: '0.68rem', textTransform: 'capitalize' }}>
+                    {profile?.role?.replace(/_/g, ' ') || 'Super Admin'}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Menu Links */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
+              {!inPortal ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { setProfileMenuOpen(false); navigate('/admin'); }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.625rem',
+                      width: '100%',
+                      padding: '0.5rem 0.625rem',
+                      borderRadius: 6,
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.8125rem',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <LayoutDashboard size={15} color="var(--aig-green-400)" />
+                    <span>Dashboard</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setProfileMenuOpen(false); navigate('/admin/settings'); }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.625rem',
+                      width: '100%',
+                      padding: '0.5rem 0.625rem',
+                      borderRadius: 6,
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.8125rem',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <Settings size={15} color="var(--text-muted)" />
+                    <span>Settings</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setProfileMenuOpen(false); navigate('/portal'); }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.625rem',
+                      width: '100%',
+                      padding: '0.5rem 0.625rem',
+                      borderRadius: 6,
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.8125rem',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <ExternalLink size={15} color="var(--gold-400)" />
+                    <span>Participant Portal Preview</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { setProfileMenuOpen(false); navigate('/portal'); }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.625rem',
+                      width: '100%',
+                      padding: '0.5rem 0.625rem',
+                      borderRadius: 6,
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.8125rem',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <LayoutDashboard size={15} color="var(--aig-green-400)" />
+                    <span>Portal Home</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setProfileMenuOpen(false); navigate('/portal/orders'); }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.625rem',
+                      width: '100%',
+                      padding: '0.5rem 0.625rem',
+                      borderRadius: 6,
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.8125rem',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <ShoppingCart size={15} color="var(--text-muted)" />
+                    <span>My Orders</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setProfileMenuOpen(false); navigate('/portal/certificates'); }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.625rem',
+                      width: '100%',
+                      padding: '0.5rem 0.625rem',
+                      borderRadius: 6,
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.8125rem',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <Award size={15} color="var(--gold-400)" />
+                    <span>My Certificates</span>
+                  </button>
+                  {isStaff() && (
+                    <button
+                      type="button"
+                      onClick={() => { setProfileMenuOpen(false); navigate('/admin'); }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.625rem',
+                        width: '100%',
+                        padding: '0.5rem 0.625rem',
+                        borderRadius: 6,
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.8125rem',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <LayoutDashboard size={15} color="var(--aig-green-400)" />
+                      <span>Back to Admin Panel</span>
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* Divider */}
+              <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '0.375rem 0' }} />
+
+              {/* Log Out Option (Requested by Client) */}
+              <button
+                type="button"
+                id="topbar-logout-btn"
+                onClick={handleSignOut}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.625rem',
+                  width: '100%',
+                  padding: '0.5rem 0.625rem',
+                  borderRadius: 6,
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#f87171',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(239,68,68,0.12)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <LogOut size={15} color="#f87171" />
+                <span>
+                  {inPortal && portalSession.isSignedIn
+                    ? (portalSession.isStaffPreview ? 'Exit Preview' : 'Sign Out / Switch')
+                    : 'Sign Out'}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </header>
   );
